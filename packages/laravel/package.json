@@ -1,0 +1,9 @@
+{
+  "name": "@route-forge/laravel",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Laravel composer 包（PHP）；构建与测试通过 composer/phpunit，不走 turbo。",
+  "scripts": {
+    "test:php": "composer test"
+  }
+}

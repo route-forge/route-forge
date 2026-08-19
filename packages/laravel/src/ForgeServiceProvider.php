@@ -1,0 +1,153 @@
+<?php
+
+declare(strict_types=1);
+
+namespace RouteForge\Laravel;
+
+use Closure;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
+use Illuminate\Contracts\Container\Container;
+use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Routing\Contracts\Router as RouterContract;
+use Illuminate\Support\ServiceProvider;
+use RouteForge\Laravel\Cache\RouteCache;
+
+/**
+ * Route Forge ServiceProvider。
+ *
+ * 负责（对应 .docs/SPEC.md §3）：
+ *   1. 注册 `->tier()` 宏到 Illuminate\Routing\Route（§3.1.1）
+ *   2. 把 'router' 单例重绑为 ForgeRouter，让 Route::group(['tier'=>...]) 自动透传
+ *      tier 到组内每条路由的 action（§3.1.3, §3.1.4）
+ *   3. 绑定 RouteCache / TierResolver / RouteRepository 依赖（§3.1.5）
+ *   4. 注册元信息查询端点 `GET /_forge/routes/{level}`（§3.1.5）
+ *   5. 发布 config/forge.php
+ *
+ * 重绑时机说明：
+ *   - register() 在所有 ServiceProvider 的 boot() 之前执行；
+ *   - RoutingServiceProvider 的 'router' 是 lazy singleton（首次解析才实例化）；
+ *   - RouteServiceProvider 通常在 boot() 阶段才解析 router 注册路由，
+ *     因此我们在 register() 阶段重新绑定 'router'，可让首解析时拿到 ForgeRouter。
+ */
+class ForgeServiceProvider extends ServiceProvider
+{
+    public function boot(): void
+    {
+        $this->registerTierMacro();
+        $this->registerMetadataEndpoint();
+        $this->publishConfig();
+    }
+
+    public function register(): void
+    {
+        $this->rebindRouter();
+        $this->registerBindings();
+        $this->mergeConfigFrom(__DIR__ . '/../config/forge.php', 'forge');
+    }
+
+    /**
+     * 重绑 'router' 单例为 ForgeRouter，覆盖 Illuminate\Routing\Router。
+     */
+    protected function rebindRouter(): void
+    {
+        $this->app->singleton('router', function ($app) {
+            /** @var Container $app */
+            $events = $app->make(Dispatcher::class);
+            $router = new ForgeRouter($events, $app);
+
+            // 同步 Router 与 routes collection 的事件订阅
+            // （与原生 RoutingServiceProvider 行为一致）
+            if (method_exists($router, 'setEventsDispatcher')) {
+                $router->setEventsDispatcher($events);
+            }
+
+            return $router;
+        });
+
+        // 同时绑定 Router 契约别名，避免某些包通过 alias 解析时绕过 ForgeRouter
+        $this->app->alias('router', RouterContract::class);
+    }
+
+    /**
+     * 绑定 RouteForge 后端服务的核心依赖（§3.1.5）。
+     *
+     * RouteMetadataController 通过构造函数注入 RouteRepository；
+     * 容器自动解析时，需要预先绑定 RouteCache / TierResolver / RouteRepository
+     * 这三个非自动可解析的构造参数（特别是 array 类型）。
+     */
+    protected function registerBindings(): void
+    {
+        // RouteCache：按 forge.cache_driver 选择 store；null 表示用默认 cache.store
+        $this->app->singleton(RouteCache::class, function ($app) {
+            /** @var Container $app */
+            $driver = $app->make('config')->get('forge.cache_driver');
+            $store = $driver === null
+                ? $app->make(CacheRepository::class)
+                : $app->make('cache')->store($driver);
+            return new RouteCache($store);
+        });
+
+        // TierResolver：从 forge 配置组装
+        $this->app->singleton(TierResolver::class, function ($app) {
+            /** @var Container $app */
+            $classifier = $app->make('config')->get('forge.classifier');
+            return new TierResolver(
+                levelsConfig: $app->make('config')->get('forge.levels', []),
+                classifier: $classifier instanceof Closure ? $classifier : null,
+                strictMode: (bool) $app->make('config')->get('forge.strict_mode', false),
+                fallbackLevel: $app->make('config')->get('forge.fallback_level'),
+            );
+        });
+
+        // RouteRepository：组合 router + tierResolver + cache + levelsConfig
+        $this->app->singleton(RouteRepository::class, function ($app) {
+            /** @var Container $app */
+            return new RouteRepository(
+                router: $app->make('router'),
+                tierResolver: $app->make(TierResolver::class),
+                cache: $app->make(RouteCache::class),
+                levelsConfig: $app->make('config')->get('forge.levels', []),
+            );
+        });
+    }
+
+    /**
+     * 注册 `->tier()` 宏到 Illuminate\Routing\Route。
+     * 仅向 action 数组写入一个 `tier` 字段，零侵入。
+     */
+    protected function registerTierMacro(): void
+    {
+        /** @var \Illuminate\Routing\Route $route */
+        \Illuminate\Routing\Route::macro('tier', function (string $tier): \Illuminate\Routing\Route {
+            $action = $this->getAction();
+            $action['tier'] = $tier;
+            $this->setAction($action);
+            return $this;
+        });
+    }
+
+    /**
+     * 注册元信息查询端点 GET /{endpoint_prefix}/{level}
+     */
+    protected function registerMetadataEndpoint(): void
+    {
+        $prefix = (string) config('forge.endpoint_prefix', '_forge/routes');
+
+        $this->app['router']->get(
+            "/{$prefix}/{level}",
+            [\RouteForge\Laravel\Http\RouteMetadataController::class, 'show']
+        )->name('forge.routes.show');
+    }
+
+    /**
+     * 发布 config/forge.php 到宿主项目
+     */
+    protected function publishConfig(): void
+    {
+        if ($this->app->runningInConsole()) {
+            $this->publishes([
+                __DIR__ . '/../config/forge.php' => $this->app->configPath('forge.php'),
+            ], 'forge-config');
+        }
+    }
+}
