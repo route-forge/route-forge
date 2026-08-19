@@ -1,0 +1,24 @@
+{
+  "name": "route-forge",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Laravel 命名路由的全链路解决方案（分级懒加载 + 类型安全 + 拦截器）",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18",
+    "pnpm": ">=8"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && rimraf node_modules"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "rimraf": "^5.0.5",
+    "turbo": "^1.13.0",
+    "typescript": "^5.4.0"
+  }
+}
