@@ -1,0 +1,49 @@
+{
+  "name": "@route-forge/core",
+  "version": "0.0.0",
+  "description": "框架无关的命名路由客户端核心：分级懒加载、隔离缓存、并发去重、登录态感知、拦截器",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist .turbo"
+  },
+  "bin": {
+    "route-forge-codegen": "./dist/codegen.js"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "vitest": "^1.4.0"
+  },
+  "peerDependencies": {
+    "axios": "^1.6.0"
+  },
+  "peerDependenciesMeta": {
+    "axios": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

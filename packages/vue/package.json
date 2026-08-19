@@ -1,0 +1,46 @@
+{
+  "name": "@route-forge/vue",
+  "version": "0.0.0",
+  "description": "Route Forge 的 Vue 3 集成：插件 + composable（useForgeApi/useForgeLevel/useForgeRoute/useForgeByPrefix）",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist .turbo"
+  },
+  "peerDependencies": {
+    "vue": "^3.3.0"
+  },
+  "devDependencies": {
+    "@vue/test-utils": "^2.4.0",
+    "jsdom": "^24.0.0",
+    "tsup": "^8.0.0",
+    "vitest": "^1.4.0",
+    "vue": "^3.4.0"
+  },
+  "dependencies": {
+    "@route-forge/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
