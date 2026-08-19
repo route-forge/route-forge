@@ -3,6 +3,18 @@
     "description": "Laravel 命名路由的分级懒加载后端：路由扫描、tier 分配（->tier() / Route::group / config match / classifier / fallback）、元信息端点、缓存",
     "license": "MIT",
     "type": "library",
+    "homepage": "https://github.com/xyj2156/route-forge",
+    "authors": [
+        {
+            "name": "阿杰很厉害",
+            "email": "506907958@qq.com",
+            "homepage": "https://github.com/xyj2156"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/xyj2156/route-forge/issues",
+        "source": "https://github.com/xyj2156/route-forge"
+    },
     "keywords": [
         "laravel",
         "route",

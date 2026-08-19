@@ -3,6 +3,15 @@
   "version": "0.0.0",
   "description": "Route Forge 的 Vue 3 集成：插件 + composable（useForgeApi/useForgeLevel/useForgeRoute/useForgeByPrefix）",
   "license": "MIT",
+  "author": "阿杰很厉害 <506907958@qq.com>",
+  "homepage": "https://github.com/xyj2156/route-forge",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xyj2156/route-forge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xyj2156/route-forge/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.cjs",

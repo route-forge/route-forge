@@ -4,6 +4,15 @@
   "version": "0.0.0",
   "description": "Laravel 命名路由的全链路解决方案（分级懒加载 + 类型安全 + 拦截器）",
   "license": "MIT",
+  "author": "阿杰很厉害 <506907958@qq.com>",
+  "homepage": "https://github.com/xyj2156/route-forge",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xyj2156/route-forge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xyj2156/route-forge/issues"
+  },
   "engines": {
     "node": ">=18",
     "pnpm": ">=8"

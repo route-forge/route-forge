@@ -3,6 +3,15 @@
   "version": "0.0.0",
   "description": "框架无关的命名路由客户端核心：分级懒加载、隔离缓存、并发去重、登录态感知、拦截器",
   "license": "MIT",
+  "author": "阿杰很厉害 <506907958@qq.com>",
+  "homepage": "https://github.com/xyj2156/route-forge",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xyj2156/route-forge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xyj2156/route-forge/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.cjs",
