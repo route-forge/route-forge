@@ -39,6 +39,7 @@ import type {
   RouteForge,
   RouteForgeOptions,
   RouteMeta,
+  SummaryResponse,
 } from './types.js';
 
 const DEFAULT_TIMEOUT = 30_000;
@@ -47,16 +48,9 @@ const DEFAULT_NAME_SEPARATOR = '.';
 
 export function createRouteForge(options: RouteForgeOptions): RouteForge {
   if (!options.endpoint) throw new TypeError('options.endpoint is required');
-  if (!Array.isArray(options.levels) || options.levels.length === 0) {
-    throw new TypeError('options.levels must be a non-empty array');
-  }
 
   const {
-    endpoint,
-    levels,
-    eager = [],
     adapter = 'auto',
-    strict = false,
     timeout = DEFAULT_TIMEOUT,
     baseURL = '',
     nameSeparator = DEFAULT_NAME_SEPARATOR,
@@ -64,6 +58,90 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     interceptors: declarativeInterceptors,
     cache: cacheOpts = {},
   } = options;
+
+  // --- 自动发现（SPEC §4.1.1 + §5.3）---
+  const explicitLevels = options.levels;
+  const explicitEager = options.eager;
+  const explicitStrict = options.strict ?? false;
+  const explicitEndpoint = options.endpoint;
+
+  // effective* 状态：在摘要端点响应到达后被填充
+  let effectiveLevels: string[] = explicitLevels ?? [];
+  let effectiveEager: string[] = explicitEager ?? [];
+  let effectiveStrict = explicitStrict;
+  let effectiveEndpoint = explicitEndpoint;
+
+  // 拉取摘要端点（用于 strict_mode / endpoint / levels / eager 自动发现）
+  const summaryPromise = (async (): Promise<SummaryResponse | null> => {
+    try {
+      const summaryUrl = explicitEndpoint; // GET {endpoint} = 摘要端点
+      const resp = await fetch(summaryUrl, { method: 'GET' });
+      if (!resp.ok) {
+        console.warn(
+          `[route-forge] summary endpoint ${summaryUrl} unreachable (HTTP ${resp.status}); falling back to explicit options`,
+        );
+        return null;
+      }
+      return (await resp.json()) as SummaryResponse;
+    } catch (e) {
+      if (explicitLevels && explicitLevels.length > 0) {
+        console.warn(
+          `[route-forge] summary endpoint unreachable: ${(e as Error).message}; using explicit levels`,
+        );
+        return null;
+      }
+      // 未传 levels 且摘要端点不可达 → 抛 UnknownLevelError
+      throw new UnknownLevelError('(auto-discovery)');
+    }
+  })();
+
+  // 自动发现异步填充（不阻塞 createRouteForge 返回）
+  const autoDiscoveryPromise = summaryPromise.then((summary) => {
+    if (summary === null) {
+      return;
+    }
+
+    // 1. endpoint 后端权威
+    if (summary.config.endpoint_prefix && summary.config.endpoint_prefix !== explicitEndpoint) {
+      console.warn(
+        `[route-forge] backend endpoint_prefix "${summary.config.endpoint_prefix}" overrides frontend endpoint "${explicitEndpoint}"`,
+      );
+      effectiveEndpoint = summary.config.endpoint_prefix;
+    }
+
+    // 2. strict_mode 后端权威：不能放宽，可收紧
+    if (summary.config.strict_mode && !explicitStrict) {
+      console.warn(
+        '[route-forge] backend strict_mode=true overrides frontend strict=false; forcing strict=true',
+      );
+      effectiveStrict = true;
+    }
+
+    // 3. levels 取交集或自动发现
+    const backendLevels = Object.keys(summary.levels);
+    if (explicitLevels && explicitLevels.length > 0) {
+      const intersection = explicitLevels.filter((l) => backendLevels.includes(l));
+      const removed = explicitLevels.filter((l) => !backendLevels.includes(l));
+      if (removed.length > 0) {
+        console.warn(
+          `[route-forge] levels not in backend summary and dropped: ${removed.join(', ')}`,
+        );
+      }
+      effectiveLevels = intersection;
+    } else {
+      effectiveLevels = backendLevels;
+    }
+
+    // 4. eager 未传时取后端 load:'eager' 层级
+    if (!explicitEager) {
+      effectiveEager = backendLevels.filter((lvl) => summary.levels[lvl]?.load === 'eager');
+    }
+  });
+
+  // 防止 autoDiscoveryPromise 未被 await 时产生 unhandled rejection
+  autoDiscoveryPromise.catch(() => {
+    /* 自动发现失败：在 load/api await 时会重新抛出 */
+  });
 
   const cacheTtl = cacheOpts.ttl ?? DEFAULT_CACHE_TTL;
   const cacheStorage = cacheOpts.storage ?? 'memory';
@@ -122,15 +200,14 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   }
 
   function assertLevelDeclared(level: string): void {
-    if (!levels.includes(level)) {
-      if (strict) throw new UnknownLevelError(level);
-      return;
+    if (!effectiveLevels.includes(level)) {
+      throw new UnknownLevelError(level);
     }
   }
 
   function buildUrl(level: string): string {
     const base = baseURL.endsWith('/') ? baseURL.slice(0, -1) : baseURL;
-    const ep = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const ep = effectiveEndpoint.startsWith('/') ? effectiveEndpoint : `/${effectiveEndpoint}`;
     return `${base}${ep}/${encodeURIComponent(level)}`;
   }
 
@@ -185,6 +262,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   }
 
   async function load(level: string | string[]): Promise<void> {
+    await autoDiscoveryPromise;
     const list = Array.isArray(level) ? level : [level];
     await Promise.all(list.map(loadOne));
   }
@@ -193,7 +271,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     // 静态生成 URL：仅查已加载缓存，未加载时 strict 抛 UnknownRouteError
     const meta = findRouteMeta(name);
     if (!meta) {
-      if (strict) throw new UnknownRouteError(name);
+      if (effectiveStrict) throw new UnknownRouteError(name);
       return '';
     }
     return buildRequestUrl(meta, params ?? {});
@@ -204,7 +282,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     for (const p of meta.parameters) {
       const v = params[p];
       if (v === undefined) {
-        if (strict) throw new MissingRouteParamError(meta.name, [p]);
+        if (effectiveStrict) throw new MissingRouteParamError(meta.name, [p]);
         uri = uri.replace(`{${p}}`, '');
       } else {
         uri = uri.replace(`{${p}}`, encodeURIComponent(String(v)));
@@ -215,7 +293,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   }
 
   function findRouteMeta(name: string): RouteMeta | undefined {
-    for (const level of levels) {
+    for (const level of effectiveLevels) {
       const entry = cache.get(level);
       const meta = entry?.routes[name];
       if (meta) {
@@ -226,18 +304,19 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   }
 
   async function api(name: string, params: ApiCallParams = {}): Promise<unknown> {
+    await autoDiscoveryPromise;
     const meta = findRouteMeta(name);
     if (!meta) {
       // 隐式懒加载：路由名不在缓存中，可能是其层级尚未加载
       // 1. 尝试通过 name 分隔符拆出可能的 level 名（如 'admin.users.show' → 'admin'）
       const firstSeg = name.split(nameSeparator)[0];
-      if (firstSeg && levels.includes(firstSeg)) {
+      if (firstSeg && effectiveLevels.includes(firstSeg)) {
         await load(firstSeg);
       }
       // 重新查询
       const reMeta = findRouteMeta(name);
       if (!reMeta) {
-        if (strict) throw new UnknownRouteError(name);
+        if (effectiveStrict) throw new UnknownRouteError(name);
         return undefined;
       }
       return doApiCall(reMeta, params);
@@ -252,7 +331,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     // 校验路径参数
     for (const p of meta.parameters) {
       if (pathParams[p] === undefined) {
-        if (strict) throw new MissingRouteParamError(meta.name, [p]);
+        if (effectiveStrict) throw new MissingRouteParamError(meta.name, [p]);
       }
     }
 
@@ -314,12 +393,18 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     else cache.clear();
   }
 
-  // 初始化：拉取 eager 列表（异步触发，不阻塞 createRouteForge 返回）
-  if (eager.length > 0) {
-    void Promise.all(
-      eager.filter((l) => levels.includes(l)).map((l) => loadOne(l).catch(() => undefined)),
-    );
-  }
+  // eager 层级自动加载（不阻塞 createRouteForge 返回；在自动发现完成后触发）
+  void autoDiscoveryPromise
+    .then(() => {
+      if (effectiveEager.length > 0) {
+        void Promise.all(effectiveEager.map((lvl) => load(lvl))).catch((e) => {
+          console.warn(`[route-forge] eager load failed: ${(e as Error).message}`);
+        });
+      }
+    })
+    .catch(() => {
+      /* 自动发现失败时不触发 eager */
+    });
 
   return {
     api,

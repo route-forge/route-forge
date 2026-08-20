@@ -32,6 +32,32 @@ export interface LevelRoutesResponse {
 }
 
 /**
+ * 摘要端点响应（SPEC §3.1.6）
+ * GET /_forge/routes 返回此结构
+ */
+export interface SummaryResponse {
+  levels: Record<
+    string,
+    {
+      description: string;
+      load: 'lazy' | 'eager';
+      cache: number | null;
+      route_count: number;
+    }
+  >;
+  config: {
+    strict_mode: boolean;
+    endpoint_prefix: string;
+  };
+  unassigned: Array<{
+    name: string;
+    uri: string;
+    methods: string[];
+    parameters: string[];
+  }>;
+}
+
+/**
  * 请求拦截器接收/返回的配置对象（可变，返回修改后的版本）
  */
 export interface RequestConfig {
@@ -148,7 +174,11 @@ export interface RouteForge {
  */
 export interface RouteForgeOptions {
   endpoint: string;
-  levels: string[];
+  /**
+   * 层级列表。未传时从摘要端点自动发现（SPEC §4.1.1）。
+   * 显式传入时取与后端摘要响应 levels 键的交集（前端不能声明后端不存在的层级，SPEC §5.3）。
+   */
+  levels?: string[];
   eager?: string[];
   adapter?: AdapterOption;
   cache?: {

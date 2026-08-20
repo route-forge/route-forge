@@ -36,6 +36,12 @@ class ForgeServiceProvider extends ServiceProvider
         $this->registerTierMacro();
         $this->registerMetadataEndpoint();
         $this->publishConfig();
+
+        // 注册 Artisan 命令（SPEC §3.2）
+        $this->commands([
+            \RouteForge\Laravel\Console\RouteForgeListCommand::class,
+            \RouteForge\Laravel\Console\RouteForgeTypesCommand::class,
+        ]);
     }
 
     public function register(): void
