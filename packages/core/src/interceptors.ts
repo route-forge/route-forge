@@ -2,8 +2,14 @@
  * 拦截器管理器实现
  * @see .docs/SPEC.md §4.1.3a, §4.1.1
  *
- * 执行顺序约定：所有拦截器（请求 / 响应 / 错误）统一按注册顺序（先注册先执行）正序消费。
- * 与 axios 差异：axios 请求拦截逆序、响应拦截正序；Route Forge 统一正序以简化心智模型。
+ * 执行顺序约定（对齐 axios）：
+ *   - 请求拦截器：LIFO（后注册先执行），onRejected 与 onFulfilled 同序
+ *   - 响应拦截器：FIFO（先注册先执行），onRejected 与 onFulfilled 同序
+ *
+ * 实现策略：
+ *   - InterceptorManagerImpl.forEach 保持正序迭代（与 use/eject 语义一致）
+ *   - runRequestInterceptors 收集 handlers 后 reverse() 再串联 Promise 链，实现 LIFO
+ *   - runResponseInterceptors 直接正序串联，实现 FIFO
  *
  * 串联实现：采用标准 Promise 链语义
  *   `Promise.resolve(initial).then(f0, r0).then(f1, r1).then(f2, r2)...`
@@ -53,7 +59,7 @@ export class InterceptorManagerImpl<TIn, TOut = TIn> implements InterceptorManag
 }
 
 /**
- * 串联请求拦截器（注册顺序正序）。
+ * 串联请求拦截器（LIFO，对齐 axios）。
  *
  * - onFulfilled 必须返回对象（RequestConfig）；非对象抛 InvalidInterceptorReturnError
  * - onFulfilled 抛错 → 同管理器的 onRejected 链；某段 onRejected 返回值则恢复正序流程
@@ -65,6 +71,8 @@ export async function runRequestInterceptors(
 ): Promise<RequestConfig> {
   const handlers: InterceptorHandler<RequestConfig, RequestConfig>[] = [];
   manager.forEach((h) => handlers.push(h));
+  // 请求拦截器 LIFO（对齐 axios）：后注册先执行
+  handlers.reverse();
 
   let p: Promise<unknown> = Promise.resolve(initial);
   for (const h of handlers) {
@@ -86,7 +94,7 @@ export async function runRequestInterceptors(
 }
 
 /**
- * 串联响应拦截器（注册顺序正序）。
+ * 串联响应拦截器（FIFO，对齐 axios）。
  *
  * - HTTP 非 2xx 或任一 onFulfilled 抛错 → onRejected 链；onRejected 返回值则恢复正序流程
  * - 首段 onFulfilled 接收 ResponseData；后续段接收上一段返回值（类型由用户约束）

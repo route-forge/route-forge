@@ -33,3 +33,7 @@ yarn-error.log*
 # Test outputs
 coverage/
 .phpunit.result.cache
+
+.turbo/
+.trae/
+.composer-cache/

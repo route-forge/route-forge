@@ -4,6 +4,7 @@
  *
  * 设计目标：
  * - API 兼容 axios（use/eject/clear、request/get/post/...）便于业务代码零成本切换
+ * - 拦截器执行顺序对齐 axios（请求 LIFO、响应 FIFO），与 SPEC §4.1.3a 一致
  * - 仅实现 Route Forge 调用链需要的能力：拦截器、JSON、超时、取消
  * - 零依赖，仅基于宿主原生 fetch（Node 18+ / 现代浏览器原生支持）
  * - 体积目标：min+gzip < 3KB

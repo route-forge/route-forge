@@ -471,7 +471,7 @@ const idLog = forge.interceptors.request.use(
         return config;
     },
 );
-// 执行顺序：idAuth → idLog（按注册顺序，先注册先执行）
+// 执行顺序（axios 惯例）：idLog → idAuth（请求拦截器后注册先执行，LIFO）
 
 // 移除时通过 eject(id) 移除指定拦截器，互不影响
 forge.interceptors.request.eject(idLog);   // 仅移除日志拦截器，鉴权拦截器保留
@@ -539,28 +539,28 @@ await forge.api('client.posts.update', {
 3. 从路由元信息读取 uri 和 methods，取第一个非 HEAD 的方法作为请求方法。
 4. 用传入的路径参数填充 URI 模板（{user} → 123），剩余参数不允许填充路径。
 5. 拼 query、序列化 body，构建 RequestConfig（详见 4.1.3a）。
-6. 请求拦截链：按注册顺序（先注册先执行）依次执行 forge.interceptors.request 中已注册的 onFulfilled，每段接收上一段返回的
+6. 请求拦截链：按 axios 惯例（LIFO，后注册先执行）依次执行 forge.interceptors.request 中已注册的 onFulfilled，每段接收上一段返回的
    RequestConfig 并可修改后返回；任一段抛错则跳到请求拦截的 onRejected，仍抛错则进入调用方 catch，不再发请求。
 7. 调用 adapter 发请求。
-8. 响应拦截链：HTTP 2xx 时，按注册顺序（先注册先执行）依次执行 forge.interceptors.response 的 onFulfilled，每段接收上一段返回值（首段接收
+8. 响应拦截链：HTTP 2xx 时，按 axios 惯例（FIFO，先注册先执行）依次执行 forge.interceptors.response 的 onFulfilled，每段接收上一段返回值（首段接收
    ResponseData，详见 4.1.3a）并返回新值；末段返回值即为 `forge.api()` 的 resolve 值。
-9. 错误拦截链：HTTP 非 2xx 或任一 onFulfilled 抛错时，按正序执行 forge.interceptors.response 的 onRejected；任一段 reject
-   或全部跳过则进入调用方 catch；某段返回值则恢复为正常流程，从下一个拦截器的 onFulfilled 继续执行。
+9. 错误拦截链：HTTP 非 2xx 或任一 onFulfilled 抛错时，按 FIFO（与响应 onFulfilled 同序）依次执行 forge.interceptors.response 的 onRejected；任一段 reject
+   或全部跳过则进入调用方 catch；某段返回值则恢复为正常流程，从下一个拦截器的 onFulfilled 继续执行。请求拦截 onRejected 链同样按 LIFO（与请求 onFulfilled 同序）。
 
 ```mermaid
 graph TD
     A["forge.api(name, params)"] --> B{"路由校验（步骤 2）"}
     B -- " 校验失败 " --> C["抛出 ForgeError（不发请求）"]
     B -- " 校验通过 " --> D["构建 RequestConfig（步骤 3-5）"]
-    D --> E["请求拦截链 onFulfilled（按注册顺序）"]
-    E -- " 某段抛错 " --> F["请求拦截链 onRejected（按注册顺序）"]
+    D --> E["请求拦截链 onFulfilled（LIFO，后注册先执行）"]
+    E -- " 某段抛错 " --> F["请求拦截链 onRejected（LIFO，与 onFulfilled 同序）"]
     F -- " 某段返回值（恢复） " --> E
     F -- " 全部 reject " --> G["进入调用方 catch（不发请求）"]
     E -- " 全部通过 " --> H["调用 adapter 发请求（步骤 7）"]
-    H -- " HTTP 2xx " --> I["响应拦截链 onFulfilled（按注册顺序）"]
-    H -- " HTTP 非 2xx " --> J["响应拦截链 onRejected（按注册顺序）"]
+    H -- " HTTP 2xx " --> I["响应拦截链 onFulfilled（FIFO，先注册先执行）"]
+    H -- " HTTP 非 2xx " --> J["响应拦截链 onRejected（FIFO，与 onFulfilled 同序）"]
     H -- " 网络错误 " --> J
-    I -- " 某段抛错 " --> K["响应拦截链 onRejected（从当前拦截器位置开始）"]
+    I -- " 某段抛错 " --> K["响应拦截链 onRejected（从当前拦截器位置开始，FIFO）"]
     K -- " 某段返回值（恢复） " --> L["从下一个拦截器的 onFulfilled 继续"]
     K -- " 全部 reject " --> G
     J -- " 某段返回值（恢复） " --> L
@@ -622,11 +622,9 @@ forge.interceptors.response:InterceptorManager<ResponseData>;
 
 设计约定：
 
-- **执行顺序**：请求拦截和响应拦截统一按 **注册顺序**（先注册先执行）执行。内部以数组保存拦截器列表，`use()`时按调用顺序入栈，遍历时正序消费。
-  > 与 axios 的差异：axios 请求拦截逆序、响应拦截正序，规则不对称；Route Forge 统一正序，规则更简单直观。鉴权头等需要在最前面执行的拦截器，应在初始化时最先
-  `use()` 注册。
-  > 顺序保证：注册顺序 = 执行顺序，声明式配置（`interceptors.request/response` 数组）按数组顺序注册，运行时 `use()`
-  按调用顺序注册，二者混用时声明式先于运行时注册的部分。
+- **执行顺序**：对齐 axios 惯例——请求拦截 **LIFO**（后注册先执行），响应拦截 **FIFO**（先注册先执行）。`onRejected` 与对应 handler 的 `onFulfilled` 同序。内部以数组保存拦截器列表，`use()` 时按调用顺序入栈；`forEach` 正序迭代，请求拦截链在串联前 `reverse()` 实现 LIFO。
+  > 设计意图：与 axios 行为完全一致，降低存量项目接入心智成本。鉴权头等需要在最后执行的请求拦截器，应在初始化时**最后** `use()` 注册（或在响应链最开始注册）。
+  > 顺序保证：声明式配置（`interceptors.request/response` 数组）按数组顺序注册，运行时 `use()` 按调用顺序追加，二者混用时统一按注册时间排序后应用各自顺序轴（请求 LIFO、响应 FIFO）。
 - **拦截器返回值**：请求拦截必须返回 `RequestConfig`（或 Promise），返回非对象会抛 `InvalidInterceptorReturnError`；响应拦截首段接收
   `ResponseData`，后续段接收上一段返回值，类型由用户自行约束（默认 `unknown`）。
 - **错误传播**：
@@ -860,10 +858,10 @@ const forge = createRouteForge({
 当 `adapter: 'auto'` 检测到宿主 axios 时：
 
 - Route Forge **不会**接管或修改宿主 axios 实例的拦截器。
-- 宿主 axios 已注册的拦截器（如全局鉴权、错误上报）会先执行；Route Forge 自己 `forge.interceptors.use()` 注册的拦截器在宿主拦截器之后执行。
+- 宿主 axios 已注册的拦截器（如全局鉴权、错误上报）在 `axios.request()` 内部按 axios 自身顺序执行；Route Forge 自己 `forge.interceptors.use()` 注册的拦截器在外层 `forge.api()` 链中执行。当前实现：**forge 拦截器先于宿主 axios 拦截器执行**（forge 先组装 RequestConfig，再调用 `axios.request()` 触发宿主拦截器）。如需让 forge 拦截器在宿主之后执行，可改为注入式（spec 后续版本演进）。
 - 宿主 axios 的 `defaults.baseURL`、`defaults.headers` 等配置继承生效；Route Forge 不会覆盖，只在调用时追加 `url`/`method`/
   `headers`/`data`。
-- 若宿主 axios 拦截器与 Route Forge 拦截器行为冲突（如都改 `Authorization`），后者覆盖前者。
+- 若宿主 axios 拦截器与 Route Forge 拦截器行为冲突（如都改 `Authorization`），宿主 axios 拦截器在 forge 之后执行，可覆盖 forge 的设置。
 
 > 设计意图：把 Route Forge 视为「在已有 axios 之上叠加的路由层」，而非替代宿主 HTTP 客户端。已有 axios 配置保持不变，Route
 > Forge 只负责路由解析与命名调用，把 HTTP 细节交给宿主。

@@ -56,7 +56,7 @@ return [
     /**
      * 路由元信息对外端点前缀。
      */
-    'endpoint_prefix' => '_forge/routes',
+    'endpoint_prefix' => '/_forge/routes',
 
     /**
      * 缓存驱动；null = 使用默认缓存驱动；可指定 redis/file/array 等。
@@ -70,9 +70,9 @@ return [
 
     /**
      * 兜底层级名；strict_mode=false 时未命中路由归入此层级。
-     * null 表示不兜底（路由仍可被前端调用，但元信息端点不返回）。
+     * null 表示不兜底（未命中路由归入摘要端点的 unassigned 列表，详见 SPEC §3.1.6）。
      */
-    'fallback_level' => 'public',
+    'fallback_level' => null,
 
     /**
      * 自定义分类回调，签名 fn(Route $r): ?string

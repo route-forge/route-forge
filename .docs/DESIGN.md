@@ -108,7 +108,7 @@ Laravel 路由定义里天然包含 HTTP 方法（GET/POST/PUT/DELETE），没�
 
 - 默认 `'auto'`：检测到宿主有 axios 就复用（继承其拦截器/默认配置），没有则降级到内置 `@route-forge/builtin-http`（基于原生
   `fetch`，零外部依赖）；
-- 内置实现刻意对齐 axios 拦截器 API，确保两套 adapter 行为一致；
+- 内置实现刻意对齐 axios 拦截器 API 与执行顺序（请求 LIFO、响应 FIFO），确保两套 adapter 行为一致；
 - 保留自定义 Fetcher 接口，极端场景可完全替换。
 
 ### 6.3 为什么 monorepo

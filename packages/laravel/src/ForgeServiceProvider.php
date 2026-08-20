@@ -127,16 +127,27 @@ class ForgeServiceProvider extends ServiceProvider
     }
 
     /**
-     * 注册元信息查询端点 GET /{endpoint_prefix}/{level}
+     * 注册元信息查询端点 GET /{endpoint_prefix}/{level} 与摘要端点 GET /{endpoint_prefix}。
+     *
+     * prefix 规范化：确保前导 /、去除尾部 /，避免双斜杠（默认配置为 '/_forge/routes'
+     * 已带前导 /，不可再额外拼接）。
      */
     protected function registerMetadataEndpoint(): void
     {
-        $prefix = (string) config('forge.endpoint_prefix', '_forge/routes');
+        $prefix = (string) config('forge.endpoint_prefix', '/_forge/routes');
+        // 规范化：确保前导 /，去除尾部 /，避免双斜杠
+        $prefix = '/' . ltrim(rtrim($prefix, '/'), '/');
 
         $this->app['router']->get(
-            "/{$prefix}/{level}",
+            "{$prefix}/{level}",
             [\RouteForge\Laravel\Http\RouteMetadataController::class, 'show']
         )->name('forge.routes.show');
+
+        // 摘要端点（SPEC §3.1.6）：GET /{prefix}
+        $this->app['router']->get(
+            $prefix,
+            [\RouteForge\Laravel\Http\RouteMetadataController::class, 'index']
+        )->name('forge.routes.index');
     }
 
     /**

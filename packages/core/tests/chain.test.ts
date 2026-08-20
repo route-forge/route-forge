@@ -33,7 +33,7 @@ function makeResponse(): ResponseData {
 }
 
 describe('runRequestInterceptors', () => {
-  it('runs in registration order (forward)', async () => {
+  it('runs in reverse registration order (LIFO, like axios)', async () => {
     const mgr = new InterceptorManagerImpl<RequestConfig>();
     const order: string[] = [];
     mgr.use((c) => { order.push('a'); return c; });
@@ -41,7 +41,7 @@ describe('runRequestInterceptors', () => {
     mgr.use((c) => { order.push('c'); return c; });
 
     await runRequestInterceptors(mgr, makeConfig());
-    expect(order).toEqual(['a', 'b', 'c']);
+    expect(order).toEqual(['c', 'b', 'a']);
   });
 
   it('passes the returned value through each handler in chain', async () => {
@@ -50,7 +50,7 @@ describe('runRequestInterceptors', () => {
     mgr.use((c) => { c.url += '/b'; return c; });
 
     const result = await runRequestInterceptors(mgr, makeConfig());
-    expect(result.url).toBe('/admin/test/a/b');
+    expect(result.url).toBe('/admin/test/b/a');
   });
 
   it('rejects non-object return with InvalidInterceptorReturnError', async () => {
@@ -63,18 +63,21 @@ describe('runRequestInterceptors', () => {
   it('onFulfilled throwing jumps to next onRejected', async () => {
     const mgr = new InterceptorManagerImpl<RequestConfig>();
     const seen: string[] = [];
-    mgr.use(() => { seen.push('f0'); throw new Error('boom'); });
+    // LIFO 下注册顺序与执行顺序相反：要让 r1 在链中位于 f0 之后以接住其抛错，
+    // 需将 r1 先注册（执行时排在 f0 之后）。
     mgr.use(undefined, (e) => { seen.push('r1:' + (e as Error).message); return makeConfig(); });
+    mgr.use(() => { seen.push('f0'); throw new Error('boom'); });
     mgr.use((c) => { seen.push('f2'); return c; });
 
     await runRequestInterceptors(mgr, makeConfig());
-    expect(seen).toEqual(['f0', 'r1:boom', 'f2']);
+    expect(seen).toEqual(['f2', 'f0', 'r1:boom']);
   });
 
   it('onRejected returning rejected promise propagates to caller', async () => {
     const mgr = new InterceptorManagerImpl<RequestConfig>();
-    mgr.use(() => { throw new Error('boom'); });
+    // LIFO 下注册顺序与执行顺序相反：让 r1 在链中位于抛错的 f0 之后以接住并重新 reject。
     mgr.use(undefined, () => Promise.reject(new Error('still broken')));
+    mgr.use(() => { throw new Error('boom'); });
 
     await expect(runRequestInterceptors(mgr, makeConfig())).rejects.toThrow('still broken');
   });
@@ -86,7 +89,7 @@ describe('runRequestInterceptors', () => {
     mgr.use(async (c) => { order.push('b'); return c; });
 
     await runRequestInterceptors(mgr, makeConfig());
-    expect(order).toEqual(['a', 'b']);
+    expect(order).toEqual(['b', 'a']);
   });
 
   it('skips handlers with no onFulfilled (pass-through)', async () => {

@@ -56,7 +56,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     levels,
     eager = [],
     adapter = 'auto',
-    strict = true,
+    strict = false,
     timeout = DEFAULT_TIMEOUT,
     baseURL = '',
     nameSeparator = DEFAULT_NAME_SEPARATOR,
@@ -269,7 +269,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       meta,
     };
 
-    // 5. 请求拦截链（注册顺序正序）；任一段抛错且 onRejected 未消化 → 进入调用方 catch，不发请求
+    // 5. 请求拦截链（LIFO，对齐 axios）；任一段抛错且 onRejected 未消化 → 进入调用方 catch，不发请求
     const finalConfig = await runRequestInterceptors(requestInterceptors, config);
 
     const adp = await ensureAdapter();
@@ -305,7 +305,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       },
     );
 
-    // 响应拦截链（注册顺序正序）；末段返回值即 api() resolve 值
+    // 响应拦截链（FIFO，对齐 axios）；末段返回值即 api() resolve 值
     return runResponseInterceptors(responseInterceptors, source);
   }
 
