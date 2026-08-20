@@ -9,7 +9,7 @@
  * 自定义 Fetcher 接口直接传入即可（绕过 auto 检测）。
  */
 
-import type { Fetcher, RequestConfig, ResponseData } from '../types.js';
+import type { Fetcher, InterceptorManager, RequestConfig, ResponseData } from '../types.js';
 import { AdapterNotFoundError } from '../errors.js';
 import { createBuiltinHttp } from './builtin-http.js';
 import { wrapAxiosAdapter } from './axios.js';
@@ -17,10 +17,26 @@ import { wrapAxiosAdapter } from './axios.js';
 export type ResolvedAdapter = {
   request: (config: RequestConfig) => Promise<ResponseData>;
   interceptors?: Fetcher['interceptors'];
+  runsInterceptors?: boolean;
+  /**
+   * 便捷方法（可选）。
+   * - builtin adapter 提供全部 5 个方法
+   * - axios / 自定义 Fetcher 可不提供（调用方需先判断存在性）
+   * @see .docs/SPEC.md §4.3.1
+   */
+  get?: (url: string, config?: Partial<RequestConfig>) => Promise<ResponseData>;
+  post?: (url: string, config?: Partial<RequestConfig>) => Promise<ResponseData>;
+  put?: (url: string, config?: Partial<RequestConfig>) => Promise<ResponseData>;
+  patch?: (url: string, config?: Partial<RequestConfig>) => Promise<ResponseData>;
+  delete?: (url: string, config?: Partial<RequestConfig>) => Promise<ResponseData>;
 };
 
 export interface ResolveAdapterOptions {
   adapter: 'auto' | 'axios' | 'builtin' | Fetcher;
+  forgeInterceptors?: {
+    request: InterceptorManager<RequestConfig, RequestConfig>;
+    response: InterceptorManager<ResponseData, unknown>;
+  };
 }
 
 /**
@@ -38,7 +54,7 @@ export async function resolveAdapter(opts: ResolveAdapterOptions): Promise<Resol
   }
 
   if (adapter === 'builtin') {
-    return createBuiltinHttp();
+    return createBuiltinHttp(opts.forgeInterceptors);
   }
 
   if (adapter === 'axios') {
@@ -50,5 +66,5 @@ export async function resolveAdapter(opts: ResolveAdapterOptions): Promise<Resol
   // auto: 优先尝试 axios，失败则 builtin
   const wrapped = await wrapAxiosAdapter().catch(() => null);
   if (wrapped) return wrapped;
-  return createBuiltinHttp();
+  return createBuiltinHttp(opts.forgeInterceptors);
 }

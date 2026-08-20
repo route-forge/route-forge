@@ -164,7 +164,10 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     }
   }
 
-  const adapterPromise = resolveAdapter({ adapter });
+  const adapterPromise = resolveAdapter({
+    adapter,
+    forgeInterceptors: { request: requestInterceptors, response: responseInterceptors },
+  });
   let adapterResolved = false;
   let adapterObj: Awaited<ReturnType<typeof resolveAdapter>> | null = null;
 
@@ -176,13 +179,6 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
         return resolveAdapter({ adapter: 'builtin' });
       });
       adapterResolved = true;
-      // 当 adapter 未提供 interceptor manager 时，回退到 forge 自身管理器
-      if (!adapterObj.interceptors) {
-        adapterObj.interceptors = {
-          request: requestInterceptors,
-          response: responseInterceptors,
-        };
-      }
     }
     return adapterObj!;
   }
@@ -220,6 +216,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       url: buildUrl(level),
       headers: { Accept: 'application/json' },
       params: {},
+      timeout,
       meta: {
         name: `__forge__.load.${level}`,
         uri: buildUrl(level),
@@ -345,17 +342,21 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       headers: { Accept: 'application/json', ...(headers ?? {}) },
       body,
       params: pathParams as Record<string, unknown>,
+      timeout,
       meta,
     };
 
-    // 5. 请求拦截链（LIFO，对齐 axios）；任一段抛错且 onRejected 未消化 → 进入调用方 catch，不发请求
-    const finalConfig = await runRequestInterceptors(requestInterceptors, config);
-
     const adp = await ensureAdapter();
-    void timeout;
+
+    // 5. 请求拦截链（LIFO，对齐 axios）；任一段抛错且 onRejected 未消化 → 进入调用方 catch，不发请求
+    // builtin adapter 内部已执行 forge 拦截器（同一管理器对象引用，runsInterceptors=true）→ 跳过
+    const finalConfig = adp.runsInterceptors
+      ? config
+      : await runRequestInterceptors(requestInterceptors, config);
 
     // 6. adapter 调用 → 7/8 的错误转换 + 响应拦截链
     // HTTP 非 2xx 转 HTTPError；底层网络错误（非 ForgeError）转 NetworkError
+    // 注意：source 始终构造（含错误转换逻辑），runsInterceptors=true 时直接返回 source
     const source: Promise<ResponseData> = adp.request(finalConfig).then(
       (resp) => {
         if (resp.status < 200 || resp.status >= 300) {
@@ -385,6 +386,8 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     );
 
     // 响应拦截链（FIFO，对齐 axios）；末段返回值即 api() resolve 值
+    // builtin adapter 内部已执行 forge 响应拦截器（runsInterceptors=true）→ 直接返回 source
+    if (adp.runsInterceptors) return source;
     return runResponseInterceptors(responseInterceptors, source);
   }
 

@@ -139,4 +139,46 @@ describe('createRouteForge auto-discovery', () => {
     const forge = createRouteForge({ endpoint: '/_forge/routes', adapter: 'builtin' });
     await expect(forge.load('public')).rejects.toThrow();
   });
+
+  it('writes timeout option to RequestConfig', async () => {
+    // URL-aware mock：区分摘要端点与 level 拉取请求
+    const calls: { url: string; init?: RequestInit }[] = [];
+    (globalThis as any).fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url.endsWith('/_forge/routes')) {
+        const summary = makeSummary();
+        return {
+          ok: true,
+          status: 200,
+          json: async () => summary,
+          text: async () => JSON.stringify(summary),
+          headers: new Headers(),
+        } as any;
+      }
+      // level fetch：返回 LevelRoutesResponse
+      const levelBody = { level: 'public', routes: {} };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => levelBody,
+        text: async () => JSON.stringify(levelBody),
+        headers: new Headers(),
+      } as any;
+    });
+
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      adapter: 'builtin',
+      timeout: 5000,
+      levels: ['public'],
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await forge.load('public');
+
+    // timeout > 0 时 builtin adapter 通过 AbortSignal.timeout(ms) 创建 signal 并赋给 fetch 的 init.signal
+    const levelCall = calls.find((c) => c.url.includes('/public'));
+    expect(levelCall).toBeDefined();
+    expect(levelCall!.init?.signal).toBeDefined();
+  });
 });

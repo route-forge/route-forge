@@ -37,3 +37,4 @@ coverage/
 .turbo/
 .trae/
 .composer-cache/
+packages/laravel/.phpunit.cache/

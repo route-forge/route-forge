@@ -7,31 +7,60 @@
  * - 拦截器执行顺序对齐 axios（请求 LIFO、响应 FIFO），与 SPEC §4.1.3a 一致
  * - 仅实现 Route Forge 调用链需要的能力：拦截器、JSON、超时、取消
  * - 零依赖，仅基于宿主原生 fetch（Node 18+ / 现代浏览器原生支持）
- * - 体积目标：min+gzip < 3KB
- *
- * 本文件为框架占位实现，核心 fetch + 拦截器串联逻辑后续阶段填充。
+ * - 体积目标：min+gzip < 3KB，仅作为兜底，不追求覆盖 axios 全部 API
  */
 
-import type { RequestConfig, ResponseData } from '../types.js';
-import { createInterceptorManager } from '../interceptors.js';
-import type { ResolvedAdapter } from './index.js';
+import type { RequestConfig, ResponseData, InterceptorManager } from '../types.js';
+import {
+  createInterceptorManager,
+  runRequestInterceptors,
+  runResponseInterceptors,
+} from '../interceptors.js';
 
-export function createBuiltinHttp(): ResolvedAdapter {
-  const requestInterceptorMgr = createInterceptorManager<RequestConfig>();
-  const responseInterceptorMgr = createInterceptorManager<ResponseData>();
+export function createBuiltinHttp(forgeInterceptors?: {
+  request: InterceptorManager<RequestConfig, RequestConfig>;
+  response: InterceptorManager<ResponseData, unknown>;
+}) {
+  const requestMgr = forgeInterceptors?.request ?? createInterceptorManager<RequestConfig>();
+  const responseMgr = forgeInterceptors?.response ?? createInterceptorManager<ResponseData>();
 
   async function request(config: RequestConfig): Promise<ResponseData> {
-    // TODO: 接入 runRequestInterceptors / runResponseInterceptors 串联
-    const controller = new AbortController();
-    const fetchInit: RequestInit = {
-      method: config.method,
-      headers: new Headers(config.headers),
-      signal: controller.signal,
-    };
-    if (config.body !== undefined && !['GET', 'HEAD'].includes(config.method.toUpperCase())) {
-      fetchInit.body = typeof config.body === 'string' ? config.body : JSON.stringify(config.body);
+    // 1. 执行请求拦截器（LIFO，对齐 axios）
+    const finalConfig = await runRequestInterceptors(requestMgr, config);
+
+    // 2. 超时控制：timeout > 0 时用 AbortSignal.timeout
+    const signal: AbortSignal | undefined =
+      finalConfig.timeout && finalConfig.timeout > 0
+        ? AbortSignal.timeout(finalConfig.timeout)
+        : undefined;
+
+    // 3. paramsSerializer：自定义 query 序列化
+    let url = finalConfig.url;
+    if (finalConfig.paramsSerializer && finalConfig.params) {
+      const qs = finalConfig.paramsSerializer(finalConfig.params);
+      if (qs) {
+        url = url.includes('?') ? `${url}&${qs}` : `${url}?${qs}`;
+      }
     }
-    const res = await fetch(config.url, fetchInit);
+
+    // 4. 构建 fetchInit
+    const fetchInit: RequestInit = {
+      method: finalConfig.method,
+      headers: new Headers(finalConfig.headers),
+    };
+    if (signal) fetchInit.signal = signal;
+    if (
+      finalConfig.body !== undefined &&
+      !['GET', 'HEAD'].includes(finalConfig.method.toUpperCase())
+    ) {
+      fetchInit.body =
+        typeof finalConfig.body === 'string'
+          ? finalConfig.body
+          : JSON.stringify(finalConfig.body);
+    }
+
+    // 5. 调用 fetch
+    const res = await fetch(url, fetchInit);
     const text = await res.text();
     let data: unknown = text;
     const contentType = res.headers.get('content-type') ?? '';
@@ -42,23 +71,49 @@ export function createBuiltinHttp(): ResolvedAdapter {
         /* 保留原始文本 */
       }
     }
-    return {
-      route: config.route,
-      level: config.level,
-      method: config.method,
-      url: config.url,
+
+    // 6. 构建 ResponseData
+    const responseData: ResponseData = {
+      route: finalConfig.route,
+      level: finalConfig.level,
+      method: finalConfig.method,
+      url,
       status: res.status,
       headers: res.headers,
       data,
-      config,
+      config: finalConfig,
     };
+
+    // 7. 执行响应拦截器（FIFO，对齐 axios）；末段返回值即 request() 的 resolve 值
+    return runResponseInterceptors(
+      responseMgr,
+      Promise.resolve(responseData),
+    ) as Promise<ResponseData>;
   }
+
+  // 便捷方法
+  const get = (url: string, config?: Partial<RequestConfig>) =>
+    request({ ...config, url, method: 'GET' } as RequestConfig);
+  const post = (url: string, config?: Partial<RequestConfig>) =>
+    request({ ...config, url, method: 'POST' } as RequestConfig);
+  const put = (url: string, config?: Partial<RequestConfig>) =>
+    request({ ...config, url, method: 'PUT' } as RequestConfig);
+  const patch = (url: string, config?: Partial<RequestConfig>) =>
+    request({ ...config, url, method: 'PATCH' } as RequestConfig);
+  const del = (url: string, config?: Partial<RequestConfig>) =>
+    request({ ...config, url, method: 'DELETE' } as RequestConfig);
 
   return {
     request,
     interceptors: {
-      request: requestInterceptorMgr,
-      response: responseInterceptorMgr,
+      request: requestMgr,
+      response: responseMgr,
     },
+    runsInterceptors: true,
+    get,
+    post,
+    put,
+    patch,
+    delete: del,
   };
 }

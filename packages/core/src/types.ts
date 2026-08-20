@@ -69,6 +69,10 @@ export interface RequestConfig {
   body?: unknown;
   params: Record<string, unknown>;
   meta: RouteMeta;
+  /** 请求超时毫秒数 */
+  timeout?: number;
+  /** 自定义 query 序列化函数 */
+  paramsSerializer?: (params: Record<string, unknown>) => string;
 }
 
 /**
