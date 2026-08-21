@@ -4,12 +4,14 @@
 
 ## 1. 产品概述
 
-**Route Forge** 是 Laravel 命名路由的全链路解决方案，包含：
+**Route Forge** 是 Laravel 命名路由的全链路解决方案，由两个独立仓库组成：
 
-- **route-forge/laravel**（composer 包）：后端路由扫描、分级、缓存、API 端点
+- **[route-forge/laravel](https://github.com/xyj2156/route-forge-laravel)**（Composer 包）：后端路由扫描、分级、缓存、API 端点
 - **@route-forge/core**（npm 包）：框架无关的命名路由客户端核心
 - **@route-forge/vue**（npm 包）：Vue 3 集成（插件 + composable）
 - **@route-forge/react**（npm 包，规划中）：React 集成
+
+两侧通过 HTTP manifest 契约交互，版本独立演进。
 
 ## 2. 目标用户
 
@@ -20,7 +22,7 @@
 | 多角色系统开发者    | 有 admin/user/guest 等多种权限级别                    |
 | TypeScript 重度用户 | 要求前后端全链路类型安全                              |
 
-## 3. 后端功能（route-forge/laravel）
+## 3. 后端功能（[route-forge/laravel](https://github.com/xyj2156/route-forge-laravel)）
 
 ### 3.1 核心能力
 
@@ -1050,7 +1052,7 @@ class ForgeError extends Error {
 
 ### 8.3 兼容性承诺
 
-- Laravel：支持当前活跃维护的 3 个大版本（v1 发布时为 9/10/11）；新版本发布 6 个月内适配。
+- **Laravel**：支持当前活跃维护的 3 个大版本（v1 发布时为 9/10/11）；新版本发布 6 个月内适配（详见 [route-forge-laravel](https://github.com/xyj2156/route-forge-laravel)）。
 - Vue：支持 Vue 3.3+；不主动支持 Vue 2。
 - Node：支持 LTS 版本（v1 发布时为 18/20/22）。
 - 浏览器：现代浏览器（Chrome/Edge/Firefox/Safari 最近 2 个大版本）；不支持 IE。

@@ -9,15 +9,17 @@
 
 #### 1. 工程脚手架（100%）
 - pnpm workspace + turborepo + tsconfig.base 多包管理
-- 三个包：`@route-forge/core`（TS）、`@route-forge/vue`（Vue 3）、`route-forge/laravel`（Composer）
+- npm 侧两个包：`@route-forge/core`（TS）、`@route-forge/vue`（Vue 3）
+- Composer 侧已拆分至独立仓库：[`route-forge/laravel`](https://github.com/xyj2156/route-forge-laravel)
 - MIT LICENSE 已加
 
-#### 2. 后端 Laravel 包（100%）
-- [ForgeServiceProvider.php](file:///f:/web/route-forge/packages/laravel/src/ForgeServiceProvider.php)：注册 `->tier()` 宏、重绑 `router` 为 ForgeRouter、注册 RouteCache/TierResolver/RouteRepository 单例、注册元信息端点、发布 config
-- [ForgeRouter.php](file:///f:/web/route-forge/packages/laravel/src/ForgeRouter.php)：覆盖 `updateGroupStack` + `mergeGroupAttributesIntoRoute`，解决 Laravel 11 `array_merge_recursive` 把嵌套 group 的 string tier 合并成 array 的坑
-- [TierResolver.php](file:///f:/web/route-forge/packages/laravel/src/TierResolver.php)：5 级优先级（显式 tier → group 透传 → classifier → config match → fallback）
-- [RouteRepository.php](file:///f:/web/route-forge/packages/laravel/src/RouteRepository.php)：扫描 RouteCollection 按层级分组、隔离缓存
-- [RouteMetadataController.php](file:///f:/web/route-forge/packages/laravel/src/Http/RouteMetadataController.php)：`GET /_forge/routes/{level}` + `ForgeExceptionContract` try/catch + HTTP 状态码映射
+#### 2. 后端 Laravel 包（100%）→ 已拆分至 [route-forge-laravel](https://github.com/xyj2156/route-forge-laravel)
+
+- `ForgeServiceProvider.php`：注册 `->tier()` 宏、重绑 `router` 为 ForgeRouter、注册 RouteCache/TierResolver/RouteRepository 单例、注册元信息端点、发布 config
+- `ForgeRouter.php`：覆盖 `updateGroupStack` + `mergeGroupAttributesIntoRoute`，解决 Laravel 11 `array_merge_recursive` 把嵌套 group 的 string tier 合并成 array 的坑
+- `TierResolver.php`：5 级优先级（显式 tier → group 透传 → classifier → config match → fallback）
+- `RouteRepository.php`：扫描 RouteCollection 按层级分组、隔离缓存
+- `RouteMetadataController.php`：`GET /_forge/routes/{level}` + `ForgeExceptionContract` try/catch + HTTP 状态码映射
 - 异常体系 4 个：RF_BE_001~004，全部实现 `ForgeExceptionContract`
 - 后端测试 **13 tests 全绿**：GroupTier 5（tier 宏/group 透传/嵌套覆盖/优先级）+ Exceptions 2 + Endpoint 6（200 结构/level 隔离/未命名路由/404/500 strict/缓存命中）
 

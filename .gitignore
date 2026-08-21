@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-vendor/
 
 # Build outputs
 dist/
@@ -8,9 +7,6 @@ lib/
 build/
 *.tsbuildinfo
 .turbo/
-
-# PHP
-composer.lock
 
 # IDE / OS
 .idea/
@@ -32,9 +28,5 @@ yarn-error.log*
 
 # Test outputs
 coverage/
-.phpunit.result.cache
 
-.turbo/
 .trae/
-.composer-cache/
-packages/laravel/.phpunit.cache/

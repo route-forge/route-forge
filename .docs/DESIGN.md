@@ -111,12 +111,25 @@ Laravel 路由定义里天然包含 HTTP 方法（GET/POST/PUT/DELETE），没�
 - 内置实现刻意对齐 axios 拦截器 API 与执行顺序（请求 LIFO、响应 FIFO），确保两套 adapter 行为一致；
 - 保留自定义 Fetcher 接口，极端场景可完全替换。
 
-### 6.3 为什么 monorepo
+### 6.3 为什么拆成两个仓库
 
-- Laravel 包、TS core、Vue 插件三个东西逻辑上是一个项目；
-- 共享 issue / CI / 文档；
-- 业界标准做法（Babel、Vue、Nuxt、Filament 都这样）；
-- pnpm workspace + turborepo 是当下最成熟的方案。
+早期采用 monorepo（pnpm workspace + turborepo）统一管理 Laravel 包、TS core、Vue 插件三个包。随着项目演进，决定拆分为两个独立仓库：
+
+- **[xyj2156/route-forge](https://github.com/xyj2156/route-forge)**（本仓库）：npm 侧，包含 `@route-forge/core` 与 `@route-forge/vue`；
+- **[xyj2156/route-forge-laravel](https://github.com/xyj2156/route-forge-laravel)**：Composer 侧，包含 `route-forge/laravel`。
+
+拆分理由：
+
+- Packagist 原生流程：独立仓库根目录直接放 `composer.json`，tag 即版本，无需 stub 或前缀绕行；
+- 版本独立：PHP 与 npm 两侧可按各自节奏发版，互不干扰；
+- CI 隔离：PHP 测试与 JS 构建彻底分离，workflow 逻辑更清晰；
+- 契约清晰：两侧通过 HTTP manifest 契约交互，拆分后契约边界更显式。
+
+拆分后的协作纪律：
+
+- manifest 格式（字段、tier 语义、端点路径）是跨仓契约，变更时两边 PR 同步；
+- 端点响应带 `schemaVersion` 字段，便于前端做兼容判断；
+- 两个仓库的 README 互相链接，`.docs/` 目录保留在本仓库作为全链路设计文档。
 
 ### 6.4 为什么 level 不固定
 
