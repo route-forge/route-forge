@@ -40,19 +40,19 @@ export function parseArgs(argv: string[]): CodegenOptions {
 
     if (arg === '--endpoint') {
       opts.endpoint = next();
-    } else if (arg.startsWith('--endpoint=')) {
+    } else if (arg?.startsWith('--endpoint=')) {
       opts.endpoint = arg.slice('--endpoint='.length);
     } else if (arg === '--levels') {
       opts.levels = next().split(',').map((s) => s.trim()).filter(Boolean);
-    } else if (arg.startsWith('--levels=')) {
+    } else if (arg?.startsWith('--levels=')) {
       opts.levels = arg.slice('--levels='.length).split(',').map((s) => s.trim()).filter(Boolean);
     } else if (arg === '--out') {
       opts.out = next();
-    } else if (arg.startsWith('--out=')) {
+    } else if (arg?.startsWith('--out=')) {
       opts.out = arg.slice('--out='.length);
     } else if (arg === '--responseTypes') {
       opts.responseTypes = next();
-    } else if (arg.startsWith('--responseTypes=')) {
+    } else if (arg?.startsWith('--responseTypes=')) {
       opts.responseTypes = arg.slice('--responseTypes='.length);
     } else if (arg === '--help' || arg === '-h') {
       printHelp();
