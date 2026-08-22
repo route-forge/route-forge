@@ -164,8 +164,14 @@ export interface RouteForge {
 
   /** 仅生成 URL，不发请求；level 用于定位路由所在的层级缓存 */
   route(level: string, name: string, params?: Record<string, unknown>): string;
+
+  /** route() 的语义别名，适用于链接生成等场景 */
+  url(level: string, name: string, params?: Record<string, unknown>): string;
   /** 失效指定层级缓存；不传参失效全部 */
   invalidate(level?: string): void;
+
+  /** 检查指定层级路由是否已加载并缓存；不传参检查全部 */
+  isLoaded(level?: string): boolean;
   /** 拦截器入口（请求 / 响应） */
   interceptors: {
     request: InterceptorManager<RequestConfig, RequestConfig>;

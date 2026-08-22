@@ -274,15 +274,26 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
 
   function buildRequestUrl(meta: RouteMeta, params: Record<string, unknown>): string {
     let uri = meta.uri;
+    const missingRequired: string[] = [];
     for (const p of meta.parameters) {
       const v = params[p];
-      if (v === undefined) {
-        if (effectiveStrict) throw new MissingRouteParamError(meta.name, [p]);
-        uri = uri.replace(`{${p}}`, '');
+      if (v === undefined || v === null) {
+        // 可选参数（URI 中 {param?}）：替换为空字符串
+        if (uri.includes(`{${p}?}`)) {
+          uri = uri.replace(`{${p}?}`, '');
+          continue;
+        }
+        missingRequired.push(p);
       } else {
-        uri = uri.replace(`{${p}}`, encodeURIComponent(String(v)));
+        // 替换 {param} 或 {param?}
+        uri = uri.replace(`{${p}?}`, encodeURIComponent(String(v))).replace(`{${p}}`, encodeURIComponent(String(v)));
       }
     }
+    if (missingRequired.length > 0) {
+      throw new MissingRouteParamError(meta.name, missingRequired);
+    }
+    // 清理可选参数移除后残留的连续 / 或尾部 /
+    uri = uri.replace(/\/+/g, '/').replace(/\/$/, '');
     const base = baseURL.endsWith('/') ? baseURL.slice(0, -1) : baseURL;
     return uri.startsWith('/') ? `${base}${uri}` : `${base}/${uri}`;
   }
@@ -311,13 +322,6 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   async function doApiCall(meta: RouteMeta, params: ApiCallParams): Promise<unknown> {
     assertAuth(meta.level ?? '');
     const { query, body, headers, ...pathParams } = params;
-
-    // 校验路径参数
-    for (const p of meta.parameters) {
-      if (pathParams[p] === undefined) {
-        if (effectiveStrict) throw new MissingRouteParamError(meta.name, [p]);
-      }
-    }
 
     const method = pickMethod(meta);
     const urlWithQuery = appendQuery(buildRequestUrl(meta, pathParams as Record<string, unknown>), query);
@@ -383,6 +387,11 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     else cache.clear();
   }
 
+  function isLoaded(level?: string): boolean {
+    if (level) return cache.get(level) !== undefined;
+    return effectiveLevels.every((lvl) => cache.get(lvl) !== undefined);
+  }
+
   // eager 层级自动加载（不阻塞 createRouteForge 返回；在自动发现完成后触发）
   void autoDiscoveryPromise
     .then(() => {
@@ -400,7 +409,9 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     api,
     load,
     route,
+    url: route,
     invalidate,
+    isLoaded,
     interceptors: {
       request: requestInterceptors,
       response: responseInterceptors,

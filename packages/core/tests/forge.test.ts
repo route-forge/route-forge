@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createRouteForge, UnknownLevelError } from '../src/index.js';
-import type { SummaryResponse } from '../src/types.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createRouteForge, MissingRouteParamError } from '../src/index.js';
+import type { LevelRoutesResponse, SummaryResponse } from '../src/types.js';
 
 // Helper: 模拟摘要端点响应
 function makeSummary(overrides: Partial<SummaryResponse> = {}): SummaryResponse {
@@ -41,6 +41,238 @@ function mockSummary(summary: SummaryResponse | null, status = 200) {
   });
   return calls;
 }
+
+// Helper: 同时 mock 摘要端点与层级路由拉取
+function mockFull(
+  summary: SummaryResponse,
+  levelRoutes: Record<string, LevelRoutesResponse>,
+) {
+  const calls: { url: string; init?: RequestInit }[] = [];
+  (globalThis as any).fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    calls.push({ url, init });
+    const ep = summary.config.endpoint_prefix;
+    // 摘要端点：URL 精确等于 endpoint（不带额外路径）
+    if (url === ep) {
+      const body = JSON.stringify(summary);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => summary,
+        text: async () => body,
+        headers: new Headers({ 'content-type': 'application/json' }),
+      } as any;
+    }
+    // 层级拉取：URL 形如 {endpoint}/{level}
+    if (url.startsWith(ep + '/')) {
+      const level = url.slice(ep.length + 1).split('/')[0].split('?')[0];
+      const lr = levelRoutes[level];
+      if (!lr) {
+        return {
+          ok: false,
+          status: 404,
+          json: async () => ({}),
+          text: async () => '',
+          headers: new Headers(),
+        } as any;
+      }
+      const body = JSON.stringify(lr);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => lr,
+        text: async () => body,
+        headers: new Headers({ 'content-type': 'application/json' }),
+      } as any;
+    }
+    return {
+      ok: false,
+      status: 404,
+      json: async () => ({}),
+      text: async () => '',
+      headers: new Headers(),
+    } as any;
+  });
+  return calls;
+}
+
+describe('route parameter validation', () => {
+  let originalFetch: typeof globalThis.fetch;
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+  afterEach(() => {
+    (globalThis as any).fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  const summary = makeSummary({
+    config: {
+      strict_mode: false,
+      endpoint_prefix: '/_forge/routes',
+    },
+  });
+
+  it('required param missing always throws MissingRouteParamError (strict=false)', async () => {
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'user.show': {
+            name: 'user.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+      strict: false,
+    });
+    await forge.load('public');
+    // route() 也应抛
+    expect(() => forge.route('public', 'user.show')).toThrow(MissingRouteParamError);
+    // api() 也应抛
+    await expect(forge.api('public', 'user.show')).rejects.toThrow(MissingRouteParamError);
+  });
+
+  it('required param missing always throws MissingRouteParamError (strict=true)', async () => {
+    const strictSummary = makeSummary({
+      config: {
+        strict_mode: true,
+        endpoint_prefix: '/_forge/routes',
+      },
+    });
+    mockFull(strictSummary, {
+      public: {
+        level: 'public',
+        routes: {
+          'user.show': {
+            name: 'user.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+      strict: true,
+    });
+    await forge.load('public');
+    expect(() => forge.route('public', 'user.show')).toThrow(MissingRouteParamError);
+    await expect(forge.api('public', 'user.show')).rejects.toThrow(MissingRouteParamError);
+  });
+
+  it('optional param ({param?}) missing replaced with empty string', async () => {
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'post.show': {
+            name: 'post.show',
+            uri: 'posts/{post}/{page?}',
+            methods: ['GET'],
+            parameters: ['post', 'page'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+      strict: false,
+    });
+    await forge.load('public');
+    // 必填参数 post 已传，可选参数 page 未传：不抛，{page?} 替换为空并清理残留 /
+    const url = forge.route('public', 'post.show', { post: 42 });
+    expect(url).toContain('/posts/42');
+    expect(url).not.toContain('{page?}');
+    expect(url).not.toMatch(/\/\//); // 无连续 //
+  });
+
+  it('optional param provided value is substituted', async () => {
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'post.show': {
+            name: 'post.show',
+            uri: 'posts/{post}/{page?}',
+            methods: ['GET'],
+            parameters: ['post', 'page'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    await forge.load('public');
+    const url = forge.route('public', 'post.show', { post: 42, page: 3 });
+    expect(url).toContain('/posts/42/3');
+  });
+
+  it('param value is correctly substituted into URL', async () => {
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'user.show': {
+            name: 'user.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    await forge.load('public');
+    const url = forge.route('public', 'user.show', { user: 123 });
+    expect(url).toContain('/users/123');
+    expect(url).not.toContain('{user}');
+  });
+
+  it('multiple missing required params all reported in single error', async () => {
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'multi': { name: 'multi', uri: 'a/{x}/b/{y}', methods: ['GET'], parameters: ['x', 'y'] },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    await forge.load('public');
+    try {
+      forge.route('public', 'multi');
+      expect.fail('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(MissingRouteParamError);
+      const msg = (e as Error).message;
+      expect(msg).toContain('x');
+      expect(msg).toContain('y');
+    }
+  });
+});
 
 describe('createRouteForge auto-discovery', () => {
   let originalFetch: typeof globalThis.fetch;

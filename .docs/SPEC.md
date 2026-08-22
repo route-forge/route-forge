@@ -507,6 +507,7 @@ await forge.load(['client', 'manage']);
 - 缓存 key 为 `route-forge:${level}`，按 `cache.storage` 配置选择存储介质。
 - TTL 优先使用后端响应里返回的 `cache` 字段；前端 `cache.ttl` 仅作本地兜底（防止后端没返回时无限缓存）。
 - 调用 `forge.invalidate(level?)` 手动失效：传参失效指定层级，不传则失效全部。
+- `forge.isLoaded(level?)` 检查缓存状态：传参检查指定层级是否已加载，不传检查全部已声明层级。
 - `storage: 'localStorage'` 时，跨会话保留路由表；`sessionStorage` 仅当前标签页有效；`memory` 重载即丢。
 
 #### 4.1.3 通过层级 + 路由名调用 API（核心 API）
@@ -516,6 +517,9 @@ await forge.load(['client', 'manage']);
 ```ts
 // 等价于 GET /admin/users/123
 const user = await forge.api('admin', 'users.show', {user: 123});
+
+// forge.url() 是 forge.route() 的语义别名，适用于链接生成等场景
+const profileUrl = forge.url('admin', 'users.show', {user: 123});
 
 // 等价于 POST /manage/users + JSON body
 const created = await forge.api('manage', 'users.store', {body: {name: 'Alice'}});
@@ -536,7 +540,8 @@ await forge.api('client', 'posts.update', {
 2. 路由校验（始终执行，独立于拦截链，不受拦截器影响）：
     + 路由名不存在 → `UnknownRouteError`（strict=true）或返回 undefined（strict=false）
     + 路由所在层级未声明 → `UnknownLevelError`（strict=true）或静默忽略（strict=false）
-    + 路径参数缺失 → `MissingRouteParamError`（strict=true）或用空字符串填充并告警（strict=false）
+   + 必填路径参数缺失 → `MissingRouteParamError`（始终执行，不受 strict 模式影响）；可选参数（`{param?}`
+     ）未填充时替换为空字符串并清理残留 `/`
     + 校验不通过时，不进入拦截链、不发请求
 3. 从路由元信息读取 uri 和 methods，取第一个非 HEAD 的方法作为请求方法。
 4. 用传入的路径参数填充 URI 模板（{user} → 123），剩余参数不允许填充路径。
@@ -703,7 +708,7 @@ await forge.load('client');    // 正常拉取
 
 | 场景                 | strict=true                 | strict=false                       |
 |----------------------|-----------------------------|------------------------------------|
-| 路径参数缺失         | 抛 `MissingRouteParamError` | 用空字符串填充并告警               |
+| 必填路径参数缺失     | 抛 `MissingRouteParamError` | 同左（始终校验，不受 strict 影响） |
 | 路由名不存在         | 抛 `UnknownRouteError`      | 返回 `undefined`，由调用方自行处理 |
 | 路由所在层级未声明   | 抛 `UnknownLevelError`      | 静默忽略                           |
 | 未登录访问受保护层级 | 抛 `InsufficientAuthError`  | 同左（安全相关不允许放行）         |
@@ -723,22 +728,93 @@ app.use(createRouteForgePlugin({ /* 同 4.1.1 */}));
 app.mount('#app');
 ```
 
-组件内使用：
+##### useForge — 核心 composable
+
+`useForge()` 返回一个可直接调用的 forge 实例（`forge.api()` 的快捷方式），支持可选传入 `level`
+绑定层级。无论是否传 level，返回的方法集一致（`api` / `route` / `url` / `load` / `invalidate` /
+`isLoaded` / `interceptors`），区别在于绑定 level 后 `api` / `route` / `url` 及直接调用均无需再传
+level：
+
+```ts
+import {useForge} from '@route-forge/vue';
+
+// 不绑定层级
+const forge = useForge();
+forge('admin', 'users.show', {user: 1});      // 直接调用 = forge.api() 快捷方式
+forge.api('admin', 'users.show', {user: 1});   // 显式调用
+
+// 绑定层级 — 直接调用和 api/route/url 均无需 level
+const forge = useForge('admin');
+forge('users.show', {user: 1});               // 自动带 admin
+forge.api('users.show');                       // 同上
+forge.route('users.show');                     // 生成 URL，自动带 admin
+forge.url('users.show');                       // route() 语义别名
+
+// 通用方法（无论是否绑定 level 均可用）
+forge.load('admin');                           // 加载层级
+forge.isLoaded('admin');                       // 检查缓存
+forge.invalidate('admin');                     // 失效缓存
+forge.interceptors.request.use(...);           // 拦截器管理
+```
+
+类型定义：
+
+```ts
+// 未绑定 level — 直接调用需要传 level
+interface ForgeInstance extends ForgeMethods {
+  (level: string, name: string, params?: ApiCallParams): Promise<unknown>;
+}
+
+// 已绑定 level — 直接调用无需 level
+interface BoundForge extends ForgeMethods {
+  (name: string, params?: ApiCallParams): Promise<unknown>;
+}
+
+// 统一方法集
+interface ForgeMethods {
+  api(level: string, name: string, params?: ApiCallParams): Promise<unknown>;
+  api(name: string, params?: ApiCallParams): Promise<unknown>;
+  route(level: string, name: string, params?: Record<string, unknown>): string;
+  route(name: string, params?: Record<string, unknown>): string;
+  url(level: string, name: string, params?: Record<string, unknown>): string;
+  url(name: string, params?: Record<string, unknown>): string;
+  load(level: string | string[]): Promise<void>;
+  invalidate(level?: string): void;
+  isLoaded(level?: string): boolean;
+  interceptors: { request: InterceptorManager<...>; response: InterceptorManager<...> };
+}
+
+// useForge 重载签名
+declare function useForge(level: string): BoundForge;
+declare function useForge(): ForgeInstance;
+```
+
+##### 其他 composable
 
 ```vue
-
 <script setup lang="ts">
-  import {useForgeApi} from '@route-forge/vue';
+import {useForgeApi, useForgeLevel, useForgeRoute, useForgeByPrefix} from '@route-forge/vue';
 
-  const {api, pending, error} = useForgeApi();
+// useForgeApi：包装 forge.api()，自动管理 loading/error 状态
+const {call, pending, error} = useForgeApi();
+const {data} = await call('admin', 'users.show', {user: 123});
 
-  // 调用形参与 forge.api 一致；返回值带响应式状态
-  const {data, error: callError} = await api('admin', 'users.show', {user: 123});
+// useForgeLevel：声明组件依赖某层级，挂载时自动 forge.load(level)
+const {loaded} = useForgeLevel('admin');
+
+// useForgeRoute：仅生成 URL，不发请求（用于 <a href>、外部跳转等）
+const url = useForgeRoute('public', 'login.show');
+
+// useForgeByPrefix：带层级 + 名字前缀的封装
+const {api, route} = useForgeByPrefix('admin', 'users');
+await api('show', {user: 1});   // = forge.api('admin', 'users.show', {user: 1})
 </script>
 ```
 
-插件提供的能力：
+插件提供的完整能力清单：
 
+- `useForge(level?)`：获取 forge 实例。传 level 时 `api` / `route` / `url` 及直接调用自动绑定该层级。可直接调用（=
+  `forge.api()` 快捷方式）。
 - `useForgeApi()`：包装 `forge.api()`，自动管理 loading/error 状态。
 - `useForgeByPrefix(level, prefix)`：带指定层级和名字前缀的封装，方便后续减少名称传入。
 - `useForgeLevel(level)`：声明组件依赖某层级，挂载时自动 `forge.load(level)`，组件销毁时不主动失效。
@@ -1040,7 +1116,8 @@ class ForgeError extends Error {
 - ✅ 后端：层级分配（3 种方式）、五级优先级、元信息端点、摘要端点、`middleware_match`（any/all/DNF）、缓存、`php artisan route:forge:list`、`php artisan route:forge:types` Artisan 命令
 - ✅ 前端：懒加载、隔离缓存、并发去重、登录态感知、拦截器、严格模式、摘要端点自动发现
 - ✅ Adapter：auto 检测、内置 builtin、axios 复用、自定义 Fetcher
-- ✅ Vue 插件：`useForgeApi`/`useForgeLevel`/`useForgeRoute`/`useForgeByPrefix`
+- ✅ Vue 插件：`useForge(level?)`（可直接调用的 forge 实例 + 层级绑定）/`useForgeApi`/`useForgeLevel`/
+  `useForgeRoute`/`useForgeByPrefix`
 
 ### 8.2 v1.x 路线图
 

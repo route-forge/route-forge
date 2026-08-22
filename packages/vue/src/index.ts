@@ -3,7 +3,7 @@ export {
   useForge,
   FORGE_INJECTION_KEY,
 } from './plugin.js';
-export type { RouteForgePluginOptions } from './plugin.js';
+export type { RouteForgePluginOptions, ForgeInstance, BoundForge, ForgeMethods } from './plugin.js';
 export { useForgeApi } from './composables/useForgeApi.js';
 export type { UseForgeApiReturn } from './composables/useForgeApi.js';
 export { useForgeLevel } from './composables/useForgeLevel.js';
