@@ -15,6 +15,8 @@ export interface RouteMeta {
   methods: string[];
   /** 路径参数名列表，如 ['user'] */
   parameters: string[];
+  /** 路径参数默认值（Laravel ->defaults()），key 为参数名，value 为默认值 */
+  parameter_defaults?: Record<string, unknown>;
   /** 所属层级（前端填充，便于隔离缓存） */
   level?: string;
   /** 后端下发的缓存 TTL（秒），优先级高于本地 cache.ttl */
@@ -54,6 +56,7 @@ export interface SummaryResponse {
     uri: string;
     methods: string[];
     parameters: string[];
+    parameter_defaults?: Record<string, unknown>;
   }>;
 }
 

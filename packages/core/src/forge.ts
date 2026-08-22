@@ -274,9 +274,14 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
 
   function buildRequestUrl(meta: RouteMeta, params: Record<string, unknown>): string {
     let uri = meta.uri;
+    const defaults = meta.parameter_defaults ?? {};
     const missingRequired: string[] = [];
     for (const p of meta.parameters) {
-      const v = params[p];
+      let v = params[p];
+      // 参数未传时回退到后端下发的默认值
+      if ((v === undefined || v === null) && p in defaults) {
+        v = defaults[p];
+      }
       if (v === undefined || v === null) {
         // 可选参数（URI 中 {param?}）：替换为空字符串
         if (uri.includes(`{${p}?}`)) {

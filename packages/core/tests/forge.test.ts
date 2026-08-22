@@ -272,6 +272,91 @@ describe('route parameter validation', () => {
       expect(msg).toContain('y');
     }
   });
+
+  it('required param with default value uses default when not provided', async () => {
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'posts.index': {
+            name: 'posts.index',
+            uri: 'posts/{page}',
+            methods: ['GET'],
+            parameters: ['page'],
+            parameter_defaults: { page: 1 },
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    await forge.load('public');
+    // 必填参数 page 未传，但有默认值 1 → 不抛，使用默认值
+    const url = forge.route('public', 'posts.index');
+    expect(url).toContain('/posts/1');
+  });
+
+  it('explicit param value overrides default', async () => {
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'posts.index': {
+            name: 'posts.index',
+            uri: 'posts/{page}',
+            methods: ['GET'],
+            parameters: ['page'],
+            parameter_defaults: { page: 1 },
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    await forge.load('public');
+    // 显式传 page=3 → 使用 3 而非默认值 1
+    const url = forge.route('public', 'posts.index', { page: 3 });
+    expect(url).toContain('/posts/3');
+  });
+
+  it('mixed params: default fills missing, still throws for param without default', async () => {
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'multi': {
+            name: 'multi',
+            uri: 'a/{x}/b/{y}',
+            methods: ['GET'],
+            parameters: ['x', 'y'],
+            parameter_defaults: { x: 'hello' },
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    await forge.load('public');
+    // x 有默认值，y 没有 → 缺失 y 应抛 MissingRouteParamError
+    try {
+      forge.route('public', 'multi');
+      expect.fail('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(MissingRouteParamError);
+      const msg = (e as Error).message;
+      expect(msg).toContain('y');
+      expect(msg).not.toContain('x');
+    }
+  });
 });
 
 describe('createRouteForge auto-discovery', () => {

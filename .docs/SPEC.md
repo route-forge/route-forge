@@ -231,7 +231,8 @@ GET /_forge/routes/{level}   # 返回该层级下所有命名路由的元信息
         "GET",
         "HEAD"
       ],
-      "parameters": []
+      "parameters": [],
+      "parameter_defaults": {}
     },
     "admin.users.show": {
       "uri": "admin/users/{user}",
@@ -241,11 +242,34 @@ GET /_forge/routes/{level}   # 返回该层级下所有命名路由的元信息
       ],
       "parameters": [
         "user"
-      ]
+      ],
+      "parameter_defaults": {}
+    },
+    "admin.posts.index": {
+      "uri": "admin/posts/{page}",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "parameters": [
+        "page"
+      ],
+      "parameter_defaults": {
+        "page": 1
+      }
     }
   }
 }
 ```
+
+字段说明：
+
++ `uri`：路由 URI 模板，如 `admin/users/{user}`。
++ `methods`：支持的 HTTP 方法集合。
++ `parameters`：路径参数名列表（字符串数组）。
++ `parameter_defaults`：路径参数默认值（对象），key 为参数名，value 为 Laravel `->defaults()`
+  设置的默认值。无默认值时为空对象 `{}`。前端在构建 URL 时，必填参数未传但存在默认值时，自动使用默认值填充，不抛
+  `MissingRouteParamError`。
 
 缓存：响应按层级独立缓存（`cache` 配置项控制 TTL，单位秒，null 不缓存，0 永久缓存）。
 > ⚠️ cache: 0 遵循 Laravel Cache TTL 惯例（永久缓存），非 HTTP Cache-Control: max-age=0 含义。Route Forge 缓存仅通过包内部管理（Cache
@@ -301,7 +325,8 @@ GET /_forge/routes   # 返回所有层级摘要 + 全局配置
         "GET",
         "HEAD"
       ],
-      "parameters": []
+      "parameters": [],
+      "parameter_defaults": {}
     }
   ]
 }
@@ -314,7 +339,7 @@ GET /_forge/routes   # 返回所有层级摘要 + 全局配置
 + `config`：后端全局配置摘要。前端初始化时读取此字段作为最高优先级配置源（见 §5.3 分级覆盖策略）。当前包含 `strict_mode` 和
   `endpoint_prefix`，后续版本可扩展。
 + `unassigned`：当 `fallback_level=null`
-  时，所有未分配层级的命名路由列表。包含完整的路由元信息（name/uri/methods/parameters），前端可按需加载和调用。fallback_level
+  时，所有未分配层级的命名路由列表。包含完整的路由元信息（name/uri/methods/parameters/parameter_defaults），前端可按需加载和调用。fallback_level
   非 null 时此字段为空数组。
 
 摘要端点同样受 `cache_driver` 控制缓存，TTL 取所有层级中最大的 `cache` 值；若所有层级均为
@@ -540,7 +565,8 @@ await forge.api('client', 'posts.update', {
 2. 路由校验（始终执行，独立于拦截链，不受拦截器影响）：
     + 路由名不存在 → `UnknownRouteError`（strict=true）或返回 undefined（strict=false）
     + 路由所在层级未声明 → `UnknownLevelError`（strict=true）或静默忽略（strict=false）
-   + 必填路径参数缺失 → `MissingRouteParamError`（始终执行，不受 strict 模式影响）；可选参数（`{param?}`
+   + 必填路径参数缺失时，先检查后端下发的 `parameter_defaults`：有默认值则用默认值填充，无默认值 →
+     `MissingRouteParamError`（始终执行，不受 strict 模式影响）；可选参数（`{param?}`
      ）未填充时替换为空字符串并清理残留 `/`
     + 校验不通过时，不进入拦截链、不发请求
 3. 从路由元信息读取 uri 和 methods，取第一个非 HEAD 的方法作为请求方法。
@@ -584,6 +610,7 @@ type RouteMeta = {
     uri: string;
     methods: string[];
     parameters: string[];
+  parameter_defaults?: Record<string, unknown>;  // 路径参数默认值（Laravel ->defaults()）
 };
 type RequestConfig = {
     route: string;            // 路由名，如 'admin.users.show'
@@ -706,12 +733,13 @@ await forge.load('client');    // 正常拉取
 前端 `strict` 默认 `false`（与后端 `strict_mode` 默认值一致，减少心智负担），可通过 `createRouteForge({ strict: true })`
 开启。后端 `strict_mode` 为权威值，前端不能覆盖后端设定（见 §5.3 分级覆盖策略）：
 
-| 场景                 | strict=true                 | strict=false                       |
-|----------------------|-----------------------------|------------------------------------|
-| 必填路径参数缺失     | 抛 `MissingRouteParamError` | 同左（始终校验，不受 strict 影响） |
-| 路由名不存在         | 抛 `UnknownRouteError`      | 返回 `undefined`，由调用方自行处理 |
-| 路由所在层级未声明   | 抛 `UnknownLevelError`      | 静默忽略                           |
-| 未登录访问受保护层级 | 抛 `InsufficientAuthError`  | 同左（安全相关不允许放行）         |
+| 场景                         | strict=true                 | strict=false                       |
+|------------------------------|-----------------------------|------------------------------------|
+| 必填路径参数缺失（无默认值） | 抛 `MissingRouteParamError` | 同左（始终校验，不受 strict 影响） |
+| 必填路径参数缺失（有默认值） | 用默认值填充，不抛错        | 同左（始终填充，不受 strict 影响） |
+| 路由名不存在                 | 抛 `UnknownRouteError`      | 返回 `undefined`，由调用方自行处理 |
+| 路由所在层级未声明           | 抛 `UnknownLevelError`      | 静默忽略                           |
+| 未登录访问受保护层级         | 抛 `InsufficientAuthError`  | 同左（安全相关不允许放行）         |
 
 > 设计意图（DESIGN.md §5 原则 2）：前后端统一默认 `false`，降低新用户接入门槛；需要严格校验的项目可通过配置开启。后端
 > `strict_mode` 始终为权威值，防止前端误配导致安全漏洞（如后端要求严格模式但前端关闭了校验）。
@@ -1090,16 +1118,16 @@ class ForgeError extends Error {
 
 ### 7.2 前端测试（Vitest）
 
-| 测试维度 | 覆盖点                                                                                                              |
-|----------|---------------------------------------------------------------------------------------------------------------------|
-| 懒加载   | 隐式懒加载、显式 `load(level)`、并发去重、`invalidate` 失效                                                         |
-| 自动发现 | 摘要端点获取 `levels`、自动识别 `eager` 标记、`config` 字段分级覆盖逻辑                                             |
-| 缓存     | 三种 storage、TTL 优先级（后端 > 前端兜底）、跨层级隔离                                                             |
-| 拦截器   | 多段串联、注册顺序执行、`onFulfilled`/`onRejected` 链、`eject`/`clear`、async 拦截器、单函数与元组两种声明形式      |
-| 调用     | 路由校验（参数缺失/路由名不存在/层级未声明）、路径参数填充、query/body 拼装、方法自动选取                           |
-| Adapter  | auto 检测、builtin adapter 行为、axios 复用、自定义 Fetcher                                                         |
-| 登录态   | 未登录拒绝拉取、登录后拉取、`invalidate` 清理                                                                       |
-| 类型生成 | `route:forge:types` 生成的声明约束 `forge.api(level, name, params)` 调用（路由名字面量校验、参数类型校验，见 §3.2） |
+| 测试维度 | 覆盖点                                                                                                                     |
+|----------|----------------------------------------------------------------------------------------------------------------------------|
+| 懒加载   | 隐式懒加载、显式 `load(level)`、并发去重、`invalidate` 失效                                                                |
+| 自动发现 | 摘要端点获取 `levels`、自动识别 `eager` 标记、`config` 字段分级覆盖逻辑                                                    |
+| 缓存     | 三种 storage、TTL 优先级（后端 > 前端兜底）、跨层级隔离                                                                    |
+| 拦截器   | 多段串联、注册顺序执行、`onFulfilled`/`onRejected` 链、`eject`/`clear`、async 拦截器、单函数与元组两种声明形式             |
+| 调用     | 路由校验（参数缺失/路由名不存在/层级未声明）、路径参数填充、`parameter_defaults` 默认值填充、query/body 拼装、方法自动选取 |
+| Adapter  | auto 检测、builtin adapter 行为、axios 复用、自定义 Fetcher                                                                |
+| 登录态   | 未登录拒绝拉取、登录后拉取、`invalidate` 清理                                                                              |
+| 类型生成 | `route:forge:types` 生成的声明约束 `forge.api(level, name, params)` 调用（路由名字面量校验、参数类型校验，见 §3.2）        |
 
 ### 7.3 端到端测试
 
