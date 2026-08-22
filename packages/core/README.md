@@ -13,14 +13,14 @@ pnpm add axios
 ## 基本用法
 
 ```ts
-import { createForge } from '@route-forge/core'
+import { createRouteForge } from '@route-forge/core'
 
-const forge = createForge({
+const forge = createRouteForge({
   endpoint: '/_forge/routes',
 })
 
-const route = await forge.route('login.show')
-// → { method: 'GET', uri: '/login', level: 'public' }
+const url = forge.route('public', 'login.show')
+// → 'http://localhost/login'
 ```
 
 ## 文档

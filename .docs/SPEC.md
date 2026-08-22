@@ -359,7 +359,7 @@ php artisan route:forge:list --unassigned
 
 #### `php artisan route:forge:types`
 
-从 Laravel 路由注册表生成 TS 类型声明文件，为前端 `forge.api()` 调用提供编译期类型安全：
+从 Laravel 路由注册表生成 TS 类型声明文件，为前端 `forge.api(level, name, params)` 调用提供编译期类型安全：
 
 ```bash
 # 生成所有层级的路由类型（默认输出到 stdout，便于预览和管道处理）
@@ -509,19 +509,19 @@ await forge.load(['client', 'manage']);
 - 调用 `forge.invalidate(level?)` 手动失效：传参失效指定层级，不传则失效全部。
 - `storage: 'localStorage'` 时，跨会话保留路由表；`sessionStorage` 仅当前标签页有效；`memory` 重载即丢。
 
-#### 4.1.3 通过路由名调用 API（核心 API）
+#### 4.1.3 通过层级 + 路由名调用 API（核心 API）
 
-前端不需要关心 URL 和 HTTP 方法，只需路由名 + 参数：
+前端不需要关心 URL 和 HTTP 方法，只需层级 + 路由名 + 参数：
 
 ```ts
 // 等价于 GET /admin/users/123
-const user = await forge.api('admin.users.show', {user: 123});
+const user = await forge.api('admin', 'users.show', {user: 123});
 
 // 等价于 POST /manage/users + JSON body
-const created = await forge.api('manage.users.store', {body: {name: 'Alice'}});
+const created = await forge.api('manage', 'users.store', {body: {name: 'Alice'}});
 
 // 路由参数 + query + body 同时存在
-await forge.api('client.posts.update', {
+await forge.api('client', 'posts.update', {
     post: 456,           // 路径参数：填充到 posts/{post}
     query: {silent: true},  // 查询参数
     body: {title: 'new'},    // 请求体
@@ -532,7 +532,7 @@ await forge.api('client.posts.update', {
 
 > 设计要点：路由校验前置到拦截链之前，错误恢复从下一个拦截器继续
 
-1. 按路由名查本地缓存；若该路由所在层级未加载，自动 `forge.load(level)` 等待完成（隐式懒加载）。
+1. 按层级 + 路由名查本地缓存；若该层级尚未加载，自动 `forge.load(level)` 等待完成（隐式懒加载）。
 2. 路由校验（始终执行，独立于拦截链，不受拦截器影响）：
     + 路由名不存在 → `UnknownRouteError`（strict=true）或返回 undefined（strict=false）
     + 路由所在层级未声明 → `UnknownLevelError`（strict=true）或静默忽略（strict=false）
@@ -551,7 +551,7 @@ await forge.api('client.posts.update', {
 
 ```mermaid
 graph TD
-    A["forge.api(name, params)"] --> B{"路由校验（步骤 2）"}
+    A["forge.api(level, name, params)"] --> B{"路由校验（步骤 2）"}
     B -- " 校验失败 " --> C["抛出 ForgeError（不发请求）"]
     B -- " 校验通过 " --> D["构建 RequestConfig（步骤 3-5）"]
     D --> E["请求拦截链 onFulfilled（LIFO，后注册先执行）"]
@@ -647,12 +647,12 @@ forge.interceptors.response:InterceptorManager<ResponseData>;
 同层级并发请求自动合并为一次：
 
 ```ts
-// 首屏 10 个组件同时调用 forge.api('admin.xxx', ...)，但 admin 层级尚未加载
+// 首屏 10 个组件同时调用 forge.api('admin', 'xxx', ...)，但 admin 层级尚未加载
 // 内部只发起 1 次 GET /_forge/routes/admin，10 个调用共用加载完成的 Promise
 const [a, b, c] = await Promise.all([
-    forge.api('admin.users.index'),
-    forge.api('admin.users.show', {user: 1}),
-    forge.api('admin.roles.list'),
+    forge.api('admin', 'users.index'),
+    forge.api('admin', 'users.show', {user: 1}),
+    forge.api('admin', 'roles.list'),
 ]);
 ```
 
@@ -682,7 +682,7 @@ const forge = createRouteForge({
 
 // 未登录时：
 await forge.load('client');   // 抛 InsufficientAuthError，不发请求
-await forge.api('client.xxx'); // 同上
+await forge.api('client', 'xxx'); // 同上
 
 // 登录后：
 authStore.isLoggedIn = true;
@@ -733,17 +733,17 @@ app.mount('#app');
   const {api, pending, error} = useForgeApi();
 
   // 调用形参与 forge.api 一致；返回值带响应式状态
-  const {data, error: callError} = await api('admin.users.show', {user: 123});
+  const {data, error: callError} = await api('admin', 'users.show', {user: 123});
 </script>
 ```
 
 插件提供的能力：
 
 - `useForgeApi()`：包装 `forge.api()`，自动管理 loading/error 状态。
-- `useForgeByPrefix(prefix)`：带指定名字前缀的封装 方便后续减少名称传入。
+- `useForgeByPrefix(level, prefix)`：带指定层级和名字前缀的封装，方便后续减少名称传入。
 - `useForgeLevel(level)`：声明组件依赖某层级，挂载时自动 `forge.load(level)`，组件销毁时不主动失效。
-- `useForgeRoute(name, params?)`：仅生成 URL，不发请求（用于 `<a href>`、外部跳转等）。
-- 全局属性 `$forge` 与模板内 `{{ $forge.route('admin.users.show', { user: 1 }) }}` 工具函数。
+- `useForgeRoute(level, name, params?)`：仅生成 URL，不发请求（用于 `<a href>`、外部跳转等）。
+- 全局属性 `$forge` 与模板内 `{{ $forge.route('admin', 'users.show', { user: 1 }) }}` 工具函数。
 
 ### 4.2 类型生成（可选）
 
@@ -775,7 +775,7 @@ declare const routes: {
 };
 ```
 
-类型推导链路：`forge.api('admin.users.show', { user: 123 })` 的参数类型由生成声明约束，路由名字面量错拼在编译期即报错。响应类型默认
+类型推导链路：`forge.api('admin', 'users.show', { user: 123 })` 的参数类型由生成声明约束，路由名字面量错拼在编译期即报错。响应类型默认
 `unknown`，需要业务侧通过单独的响应类型映射文件补全（避免侵入后端代码）。
 
 ### 4.3 Adapter 与内置类 axios 实现
@@ -904,7 +904,6 @@ const forge = createRouteForge({
 | `strict`                | `boolean`                                    | `false`            | 前端严格模式，默认与后端一致；受后端 `strict_mode` 约束（见 §5.3）    |
 | `timeout`               | `number`                                     | `30000`            | 默认请求超时（毫秒）                                                  |
 | `baseURL`               | `string`                                     | `''`               | 前端 baseURL；为空时使用相对路径                                      |
-| `nameSeparator`         | `string`                                     | `'.'`              | 路由名分隔符（如 `admin.users.show` 用 `.`）                          |
 
 ### 5.3 配置覆盖关系
 
@@ -915,7 +914,7 @@ const forge = createRouteForge({
 ↓ 可被细化
 ② 前端 createRouteForge 显式配置
 ↓ 仅限路由参数/query/body
-③ 单次 forge.api(name, params) 调用参数（不能覆盖全局规则）
+③ 单次 forge.api(level, name, params) 调用参数（不能覆盖全局规则）
 ```
 
 分级覆盖策略（非一刀切，按配置项性质区分）：
@@ -1015,16 +1014,16 @@ class ForgeError extends Error {
 
 ### 7.2 前端测试（Vitest）
 
-| 测试维度 | 覆盖点                                                                                                         |
-|----------|----------------------------------------------------------------------------------------------------------------|
-| 懒加载   | 隐式懒加载、显式 `load(level)`、并发去重、`invalidate` 失效                                                    |
-| 自动发现 | 摘要端点获取 `levels`、自动识别 `eager` 标记、`config` 字段分级覆盖逻辑                                        |
-| 缓存     | 三种 storage、TTL 优先级（后端 > 前端兜底）、跨层级隔离                                                        |
-| 拦截器   | 多段串联、注册顺序执行、`onFulfilled`/`onRejected` 链、`eject`/`clear`、async 拦截器、单函数与元组两种声明形式 |
-| 调用     | 路由校验（参数缺失/路由名不存在/层级未声明）、路径参数填充、query/body 拼装、方法自动选取                      |
-| Adapter  | auto 检测、builtin adapter 行为、axios 复用、自定义 Fetcher                                                    |
-| 登录态   | 未登录拒绝拉取、登录后拉取、`invalidate` 清理                                                                  |
-| 类型生成 | `route:forge:types` 生成的声明约束 `forge.api()` 调用（路由名字面量校验、参数类型校验，见 §3.2）               |
+| 测试维度 | 覆盖点                                                                                                              |
+|----------|---------------------------------------------------------------------------------------------------------------------|
+| 懒加载   | 隐式懒加载、显式 `load(level)`、并发去重、`invalidate` 失效                                                         |
+| 自动发现 | 摘要端点获取 `levels`、自动识别 `eager` 标记、`config` 字段分级覆盖逻辑                                             |
+| 缓存     | 三种 storage、TTL 优先级（后端 > 前端兜底）、跨层级隔离                                                             |
+| 拦截器   | 多段串联、注册顺序执行、`onFulfilled`/`onRejected` 链、`eject`/`clear`、async 拦截器、单函数与元组两种声明形式      |
+| 调用     | 路由校验（参数缺失/路由名不存在/层级未声明）、路径参数填充、query/body 拼装、方法自动选取                           |
+| Adapter  | auto 检测、builtin adapter 行为、axios 复用、自定义 Fetcher                                                         |
+| 登录态   | 未登录拒绝拉取、登录后拉取、`invalidate` 清理                                                                       |
+| 类型生成 | `route:forge:types` 生成的声明约束 `forge.api(level, name, params)` 调用（路由名字面量校验、参数类型校验，见 §3.2） |
 
 ### 7.3 端到端测试
 

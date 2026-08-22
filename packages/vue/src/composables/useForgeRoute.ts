@@ -7,13 +7,15 @@ import { computed, type ComputedRef } from 'vue';
 import { useForge } from '../plugin.js';
 
 export function useForgeRoute(
+  level: string | (() => string),
   name: string | (() => string),
   params?: () => Record<string, unknown>,
 ): ComputedRef<string> {
   const forge = useForge();
   return computed(() => {
+    const lvl = typeof level === 'function' ? level() : level;
     const n = typeof name === 'function' ? name() : name;
     const p = params ? params() : undefined;
-    return forge.route(n, p);
+    return forge.route(lvl, n, p);
   });
 }

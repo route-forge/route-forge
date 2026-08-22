@@ -14,8 +14,8 @@
 
 import { RouteCache } from './cache.js';
 import {
-  InterceptorManagerImpl,
   createInterceptorManager,
+  InterceptorManagerImpl,
   runRequestInterceptors,
   runResponseInterceptors,
 } from './interceptors.js';
@@ -44,7 +44,6 @@ import type {
 
 const DEFAULT_TIMEOUT = 30_000;
 const DEFAULT_CACHE_TTL = 3600;
-const DEFAULT_NAME_SEPARATOR = '.';
 
 export function createRouteForge(options: RouteForgeOptions): RouteForge {
   if (!options.endpoint) throw new TypeError('options.endpoint is required');
@@ -53,7 +52,6 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     adapter = 'auto',
     timeout = DEFAULT_TIMEOUT,
     baseURL = '',
-    nameSeparator = DEFAULT_NAME_SEPARATOR,
     auth,
     interceptors: declarativeInterceptors,
     cache: cacheOpts = {},
@@ -264,11 +262,11 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     await Promise.all(list.map(loadOne));
   }
 
-  function route(name: string, params?: Record<string, unknown>): string {
+  function route(level: string, name: string, params?: Record<string, unknown>): string {
     // 静态生成 URL：仅查已加载缓存，未加载时 strict 抛 UnknownRouteError
-    const meta = findRouteMeta(name);
+    const meta = findRouteMeta(level, name);
     if (!meta) {
-      if (effectiveStrict) throw new UnknownRouteError(name);
+      if (effectiveStrict) throw new UnknownRouteError(name, level);
       return '';
     }
     return buildRequestUrl(meta, params ?? {});
@@ -289,34 +287,23 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     return uri.startsWith('/') ? `${base}${uri}` : `${base}/${uri}`;
   }
 
-  function findRouteMeta(name: string): RouteMeta | undefined {
-    for (const level of effectiveLevels) {
-      const entry = cache.get(level);
-      const meta = entry?.routes[name];
-      if (meta) {
-        return { ...meta, level };
-      }
+  function findRouteMeta(level: string, name: string): RouteMeta | undefined {
+    const entry = cache.get(level);
+    const meta = entry?.routes[name];
+    if (meta) {
+      return { ...meta, level };
     }
     return undefined;
   }
 
-  async function api(name: string, params: ApiCallParams = {}): Promise<unknown> {
+  async function api(level: string, name: string, params: ApiCallParams = {}): Promise<unknown> {
     await autoDiscoveryPromise;
-    const meta = findRouteMeta(name);
+    // 确保指定层级的路由元信息已加载
+    await load(level);
+    const meta = findRouteMeta(level, name);
     if (!meta) {
-      // 隐式懒加载：路由名不在缓存中，可能是其层级尚未加载
-      // 1. 尝试通过 name 分隔符拆出可能的 level 名（如 'admin.users.show' → 'admin'）
-      const firstSeg = name.split(nameSeparator)[0];
-      if (firstSeg && effectiveLevels.includes(firstSeg)) {
-        await load(firstSeg);
-      }
-      // 重新查询
-      const reMeta = findRouteMeta(name);
-      if (!reMeta) {
-        if (effectiveStrict) throw new UnknownRouteError(name);
-        return undefined;
-      }
-      return doApiCall(reMeta, params);
+      if (effectiveStrict) throw new UnknownRouteError(name, level);
+      return undefined;
     }
     return doApiCall(meta, params);
   }

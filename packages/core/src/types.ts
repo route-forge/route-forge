@@ -90,7 +90,7 @@ export interface ResponseData {
 }
 
 /**
- * forge.api(name, params) 调用参数
+ * forge.api(level, name, params) 调用参数
  */
 export interface ApiCallParams {
   /** 路径参数：填充到 URI 模板的 {name} 占位符 */
@@ -157,12 +157,13 @@ export interface InterceptorHandler<TIn, TOut = TIn> {
  * forge 顶层 API 形状
  */
 export interface RouteForge {
-  /** 通过路由名调用 API */
-  api(name: string, params?: ApiCallParams): Promise<unknown>;
+  /** 通过层级 + 路由名调用 API；level 用于确定加载哪个层级的路由元信息 */
+  api(level: string, name: string, params?: ApiCallParams): Promise<unknown>;
   /** 拉取一个或多个层级（自动并发去重） */
   load(level: string | string[]): Promise<void>;
-  /** 仅生成 URL，不发请求 */
-  route(name: string, params?: Record<string, unknown>): string;
+
+  /** 仅生成 URL，不发请求；level 用于定位路由所在的层级缓存 */
+  route(level: string, name: string, params?: Record<string, unknown>): string;
   /** 失效指定层级缓存；不传参失效全部 */
   invalidate(level?: string): void;
   /** 拦截器入口（请求 / 响应） */
@@ -200,5 +201,4 @@ export interface RouteForgeOptions {
   strict?: boolean;
   timeout?: number;
   baseURL?: string;
-  nameSeparator?: string;
 }

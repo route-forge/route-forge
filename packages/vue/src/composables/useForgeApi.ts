@@ -10,7 +10,7 @@ import type { ApiCallParams } from '@route-forge/core';
 export interface UseForgeApiReturn {
   pending: ReturnType<typeof ref<boolean>>;
   error: ReturnType<typeof ref<unknown>>;
-  call: (name: string, params?: ApiCallParams) => Promise<{
+  call: (level: string, name: string, params?: ApiCallParams) => Promise<{
     data: unknown;
     error: unknown;
   }>;
@@ -21,11 +21,11 @@ export function useForgeApi(): UseForgeApiReturn {
   const pending = ref(false);
   const error = ref<unknown>(null);
 
-  async function call(name: string, params?: ApiCallParams) {
+  async function call(level: string, name: string, params?: ApiCallParams) {
     pending.value = true;
     error.value = null;
     try {
-      const data = await forge.api(name, params);
+      const data = await forge.api(level, name, params);
       return { data, error: null };
     } catch (e) {
       error.value = e;

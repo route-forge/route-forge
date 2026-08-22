@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateRouteTypes, parseArgs } from '../src/codegen/index.js';
 import type { RouteMeta } from '../src/types.js';
 
@@ -54,7 +54,7 @@ describe('parseArgs', () => {
   beforeEach(() => {
     errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: number) => {
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {
       throw new Error('exit:' + code);
     });
   });

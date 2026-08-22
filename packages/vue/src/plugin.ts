@@ -7,27 +7,23 @@
  *   - inject symbol 注入 RouteForge 实例供 composable 使用
  */
 
-import type { App, InjectionKey } from 'vue';
+import type { App, InjectionKey, Plugin } from 'vue';
 import { inject, reactive, readonly } from 'vue';
-import {
-  createRouteForge,
-  type RouteForge,
-  type RouteForgeOptions,
-} from '@route-forge/core';
+import { createRouteForge, type RouteForge, type RouteForgeOptions } from '@route-forge/core';
 
 export const FORGE_INJECTION_KEY: InjectionKey<RouteForge> = Symbol('route-forge');
 
 export interface RouteForgePluginOptions extends RouteForgeOptions {}
 
-export function createRouteForgePlugin(options: RouteForgePluginOptions) {
+export function createRouteForgePlugin(options: RouteForgePluginOptions): Plugin<[]> {
   const forge = createRouteForge(options);
 
   return {
     install(app: App) {
       app.provide(FORGE_INJECTION_KEY, forge);
       app.config.globalProperties.$forge = {
-        route: (name: string, params?: Record<string, unknown>) =>
-          forge.route(name, params),
+        route: (level: string, name: string, params?: Record<string, unknown>) =>
+          forge.route(level, name, params),
       };
     },
   };

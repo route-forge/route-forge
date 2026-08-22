@@ -13,13 +13,13 @@ pnpm add @route-forge/vue @route-forge/core
 ```ts
 // main.ts
 import { createApp } from 'vue'
-import { ForgePlugin } from '@route-forge/vue'
+import { createRouteForgePlugin } from '@route-forge/vue'
 import App from './App.vue'
 
 const app = createApp(App)
-app.use(ForgePlugin, {
+app.use(createRouteForgePlugin({
   endpoint: '/_forge/routes',
-})
+}))
 app.mount('#app')
 ```
 
@@ -27,7 +27,7 @@ app.mount('#app')
 <script setup lang="ts">
 import { useForgeRoute } from '@route-forge/vue'
 
-const { data: route } = useForgeRoute('login.show')
+const url = useForgeRoute('public', 'login.show')
 </script>
 ```
 

@@ -23,7 +23,11 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "clean": "turbo run clean && rimraf node_modules"
+    "clean": "turbo run clean && rimraf node_modules",
+    "publish:core": "cd packages/core && pnpm publish --no-git-checks",
+    "publish:vue": "cd packages/vue && pnpm publish --no-git-checks",
+    "publish:only": "pnpm run publish:core && pnpm run publish:vue",
+    "publish:build": "turbo run typecheck test build && pnpm run publish:only"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
