@@ -177,6 +177,10 @@ export interface RouteForge {
 
   /** 检查指定层级路由是否已加载并缓存；不传参检查全部 */
   isLoaded(level?: string): boolean;
+
+  /** 检查指定层级下某条路由是否存在（需该层级缓存已加载） */
+  hasRoute(level: string, name: string): boolean;
+
   /** 拦截器入口（请求 / 响应） */
   interceptors: {
     request: InterceptorManager<RequestConfig, RequestConfig>;

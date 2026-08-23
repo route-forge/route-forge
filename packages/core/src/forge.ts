@@ -271,11 +271,10 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   }
 
   function route(level: string, name: string, params?: Record<string, unknown>): string {
-    // 静态生成 URL：仅查已加载缓存，未加载时 strict 抛 UnknownRouteError
+    // 静态生成 URL：仅查已加载缓存，未加载时抛 UnknownRouteError
     const meta = findRouteMeta(level, name);
     if (!meta) {
-      if (effectiveStrict) throw new UnknownRouteError(name, level);
-      return '';
+      throw new UnknownRouteError(name, level);
     }
     return buildRequestUrl(meta, params ?? {});
   }
@@ -332,8 +331,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     await load(level);
     const meta = findRouteMeta(level, name);
     if (!meta) {
-      if (effectiveStrict) throw new UnknownRouteError(name, level);
-      return undefined;
+      throw new UnknownRouteError(name, level);
     }
     return doApiCall(meta, params);
   }
@@ -411,6 +409,10 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     return effectiveLevels.every((lvl) => cache.get(lvl) !== undefined);
   }
 
+  function hasRoute(level: string, name: string): boolean {
+    return findRouteMeta(level, name) !== undefined;
+  }
+
   // eager 层级自动加载（不阻塞 createRouteForge 返回；在自动发现完成后触发）
   void autoDiscoveryPromise
     .then(() => {
@@ -431,6 +433,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     url: route,
     invalidate,
     isLoaded,
+    hasRoute,
     interceptors: {
       request: requestInterceptors,
       response: responseInterceptors,

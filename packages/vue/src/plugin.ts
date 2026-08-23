@@ -29,6 +29,7 @@ import {
   type RouteForge,
   type RouteForgeOptions,
 } from '@route-forge/core';
+import { resolveRouteName, resolveRouteNameSync } from './utils/resolveRouteName.js';
 
 export const FORGE_INJECTION_KEY: InjectionKey<RouteForge> = Symbol('route-forge');
 
@@ -63,6 +64,8 @@ export interface BoundForgeMethods<L extends string = string> {
   invalidate(level?: string): void;
 
   isLoaded(level?: string): boolean;
+
+  hasRoute(level: string, name: string): boolean;
 }
 
 /** 已绑定 level — 直接调用无需 level，api/route/url 的 name 自动限定到该层级 */
@@ -71,11 +74,13 @@ export interface BoundForgeTyped<L extends string> extends BoundForgeMethods<L> 
 }
 
 /** 未绑定 level — 直接调用需要传 level */
-export interface ForgeInstanceTyped extends Omit<BoundForgeMethods<string>, 'api' | 'route' | 'url'> {
+export interface ForgeInstanceTyped extends Omit<BoundForgeMethods<string>, 'api' | 'route' | 'url' | 'hasRoute'> {
   (level: string, name: string, params?: ApiCallParams): Promise<unknown>;
   api(level: string, name: string, params?: ApiCallParams): Promise<unknown>;
   route(level: string, name: string, params?: Record<string, unknown>): string;
   url(level: string, name: string, params?: Record<string, unknown>): string;
+
+  hasRoute(level: string, name: string): boolean;
 }
 
 export function createRouteForgePlugin(options: RouteForgePluginOptions): Plugin<[]> {
@@ -126,18 +131,28 @@ export function useForge(level?: string, prefix?: string): ForgeInstanceTyped | 
   }
 
   if (level !== undefined) {
-    const join = prefix
-      ? (suffix: string) => suffix ? `${prefix}.${suffix}` : prefix
-      : (suffix: string) => suffix;
-    const callable = (name: string, params?: ApiCallParams) =>
-      forge.api(level, join(name), params);
+    const callable = prefix
+      ? async (name: string, params?: ApiCallParams) =>
+        forge.api(level, await resolveRouteName(forge, level, prefix, name), params)
+      : (name: string, params?: ApiCallParams) =>
+        forge.api(level, name, params);
     defineImmutableProps(callable, {
-      api: (name: string, params?: ApiCallParams) => forge.api(level, join(name), params),
-      route: (name: string, params?: Record<string, unknown>) => forge.route(level, join(name), params),
-      url: (name: string, params?: Record<string, unknown>) => forge.route(level, join(name), params),
+      api: prefix
+        ? async (name: string, params?: ApiCallParams) =>
+          forge.api(level, await resolveRouteName(forge, level, prefix, name), params)
+        : (name: string, params?: ApiCallParams) => forge.api(level, name, params),
+      route: prefix
+        ? (name: string, params?: Record<string, unknown>) =>
+          forge.route(level, resolveRouteNameSync(forge, level, prefix, name), params)
+        : (name: string, params?: Record<string, unknown>) => forge.route(level, name, params),
+      url: prefix
+        ? (name: string, params?: Record<string, unknown>) =>
+          forge.route(level, resolveRouteNameSync(forge, level, prefix, name), params)
+        : (name: string, params?: Record<string, unknown>) => forge.route(level, name, params),
       load: forge.load.bind(forge),
       invalidate: forge.invalidate.bind(forge),
       isLoaded: forge.isLoaded.bind(forge),
+      hasRoute: forge.hasRoute.bind(forge),
       interceptors: forge.interceptors,
     });
     return callable as unknown as BoundForgeTyped<string>;
@@ -152,6 +167,7 @@ export function useForge(level?: string, prefix?: string): ForgeInstanceTyped | 
     load: forge.load.bind(forge),
     invalidate: forge.invalidate.bind(forge),
     isLoaded: forge.isLoaded.bind(forge),
+    hasRoute: forge.hasRoute.bind(forge),
     interceptors: forge.interceptors,
   });
   return callable as ForgeInstanceTyped;

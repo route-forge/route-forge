@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRouteForge, MissingRouteParamError } from '../src/index.js';
+import { createRouteForge, MissingRouteParamError, UnknownRouteError } from '../src/index.js';
 import type { LevelRoutesResponse, SummaryResponse } from '../src/types.js';
 
 // Helper: 模拟摘要端点响应
@@ -356,6 +356,137 @@ describe('route parameter validation', () => {
       expect(msg).toContain('y');
       expect(msg).not.toContain('x');
     }
+  });
+});
+
+describe('unknown route always throws', () => {
+  let originalFetch: typeof globalThis.fetch;
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+  afterEach(() => {
+    (globalThis as any).fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it('route() throws UnknownRouteError when route not found (strict=false)', async () => {
+    const summary = makeSummary({
+      config: {
+        strict_mode: false,
+        endpoint_prefix: '/_forge/routes',
+      },
+    });
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'user.show': {
+            name: 'user.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+      strict: false,
+    });
+    await forge.load('public');
+    expect(() => forge.route('public', 'nonexistent.route')).toThrow(UnknownRouteError);
+  });
+
+  it('api() throws UnknownRouteError when route not found (strict=false)', async () => {
+    const summary = makeSummary({
+      config: {
+        strict_mode: false,
+        endpoint_prefix: '/_forge/routes',
+      },
+    });
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'user.show': {
+            name: 'user.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+      strict: false,
+    });
+    await forge.load('public');
+    await expect(forge.api('public', 'nonexistent.route')).rejects.toThrow(UnknownRouteError);
+  });
+
+  it('route() throws UnknownRouteError when route not found (strict=true)', async () => {
+    const summary = makeSummary({
+      config: {
+        strict_mode: true,
+        endpoint_prefix: '/_forge/routes',
+      },
+    });
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'user.show': {
+            name: 'user.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+      strict: true,
+    });
+    await forge.load('public');
+    expect(() => forge.route('public', 'nonexistent.route')).toThrow(UnknownRouteError);
+  });
+
+  it('api() throws UnknownRouteError when route not found (strict=true)', async () => {
+    const summary = makeSummary({
+      config: {
+        strict_mode: true,
+        endpoint_prefix: '/_forge/routes',
+      },
+    });
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'user.show': {
+            name: 'user.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+      strict: true,
+    });
+    await forge.load('public');
+    await expect(forge.api('public', 'nonexistent.route')).rejects.toThrow(UnknownRouteError);
   });
 });
 
@@ -779,5 +910,96 @@ describe('url_prefix from backend summary', () => {
     const url = forge.route('public', 'posts.index');
     expect(url).toBe('https://api.example.com/v1/posts');
     expect(url).not.toContain('//posts');
+  });
+});
+
+describe('hasRoute', () => {
+  let originalFetch: typeof globalThis.fetch;
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+  afterEach(() => {
+    (globalThis as any).fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  const summary = makeSummary({
+    config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
+  });
+
+  it('returns true for existing route after load', async () => {
+    mockFull(summary, {
+      admin: {
+        level: 'admin',
+        routes: {
+          'users.show': {
+            name: 'users.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+          'users.index': {
+            name: 'users.index',
+            uri: 'users',
+            methods: ['GET'],
+            parameters: [],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['admin'],
+      adapter: 'builtin',
+    });
+    await forge.load('admin');
+    expect(forge.hasRoute('admin', 'users.show')).toBe(true);
+    expect(forge.hasRoute('admin', 'users.index')).toBe(true);
+  });
+
+  it('returns false for non-existing route', async () => {
+    mockFull(summary, {
+      admin: {
+        level: 'admin',
+        routes: {
+          'users.show': {
+            name: 'users.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['admin'],
+      adapter: 'builtin',
+    });
+    await forge.load('admin');
+    expect(forge.hasRoute('admin', 'users.destroy')).toBe(false);
+  });
+
+  it('returns false when level not loaded', async () => {
+    mockFull(summary, {
+      admin: {
+        level: 'admin',
+        routes: {
+          'users.show': {
+            name: 'users.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['admin'],
+      adapter: 'builtin',
+    });
+    // 未 load('admin')，缓存为空
+    expect(forge.hasRoute('admin', 'users.show')).toBe(false);
   });
 });

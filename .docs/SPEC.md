@@ -570,7 +570,7 @@ await forge.api('client', 'posts.update', {
 
 1. 按层级 + 路由名查本地缓存；若该层级尚未加载，自动 `forge.load(level)` 等待完成（隐式懒加载）。
 2. 路由校验（始终执行，独立于拦截链，不受拦截器影响）：
-    + 路由名不存在 → `UnknownRouteError`（strict=true）或返回 undefined（strict=false）
+  + 路由名不存在 → `UnknownRouteError`（始终抛出，不受 strict 模式影响）
     + 路由所在层级未声明 → `UnknownLevelError`（strict=true）或静默忽略（strict=false）
    + 必填路径参数缺失时，先检查后端下发的 `parameter_defaults`：有默认值则用默认值填充，无默认值 →
      `MissingRouteParamError`（始终执行，不受 strict 模式影响）；可选参数（`{param?}`
@@ -744,7 +744,7 @@ await forge.load('client');    // 正常拉取
 |------------------------------|-----------------------------|------------------------------------|
 | 必填路径参数缺失（无默认值） | 抛 `MissingRouteParamError` | 同左（始终校验，不受 strict 影响） |
 | 必填路径参数缺失（有默认值） | 用默认值填充，不抛错        | 同左（始终填充，不受 strict 影响） |
-| 路由名不存在                 | 抛 `UnknownRouteError`      | 返回 `undefined`，由调用方自行处理 |
+| 路由名不存在                 | 抛 `UnknownRouteError`      | 同左（始终抛出，不受 strict 影响） |
 | 路由所在层级未声明           | 抛 `UnknownLevelError`      | 静默忽略                           |
 | 未登录访问受保护层级         | 抛 `InsufficientAuthError`  | 同左（安全相关不允许放行）         |
 
