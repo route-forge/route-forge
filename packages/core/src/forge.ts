@@ -109,7 +109,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     }
 
     // 1a. url_prefix 后端权威：后端下发时覆盖
-    if (summary.config.url_prefix !== undefined && summary.config.url_prefix !== '') {
+    if (summary.config.url_prefix) {
       effectiveUrlPrefix = summary.config.url_prefix.endsWith('/')
         ? summary.config.url_prefix.slice(0, -1)
         : summary.config.url_prefix;
