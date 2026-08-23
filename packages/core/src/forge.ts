@@ -413,6 +413,32 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     return findRouteMeta(level, name) !== undefined;
   }
 
+  function getRoutes(level: string): Record<string, RouteMeta>;
+  function getRoutes(): Record<string, Record<string, RouteMeta>>;
+  function getRoutes(level?: string): Record<string, RouteMeta> | Record<string, Record<string, RouteMeta>> {
+    if (level !== undefined) {
+      const entry = cache.get(level);
+      const routes = entry?.routes ?? {};
+      const result: Record<string, RouteMeta> = {};
+      for (const [k, v] of Object.entries(routes)) {
+        result[k] = { ...v };
+      }
+      return result;
+    }
+    const result: Record<string, Record<string, RouteMeta>> = {};
+    for (const lvl of effectiveLevels) {
+      const entry = cache.get(lvl);
+      if (entry) {
+        const levelRoutes: Record<string, RouteMeta> = {};
+        for (const [k, v] of Object.entries(entry.routes)) {
+          levelRoutes[k] = { ...v };
+        }
+        result[lvl] = levelRoutes;
+      }
+    }
+    return result;
+  }
+
   // eager 层级自动加载（不阻塞 createRouteForge 返回；在自动发现完成后触发）
   void autoDiscoveryPromise
     .then(() => {
@@ -434,6 +460,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     invalidate,
     isLoaded,
     hasRoute,
+    getRoutes,
     interceptors: {
       request: requestInterceptors,
       response: responseInterceptors,

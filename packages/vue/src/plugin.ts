@@ -28,6 +28,7 @@ import {
   type ResponseData,
   type RouteForge,
   type RouteForgeOptions,
+  type RouteMeta,
 } from '@route-forge/core';
 import { resolveRouteName, resolveRouteNameSync } from './utils/resolveRouteName.js';
 
@@ -66,21 +67,32 @@ export interface BoundForgeMethods<L extends string = string> {
   isLoaded(level?: string): boolean;
 
   hasRoute(level: string, name: string): boolean;
+
+  /** 获取指定层级下全部路由元信息（深拷贝，修改不影响内部缓存） */
+  getRoutes(level: string): Record<string, RouteMeta>;
 }
 
 /** 已绑定 level — 直接调用无需 level，api/route/url 的 name 自动限定到该层级 */
 export interface BoundForgeTyped<L extends string> extends BoundForgeMethods<L> {
   (name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): Promise<ForgeApiResponse<L, ForgeRouteName<L>>>;
+  /** 当前绑定的 level 值 */
+  readonly level: L;
+  /** 路由名前缀（仅在 useForge(level, prefix) 传入 prefix 时存在） */
+  readonly prefix?: string;
 }
 
 /** 未绑定 level — 直接调用需要传 level */
-export interface ForgeInstanceTyped extends Omit<BoundForgeMethods<string>, 'api' | 'route' | 'url' | 'hasRoute'> {
+export interface ForgeInstanceTyped extends Omit<BoundForgeMethods<string>, 'api' | 'route' | 'url' | 'hasRoute' | 'getRoutes'> {
   (level: string, name: string, params?: ApiCallParams): Promise<unknown>;
   api(level: string, name: string, params?: ApiCallParams): Promise<unknown>;
   route(level: string, name: string, params?: Record<string, unknown>): string;
   url(level: string, name: string, params?: Record<string, unknown>): string;
 
   hasRoute(level: string, name: string): boolean;
+
+  /** 获取全部层级路由（深拷贝）；传 level 时仅返回该层级 */
+  getRoutes(): Record<string, Record<string, RouteMeta>>;
+  getRoutes(level: string): Record<string, RouteMeta>;
 }
 
 export function createRouteForgePlugin(options: RouteForgePluginOptions): Plugin<[]> {
@@ -109,12 +121,15 @@ export function createRouteForgePlugin(options: RouteForgePluginOptions): Plugin
  * @example
  * // 绑定层级 — 直接调用和 api/route/url 均无需传 level
  * const forge = useForge('admin')
+ * forge.level                    // → 'admin'
  * forge('users.show', { user: 1 })
  * forge.api('users.show')
  *
  * @example
  * // 绑定层级 + 前缀 — 路由名自动拼接
  * const forge = useForge('admin', 'users')
+ * forge.level                    // → 'admin'
+ * forge.prefix                   // → 'users'
  * forge('show', { user: 1 })           // → forge.api('admin', 'users.show', ...)
  * forge.api('index')                   // → forge.api('admin', 'users.index')
  * forge.route('show', { user: 1 })     // → forge.route('admin', 'users.show', ...)
@@ -137,6 +152,8 @@ export function useForge(level?: string, prefix?: string): ForgeInstanceTyped | 
       : (name: string, params?: ApiCallParams) =>
         forge.api(level, name, params);
     defineImmutableProps(callable, {
+      level,
+      prefix,
       api: prefix
         ? async (name: string, params?: ApiCallParams) =>
           forge.api(level, await resolveRouteName(forge, level, prefix, name), params)
@@ -153,6 +170,7 @@ export function useForge(level?: string, prefix?: string): ForgeInstanceTyped | 
       invalidate: forge.invalidate.bind(forge),
       isLoaded: forge.isLoaded.bind(forge),
       hasRoute: forge.hasRoute.bind(forge),
+      getRoutes: forge.getRoutes.bind(forge),
       interceptors: forge.interceptors,
     });
     return callable as unknown as BoundForgeTyped<string>;
@@ -168,6 +186,7 @@ export function useForge(level?: string, prefix?: string): ForgeInstanceTyped | 
     invalidate: forge.invalidate.bind(forge),
     isLoaded: forge.isLoaded.bind(forge),
     hasRoute: forge.hasRoute.bind(forge),
+    getRoutes: forge.getRoutes.bind(forge),
     interceptors: forge.interceptors,
   });
   return callable as ForgeInstanceTyped;

@@ -181,6 +181,15 @@ export interface RouteForge {
   /** 检查指定层级下某条路由是否存在（需该层级缓存已加载） */
   hasRoute(level: string, name: string): boolean;
 
+  /**
+   * 获取路由元信息快照（深拷贝，修改返回值不影响内部缓存）。
+   * - getRoutes(level)：返回指定层级下全部路由
+   * - getRoutes()：返回全部层级的路由（按 level 分组）
+   */
+  getRoutes(level: string): Record<string, RouteMeta>;
+
+  getRoutes(): Record<string, Record<string, RouteMeta>>;
+
   /** 拦截器入口（请求 / 响应） */
   interceptors: {
     request: InterceptorManager<RequestConfig, RequestConfig>;
