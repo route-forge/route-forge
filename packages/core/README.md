@@ -39,6 +39,27 @@ forge.invalidate('admin')   // 失效指定层级
 forge.invalidate()          // 失效全部
 ```
 
+## URL 前缀（`url_prefix`）
+
+后端可在摘要端点 `config.url_prefix` 中下发 URL 前缀，前端生成路由 URL 时自动拼接，无需手动配置。
+
+支持两种形式：
+
+```ts
+// 1. 路径前缀 — 拼接在 baseURL 之后、路由 URI 之前
+// 后端返回 { "config": { "url_prefix": "/api/v1" } }
+forge.route('public', 'users.show', { user: 1 })
+// → '/api/v1/users/1'
+
+// 2. 完整 URL（含协议+域名）— 直接作为基础 URL，忽略客户端 baseURL
+//    适用于前后端不同域名的场景
+// 后端返回 { "config": { "url_prefix": "https://api.example.com" } }
+forge.route('public', 'users.show', { user: 1 })
+// → 'https://api.example.com/users/1'
+```
+
+> `url_prefix` 为后端权威，前端不能覆盖。不下发或为空字符串时不影响 URL 生成。
+
 ## 文档
 
 - 仓库主页: https://github.com/xyj2156/route-forge

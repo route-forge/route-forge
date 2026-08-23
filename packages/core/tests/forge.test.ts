@@ -499,3 +499,285 @@ describe('createRouteForge auto-discovery', () => {
     expect(levelCall!.init?.signal).toBeDefined();
   });
 });
+
+describe('url_prefix from backend summary', () => {
+  let originalFetch: typeof globalThis.fetch;
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+  afterEach(() => {
+    (globalThis as any).fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it('generated URL includes url_prefix from summary response', async () => {
+    const summary = makeSummary({
+      config: {
+        strict_mode: false,
+        endpoint_prefix: '/_forge/routes',
+        url_prefix: '/api/v1',
+      },
+    });
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'user.show': {
+            name: 'user.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    await forge.load('public');
+    const url = forge.route('public', 'user.show', { user: 123 });
+    expect(url).toBe('/api/v1/users/123');
+  });
+
+  it('url_prefix with trailing slash is normalized', async () => {
+    const summary = makeSummary({
+      config: {
+        strict_mode: false,
+        endpoint_prefix: '/_forge/routes',
+        url_prefix: '/api/v1/',
+      },
+    });
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'posts.index': {
+            name: 'posts.index',
+            uri: 'posts',
+            methods: ['GET'],
+            parameters: [],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    await forge.load('public');
+    const url = forge.route('public', 'posts.index');
+    expect(url).toBe('/api/v1/posts');
+    expect(url).not.toContain('//');
+  });
+
+  it('no url_prefix in summary keeps existing behavior', async () => {
+    const summary = makeSummary({
+      config: {
+        strict_mode: false,
+        endpoint_prefix: '/_forge/routes',
+      },
+    });
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'user.show': {
+            name: 'user.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    await forge.load('public');
+    const url = forge.route('public', 'user.show', { user: 42 });
+    expect(url).toBe('/users/42');
+  });
+
+  it('url_prefix works with baseURL', async () => {
+    const summary = makeSummary({
+      config: {
+        strict_mode: false,
+        endpoint_prefix: '/_forge/routes',
+        url_prefix: '/app',
+      },
+    });
+    // 自定义 mock：baseURL 会导致完整 URL，需按 pathname 匹配
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      const pathname = url.replace(/^https?:\/\/[^/]+/, '');
+      if (pathname === '/_forge/routes') {
+        const body = JSON.stringify(summary);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => summary,
+          text: async () => body,
+          headers: new Headers({ 'content-type': 'application/json' }),
+        } as any;
+      }
+      if (pathname.startsWith('/_forge/routes/')) {
+        const levelBody = {
+          level: 'public',
+          routes: { 'home': { name: 'home', uri: '/', methods: ['GET'], parameters: [] } },
+        };
+        const body = JSON.stringify(levelBody);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => levelBody,
+          text: async () => body,
+          headers: new Headers({ 'content-type': 'application/json' }),
+        } as any;
+      }
+      return {
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+        text: async () => '',
+        headers: new Headers(),
+      } as any;
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+      baseURL: 'https://example.com',
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    await forge.load('public');
+    const url = forge.route('public', 'home');
+    expect(url).toBe('https://example.com/app/');
+  });
+
+  it('url_prefix with protocol and domain overrides baseURL', async () => {
+    const summary = makeSummary({
+      config: {
+        strict_mode: false,
+        endpoint_prefix: '/_forge/routes',
+        url_prefix: 'https://api.example.com',
+      },
+    });
+    // 自定义 mock：baseURL 会导致完整 URL，需按 pathname 匹配
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      const pathname = url.replace(/^https?:\/\/[^/]+/, '');
+      if (pathname === '/_forge/routes') {
+        const body = JSON.stringify(summary);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => summary,
+          text: async () => body,
+          headers: new Headers({ 'content-type': 'application/json' }),
+        } as any;
+      }
+      if (pathname.startsWith('/_forge/routes/')) {
+        const levelBody = {
+          level: 'public',
+          routes: {
+            'user.show': {
+              name: 'user.show',
+              uri: 'users/{user}',
+              methods: ['GET'],
+              parameters: ['user'],
+            },
+          },
+        };
+        const body = JSON.stringify(levelBody);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => levelBody,
+          text: async () => body,
+          headers: new Headers({ 'content-type': 'application/json' }),
+        } as any;
+      }
+      return {
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+        text: async () => '',
+        headers: new Headers(),
+      } as any;
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+      baseURL: 'https://frontend.example.com',
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    await forge.load('public');
+    const url = forge.route('public', 'user.show', { user: 123 });
+    // url_prefix 含协议时应完全覆盖 baseURL，不拼接前端域名
+    expect(url).toBe('https://api.example.com/users/123');
+  });
+
+  it('url_prefix with protocol, path and trailing slash is normalized', async () => {
+    const summary = makeSummary({
+      config: {
+        strict_mode: false,
+        endpoint_prefix: '/_forge/routes',
+        url_prefix: 'https://api.example.com/v1/',
+      },
+    });
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      const pathname = url.replace(/^https?:\/\/[^/]+/, '');
+      if (pathname === '/_forge/routes') {
+        const body = JSON.stringify(summary);
+        return {
+          ok: true, status: 200,
+          json: async () => summary, text: async () => body,
+          headers: new Headers({ 'content-type': 'application/json' }),
+        } as any;
+      }
+      if (pathname.startsWith('/_forge/routes/')) {
+        const levelBody = {
+          level: 'public',
+          routes: {
+            'posts.index': {
+              name: 'posts.index',
+              uri: 'posts',
+              methods: ['GET'],
+              parameters: [],
+            },
+          },
+        };
+        const body = JSON.stringify(levelBody);
+        return {
+          ok: true, status: 200,
+          json: async () => levelBody, text: async () => body,
+          headers: new Headers({ 'content-type': 'application/json' }),
+        } as any;
+      }
+      return {
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+        text: async () => '',
+        headers: new Headers(),
+      } as any;
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    await forge.load('public');
+    const url = forge.route('public', 'posts.index');
+    expect(url).toBe('https://api.example.com/v1/posts');
+    expect(url).not.toContain('//posts');
+  });
+});

@@ -68,6 +68,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   let effectiveEager: string[] = explicitEager ?? [];
   let effectiveStrict = explicitStrict;
   let effectiveEndpoint = explicitEndpoint;
+  let effectiveUrlPrefix = '';  // 后端下发的 URL 前缀，默认为空
 
   // 拉取摘要端点（用于 strict_mode / endpoint / levels / eager 自动发现）
   const summaryPromise = (async (): Promise<SummaryResponse | null> => {
@@ -105,6 +106,13 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
         `[route-forge] backend endpoint_prefix "${summary.config.endpoint_prefix}" overrides frontend endpoint "${explicitEndpoint}"`,
       );
       effectiveEndpoint = summary.config.endpoint_prefix;
+    }
+
+    // 1a. url_prefix 后端权威：后端下发时覆盖
+    if (summary.config.url_prefix !== undefined && summary.config.url_prefix !== '') {
+      effectiveUrlPrefix = summary.config.url_prefix.endsWith('/')
+        ? summary.config.url_prefix.slice(0, -1)
+        : summary.config.url_prefix;
     }
 
     // 2. strict_mode 后端权威：不能放宽，可收紧
@@ -299,8 +307,14 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     }
     // 清理可选参数移除后残留的连续 / 或尾部 /
     uri = uri.replace(/\/+/g, '/').replace(/\/$/, '');
+    // url_prefix 含协议（如 https://api.example.com）时直接作为完整基础 URL，跳过 baseURL
+    if (effectiveUrlPrefix.includes('://')) {
+      const prefix = effectiveUrlPrefix.endsWith('/') ? effectiveUrlPrefix.slice(0, -1) : effectiveUrlPrefix;
+      return uri.startsWith('/') ? `${prefix}${uri}` : `${prefix}/${uri}`;
+    }
     const base = baseURL.endsWith('/') ? baseURL.slice(0, -1) : baseURL;
-    return uri.startsWith('/') ? `${base}${uri}` : `${base}/${uri}`;
+    const prefix = effectiveUrlPrefix;
+    return uri.startsWith('/') ? `${base}${prefix}${uri}` : `${base}${prefix}/${uri}`;
   }
 
   function findRouteMeta(level: string, name: string): RouteMeta | undefined {

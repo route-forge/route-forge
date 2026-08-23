@@ -96,6 +96,7 @@ return [
     ],
 
     'endpoint_prefix' => '/_forge/routes',  // 路由元信息对外端点前缀
+    'url_prefix'      => '',                // URL 前缀，下发给前端拼接路由 URL（如 '/api/v1'）
     'cache_driver'    => null,             // null=使用默认缓存驱动
     'strict_mode'     => false,            // 严格模式：未命中层级即抛异常
     'fallback_level'  => null,             // null=未命中路由归入「未分配」分组；非 null 则归入指定层级
@@ -315,7 +316,8 @@ GET /_forge/routes   # 返回所有层级摘要 + 全局配置
   },
   "config": {
     "strict_mode": false,
-    "endpoint_prefix": "/_forge/routes"
+    "endpoint_prefix": "/_forge/routes",
+    "url_prefix": ""
   },
   "unassigned": [
     {
@@ -336,8 +338,13 @@ GET /_forge/routes   # 返回所有层级摘要 + 全局配置
 字段说明：
 
 + `levels`：各层级摘要。`description` 层级描述、`load` 加载策略（eager/lazy）、`cache` 缓存 TTL 秒数、`route_count` 该层级路由数量。
-+ `config`：后端全局配置摘要。前端初始化时读取此字段作为最高优先级配置源（见 §5.3 分级覆盖策略）。当前包含 `strict_mode` 和
-  `endpoint_prefix`，后续版本可扩展。
++ `config`：后端全局配置摘要。前端初始化时读取此字段作为最高优先级配置源（见 §5.3 分级覆盖策略）。当前包含
+  `strict_mode`、
+  `endpoint_prefix` 和 `url_prefix`，后续版本可扩展。
+    + `url_prefix`：后端下发的 URL 前缀。支持两种形式：
+        - 路径前缀（如 `'/api/v1'`）：前端拼接在 `baseURL` 之后、路由 URI 之前。
+        - 完整 URL（含协议和域名，如 `'https://api.example.com'`）：前端直接使用此值作为基础 URL，忽略客户端
+          `baseURL` 配置。适用于前后端不同域名的场景。
 + `unassigned`：当 `fallback_level=null`
   时，所有未分配层级的命名路由列表。包含完整的路由元信息（name/uri/methods/parameters/parameter_defaults），前端可按需加载和调用。fallback_level
   非 null 时此字段为空数组。
@@ -986,6 +993,7 @@ const forge = createRouteForge({
 | `levels.{name}.load`                   | `'eager'\|'lazy'`            | `'lazy'`           | 是否在摘要端点中标记为「前端应预加载」；前端自动发现时据此决定预加载策略                                                                                                               |
 | `levels.{name}.cache`                  | `int\|null`                  | `null`             | 该层级元信息缓存 TTL（秒）；`null` 不缓存，`0` 永久缓存。⚠️ `0` 遵循 Laravel Cache TTL 惯例（永久），非 HTTP `Cache-Control: max-age=0` 含义。缓存仅通过包内部管理，不使用 HTTP 响应头 |
 | `endpoint_prefix`                      | `string`                     | `'/_forge/routes'` | 路由元信息对外端点前缀（同时用于层级端点和摘要端点）                                                                                                                                   |
+| `url_prefix`                           | `string`                     | `''`               | URL 前缀，通过摘要端点 `config.url_prefix` 下发给前端。支持路径前缀（如 `'/api/v1'`）和完整 URL（如 `'https://api.example.com'`，此时忽略客户端 `baseURL`）。为空时不拼接              |
 | `cache_driver`                         | `string\|null`               | `null`             | 缓存驱动；`null` 用默认驱动，可指定 `redis`/`file`/`array` 等                                                                                                                          |
 | `strict_mode`                          | `bool`                       | `false`            | 严格模式；未命中层级时抛异常（true）或归入 fallback/unassigned（false）                                                                                                                |
 | `fallback_level`                       | `string\|null`               | `null`             | 兜底层级名；`null` 时未命中路由归入「未分配」分组（可通过摘要端点 §3.1.6 获取）；非 null 则归入指定层级                                                                                |
@@ -1023,15 +1031,16 @@ const forge = createRouteForge({
 
 分级覆盖策略（非一刀切，按配置项性质区分）：
 
-| 配置项                         | 后端摘要端点             | 前端配置                     | 覆盖规则                                                                                                                                 |
-|--------------------------------|--------------------------|------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
-| `strict_mode` / `strict`       | `config.strict_mode`     | `strict`                     | **安全相关**：后端为权威值。前端不能放宽（后端 false 前端不能 true）也不能收紧（后端 true 前端不能 false）。后端未下发时前端默认 `false` |
-| `cache`                        | `levels[name].cache`     | `cache.ttl`                  | **性能相关**：后端为上限。前端可缩短（如后端 3600 前端设 1800）但不能延长。后端 `null`（不缓存）时前端也不缓存                           |
-| `endpoint_prefix` / `endpoint` | `config.endpoint_prefix` | `endpoint`                   | **连接相关**：前端 `endpoint` 默认值与后端 `endpoint_prefix` 对齐（默认 `'/_forge/routes'`），用户可覆盖                                 |
-| `levels`                       | `levels` 键列表          | `levels` 数组                | **发现相关**：前端未传 `levels` 时自动从摘要端点发现；显式传入时取与后端交集（前端不能声明后端不存在的层级）                             |
-| `eager`                        | `levels[name].load`      | `eager` 数组                 | **加载相关**：前端未传 `eager` 时自动取后端 `load: 'eager'` 的层级；显式传入时取并集（前端可额外预加载后端标记为 lazy 的层级）           |
-| `auth.*`                       | —                        | `auth.state` / `auth.levels` | **纯前端**：后端不下发登录态配置，完全由前端控制                                                                                         |
-| `interceptors.*`               | —                        | `interceptors`               | **纯前端**：后端不下发拦截器配置                                                                                                         |
+| 配置项                         | 后端摘要端点             | 前端配置                     | 覆盖规则                                                                                                                                         |
+|--------------------------------|--------------------------|------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+| `strict_mode` / `strict`       | `config.strict_mode`     | `strict`                     | **安全相关**：后端为权威值。前端不能放宽（后端 false 前端不能 true）也不能收紧（后端 true 前端不能 false）。后端未下发时前端默认 `false`         |
+| `cache`                        | `levels[name].cache`     | `cache.ttl`                  | **性能相关**：后端为上限。前端可缩短（如后端 3600 前端设 1800）但不能延长。后端 `null`（不缓存）时前端也不缓存                                   |
+| `endpoint_prefix` / `endpoint` | `config.endpoint_prefix` | `endpoint`                   | **连接相关**：前端 `endpoint` 默认值与后端 `endpoint_prefix` 对齐（默认 `'/_forge/routes'`），用户可覆盖                                         |
+| `url_prefix`                   | `config.url_prefix`      | —                            | **URL 构建相关**：后端为权威值。支持路径前缀（拼接在 `baseURL` 后）和完整 URL（含协议+域名，此时忽略 `baseURL`）。后端未下发或为空字符串时不拼接 |
+| `levels`                       | `levels` 键列表          | `levels` 数组                | **发现相关**：前端未传 `levels` 时自动从摘要端点发现；显式传入时取与后端交集（前端不能声明后端不存在的层级）                                     |
+| `eager`                        | `levels[name].load`      | `eager` 数组                 | **加载相关**：前端未传 `eager` 时自动取后端 `load: 'eager'` 的层级；显式传入时取并集（前端可额外预加载后端标记为 lazy 的层级）                   |
+| `auth.*`                       | —                        | `auth.state` / `auth.levels` | **纯前端**：后端不下发登录态配置，完全由前端控制                                                                                                 |
+| `interceptors.*`               | —                        | `interceptors`               | **纯前端**：后端不下发拦截器配置                                                                                                                 |
 
 摘要端点返回的 `config` 字段示例：
 
@@ -1039,7 +1048,8 @@ const forge = createRouteForge({
 {
   "config": {
     "strict_mode": false,
-    "endpoint_prefix": "/_forge/routes"
+    "endpoint_prefix": "/_forge/routes",
+    "url_prefix": ""
   }
 }
 ```
@@ -1121,7 +1131,7 @@ class ForgeError extends Error {
 | 测试维度 | 覆盖点                                                                                                                     |
 |----------|----------------------------------------------------------------------------------------------------------------------------|
 | 懒加载   | 隐式懒加载、显式 `load(level)`、并发去重、`invalidate` 失效                                                                |
-| 自动发现 | 摘要端点获取 `levels`、自动识别 `eager` 标记、`config` 字段分级覆盖逻辑                                                    |
+| 自动发现 | 摘要端点获取 `levels`、自动识别 `eager` 标记、`config` 字段分级覆盖逻辑、`url_prefix` 下发后拼接到路由 URL                 |
 | 缓存     | 三种 storage、TTL 优先级（后端 > 前端兜底）、跨层级隔离                                                                    |
 | 拦截器   | 多段串联、注册顺序执行、`onFulfilled`/`onRejected` 链、`eject`/`clear`、async 拦截器、单函数与元组两种声明形式             |
 | 调用     | 路由校验（参数缺失/路由名不存在/层级未声明）、路径参数填充、`parameter_defaults` 默认值填充、query/body 拼装、方法自动选取 |

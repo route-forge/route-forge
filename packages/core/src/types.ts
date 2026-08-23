@@ -50,6 +50,8 @@ export interface SummaryResponse {
   config: {
     strict_mode: boolean;
     endpoint_prefix: string;
+    /** 后端下发的 URL 前缀，生成 URL 时自动拼接到路由 URI 前面（SPEC §3.1.6） */
+    url_prefix?: string;
   };
   unassigned: Array<{
     name: string;
