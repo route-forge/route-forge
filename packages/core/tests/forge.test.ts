@@ -1003,3 +1003,245 @@ describe('hasRoute', () => {
     expect(forge.hasRoute('admin', 'users.show')).toBe(false);
   });
 });
+
+describe('api() smart param resolution', () => {
+  let originalFetch: typeof globalThis.fetch;
+  let capturedConfig: import('../src/types.js').RequestConfig | null;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    capturedConfig = null;
+  });
+  afterEach(() => {
+    (globalThis as any).fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  const summary = makeSummary({
+    config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
+  });
+
+  /** 创建 forge 并注册请求拦截器以捕获最终 config */
+  async function createForgeWithCapture(routes: Record<string, any>) {
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes,
+      },
+    });
+    // 覆写 fetch：对非路由加载请求返回 200（避免 api() 调用时得到 404）
+    const origFetch = globalThis.fetch;
+    (globalThis as any).fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const res = await (origFetch as any)(url, init);
+      // 路由加载端点已由 mockFull 处理；其他 URL（api 调用）返回 200
+      if (res.status === 404 && !url.startsWith('/_forge/routes')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true }),
+          text: async () => JSON.stringify({ success: true }),
+          headers: new Headers({ 'content-type': 'application/json' }),
+        } as any;
+      }
+      return res;
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    forge.interceptors.request.use((c) => {
+      capturedConfig = { ...c };
+      return c;
+    });
+    await forge.load('public');
+    return forge;
+  }
+
+  it('backward compat: flat path params + query object + body object', async () => {
+    const forge = await createForgeWithCapture({
+      'users.update': {
+        name: 'users.update',
+        uri: 'users/{user}',
+        methods: ['PUT'],
+        parameters: ['user'],
+      },
+    });
+    await forge.api('public', 'users.update', {
+      user: 42,
+      query: { include: 'posts' },
+      body: { name: 'Alice' },
+    });
+    expect(capturedConfig).not.toBeNull();
+    expect(capturedConfig!.url).toContain('/users/42');
+    expect(capturedConfig!.url).toContain('include=posts');
+    expect(capturedConfig!.body).toEqual({ name: 'Alice' });
+  });
+
+  it('conflict: query as string → treated as path param', async () => {
+    const forge = await createForgeWithCapture({
+      'search.show': {
+        name: 'search.show',
+        uri: 'search/{query}',
+        methods: ['GET'],
+        parameters: ['query'],
+      },
+    });
+    await forge.api('public', 'search.show', { query: 'keyword' });
+    expect(capturedConfig).not.toBeNull();
+    expect(capturedConfig!.url).toContain('/search/keyword');
+    expect(capturedConfig!.url).not.toContain('?');
+  });
+
+  it('conflict: query as object → treated as query string, path param missing → throws', async () => {
+    const forge = await createForgeWithCapture({
+      'search.show': {
+        name: 'search.show',
+        uri: 'search/{query}',
+        methods: ['GET'],
+        parameters: ['query'],
+      },
+    });
+    await expect(
+      forge.api('public', 'search.show', { query: { keyword: 'test' } }),
+    ).rejects.toThrow(MissingRouteParamError);
+  });
+
+  it('params explicit: overrides flat keys for path params', async () => {
+    const forge = await createForgeWithCapture({
+      'users.show': {
+        name: 'users.show',
+        uri: 'users/{user}',
+        methods: ['GET'],
+        parameters: ['user'],
+      },
+    });
+    await forge.api('public', 'users.show', {
+      params: { user: 1 },
+      user: 2, // 被 params 覆盖
+      query: { include: 'posts' },
+    });
+    expect(capturedConfig).not.toBeNull();
+    expect(capturedConfig!.url).toContain('/users/1');
+    expect(capturedConfig!.url).toContain('include=posts');
+  });
+
+  it('params + conflict: params provides path param, fixed key keeps original meaning', async () => {
+    const forge = await createForgeWithCapture({
+      'search.show': {
+        name: 'search.show',
+        uri: 'search/{query}',
+        methods: ['POST'],
+        parameters: ['query'],
+      },
+    });
+    await forge.api('public', 'search.show', {
+      params: { query: 'keyword' },
+      query: { page: 1 },
+      body: { detailed: true },
+    });
+    expect(capturedConfig).not.toBeNull();
+    // params.query → 替换 {query}
+    expect(capturedConfig!.url).toContain('/search/keyword');
+    // query 对象 → query string
+    expect(capturedConfig!.url).toContain('page=1');
+    // body → 请求体
+    expect(capturedConfig!.body).toEqual({ detailed: true });
+  });
+
+  it('conflict: body as string → treated as path param', async () => {
+    const forge = await createForgeWithCapture({
+      'items.create': {
+        name: 'items.create',
+        uri: 'items/{body}',
+        methods: ['GET'],
+        parameters: ['body'],
+      },
+    });
+    await forge.api('public', 'items.create', { body: 'special-id' });
+    expect(capturedConfig).not.toBeNull();
+    expect(capturedConfig!.url).toContain('/items/special-id');
+    expect(capturedConfig!.body).toBeUndefined();
+  });
+
+  it('conflict: headers as string → treated as path param', async () => {
+    const forge = await createForgeWithCapture({
+      'proxy.show': {
+        name: 'proxy.show',
+        uri: 'proxy/{headers}',
+        methods: ['GET'],
+        parameters: ['headers'],
+      },
+    });
+    await forge.api('public', 'proxy.show', { headers: 'custom-value' });
+    expect(capturedConfig).not.toBeNull();
+    expect(capturedConfig!.url).toContain('/proxy/custom-value');
+    // headers 未被设置（仅 Accept 默认）
+    expect(capturedConfig!.headers).toEqual({ Accept: 'application/json' });
+  });
+
+  it('backward compat: headers as object → treated as request headers', async () => {
+    const forge = await createForgeWithCapture({
+      'users.show': {
+        name: 'users.show',
+        uri: 'users/{user}',
+        methods: ['GET'],
+        parameters: ['user'],
+      },
+    });
+    await forge.api('public', 'users.show', {
+      user: 1,
+      headers: { 'X-Custom': 'value' },
+    });
+    expect(capturedConfig).not.toBeNull();
+    expect(capturedConfig!.headers).toEqual({
+      Accept: 'application/json',
+      'X-Custom': 'value',
+    });
+  });
+
+  it('params as path param name conflict: params key used for path params', async () => {
+    const forge = await createForgeWithCapture({
+      'items.show': {
+        name: 'items.show',
+        uri: 'items/{params}',
+        methods: ['GET'],
+        parameters: ['params'],
+      },
+    });
+    // params 作为固定 key 是路径参数的显式指定
+    // 如果路由有 {params} 路径参数，需要用 params 显式指定
+    await forge.api('public', 'items.show', {
+      params: { params: 'value1' },
+    });
+    expect(capturedConfig).not.toBeNull();
+    expect(capturedConfig!.url).toContain('/items/value1');
+  });
+
+  it('mixed: normal path params + conflict resolution + query/body', async () => {
+    const forge = await createForgeWithCapture({
+      'complex.show': {
+        name: 'complex.show',
+        uri: 'complex/{user}/{query}',
+        methods: ['POST'],
+        parameters: ['user', 'query'],
+      },
+    });
+    await forge.api('public', 'complex.show', {
+      user: 42,
+      query: 'search-term',
+      body: { filter: 'active' },
+      headers: { 'X-Token': 'abc' },
+    });
+    expect(capturedConfig).not.toBeNull();
+    // user 和 query 都是 string/number → 路径参数
+    expect(capturedConfig!.url).toContain('/complex/42/search-term');
+    // body 是对象 → 请求体
+    expect(capturedConfig!.body).toEqual({ filter: 'active' });
+    // headers 是对象 → 请求头
+    expect(capturedConfig!.headers).toEqual({
+      Accept: 'application/json',
+      'X-Token': 'abc',
+    });
+  });
+});

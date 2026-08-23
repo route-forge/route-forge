@@ -50,6 +50,23 @@ forge.invalidate('admin')                         // 失效缓存
 forge.interceptors.request.use(...)               // 拦截器管理
 ```
 
+### 参数智能解析
+
+`api()` 的参数支持智能消解：路径参数平铺传入，`query`/`body`/`headers` 为固定 key。当路径参数名与固定
+key 冲突时，`string|number` 值自动识别为路径参数，对象值按原定义处理。也可通过 `params`
+显式指定路径参数（优先级最高）：
+
+```ts
+// 冲突消解：query 为 string → 路径参数
+forge.api('search.show', { query: 'keyword' })
+
+// 显式 params：同时需要路径参数和 query string
+forge.api('search.show', {
+  params: { query: 'keyword' },
+  query: { page: 1 },
+})
+```
+
 ## 其他 composable
 
 ```ts

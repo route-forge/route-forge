@@ -127,6 +127,15 @@ await forge.load('admin')
 forge.invalidate('admin')
 ```
 
+参数支持智能消解：路径参数平铺传入，`query`/`body`/`headers` 为固定 key。路径参数名与固定 key 冲突时，
+`string|number` 值自动识别为路径参数，也可通过 `params` 显式指定：
+
+```ts
+// 路由: /search/{query}
+forge.api('admin', 'search.show', { query: 'keyword' })           // query → 路径参数
+forge.api('admin', 'search.show', { params: { query: 'keyword' }, query: { page: 1 } }) // 显式指定
+```
+
 #### Vue 3 集成
 
 ```ts

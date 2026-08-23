@@ -564,6 +564,51 @@ await forge.api('client', 'posts.update', {
 });
 ```
 
+##### 参数智能解析
+
+`forge.api()` 的第三参数支持四种数据类型：路径参数、查询参数（`query`）、请求体（`body`）、请求头（`headers`
+）。其中 `query`/`body`/`headers` 为固定 key，其余平铺 key 均视为路径参数。同时提供 `params` 固定 key
+用于显式指定路径参数。
+
+当路径参数名与 `query`/`body`/`headers` 冲突时（如路由为 `/search/{query}`），按以下规则智能消解：
+
+| 场景                             | 处理方式                                                 |
+|----------------------------------|----------------------------------------------------------|
+| `params` 显式指定                | 路径参数，优先级最高                                     |
+| 平铺 key 值为 `string \| number` | 智能识别为路径参数（含与 `query`/`body`/`headers` 同名） |
+| `query` 值为对象                 | 查询参数（原定义）                                       |
+| `body` 值为非 `string/number`    | 请求体（原定义）                                         |
+| `headers` 值为对象               | 请求头（原定义）                                         |
+
+```ts
+// 向后兼容：原有写法不变
+forge.api('admin', 'users.show', { user: 1, query: { include: 'posts' } })
+
+// 冲突消解：query 为 string → 自动识别为路径参数
+// 路由: /search/{query}
+forge.api('admin', 'search.show', { query: 'keyword' })
+// → URL: /search/keyword（无 query string）
+
+// 冲突消解：query 为对象 → 按原定义作为查询参数
+forge.api('admin', 'search.show', { query: { keyword: 'test' } })
+// → query string: ?keyword=test（路径参数 {query} 缺失，抛 MissingRouteParamError）
+
+// 显式 params：同时需要路径参数和 query string
+forge.api('admin', 'search.show', {
+  params: { query: 'keyword' },   // → 替换 {query}（params 优先）
+  query: { page: 1 },             // → query string（按原定义）
+  body: { detailed: true },       // → 请求体（按原定义）
+})
+// → URL: /search/keyword?page=1, body: { detailed: true }
+
+// params 也用于路径参数名与固定 key 冲突时的显式指定
+// 路由: /items/{body}
+forge.api('admin', 'items.show', {
+  params: { body: 'special-id' },  // → 替换 {body}
+  body: { filter: 'active' },      // → 请求体（按原定义）
+})
+```
+
 调用流程：
 
 > 设计要点：路由校验前置到拦截链之前，错误恢复从下一个拦截器继续

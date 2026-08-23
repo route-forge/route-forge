@@ -60,6 +60,32 @@ forge.route('public', 'users.show', { user: 1 })
 
 > `url_prefix` 为后端权威，前端不能覆盖。不下发或为空字符串时不影响 URL 生成。
 
+## 参数智能解析
+
+`forge.api()` 的第二参数支持四种数据类型：路径参数（平铺）、`query`（查询参数）、`body`（请求体）、`headers`
+（请求头）。同时提供 `params` 固定 key 用于显式指定路径参数。
+
+当路径参数名与 `query`/`body`/`headers` 冲突时，按类型智能消解：
+
+```ts
+// 向后兼容：原有写法不变
+forge.api('admin', 'users.show', { user: 1, query: { include: 'posts' } })
+
+// 冲突消解：query 为 string → 自动识别为路径参数
+// 路由: /search/{query}
+forge.api('admin', 'search.show', { query: 'keyword' })
+// → URL: /search/keyword
+
+// 显式 params：同时需要路径参数和 query string
+forge.api('admin', 'search.show', {
+  params: { query: 'keyword' },   // → 替换 {query}
+  query: { page: 1 },             // → query string
+  body: { detailed: true },       // → 请求体
+})
+```
+
+规则：`params` 优先 > 平铺 `string|number` → 路径参数 > 对象类型按原定义（`query`/`body`/`headers`）。
+
 ## 文档
 
 - 仓库主页: https://github.com/xyj2156/route-forge

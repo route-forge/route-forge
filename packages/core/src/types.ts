@@ -96,10 +96,24 @@ export interface ResponseData {
 
 /**
  * forge.api(level, name, params) 调用参数
+ *
+ * 参数解析规则（智能消解）：
+ *   1. `params` — 显式指定路径参数，优先级最高
+ *   2. 平铺的 string | number 值 — 作为路径参数（含与 query/body/headers 同名的 key）
+ *   3. `query` (对象) — 查询参数，序列化到 URL query string
+ *   4. `body` (非 string/number) — 请求体
+ *   5. `headers` (对象) — 自定义请求头
+ *
+ * 当路径参数名与 query/body/headers 冲突时：
+ *   - 值为 string | number → 智能识别为路径参数
+ *   - 同时提供 params 显式指定 → params 优先，固定 key 按原定义处理
  */
 export interface ApiCallParams {
   /** 路径参数：填充到 URI 模板的 {name} 占位符 */
   [paramName: string]: unknown;
+
+  /** 显式指定路径参数（优先级最高，解决路径参数名与 query/body/headers 冲突的场景） */
+  params?: Record<string, unknown>;
   /** 查询参数，序列化到 URL query string */
   query?: Record<string, unknown>;
   /** 请求体，按 method 决定是否发送 */
