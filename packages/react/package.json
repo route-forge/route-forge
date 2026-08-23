@@ -1,6 +1,6 @@
 {
   "name": "@route-forge/react",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Route Forge 的 React 集成：Provider + hooks（useForge/useForgeApi/useForgeLevel/useForgeRoute/useForgeByPrefix）",
   "license": "MIT",
   "author": "阿杰很厉害 <506907958@qq.com>",
