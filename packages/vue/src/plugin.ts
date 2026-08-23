@@ -5,9 +5,14 @@
  * 提供：
  *   - 全局属性 $forge（route() 工具）
  *   - inject symbol 注入 RouteForge 实例供 composable 使用
- *   - useForge() / useForge(level) 返回统一方法的 forge 实例
+ *   - useForge() / useForge(level) / useForge(level, prefix) 返回统一方法的 forge 实例
  *     • 不传 level：forge(level, name, params?) 直接调用
  *     • 传 level：forge(name, params?) 直接调用，自动绑定层级
+ *     • 传 level + prefix：forge(suffix, params?) 自动拼接 prefix
+ *
+ * 类型推断：
+ *   当 ForgeRouteMap 通过 codegen 或 module augmentation 定义时，
+ *   level / name / params 均自动推断，IDE 提供补全提示。
  */
 
 import type { App, InjectionKey, Plugin } from 'vue';
@@ -15,6 +20,12 @@ import { inject, reactive, readonly } from 'vue';
 import {
   type ApiCallParams,
   createRouteForge,
+  type ForgeApiParams,
+  type ForgeApiResponse,
+  type ForgeRouteName,
+  type InterceptorHandler,
+  type RequestConfig,
+  type ResponseData,
   type RouteForge,
   type RouteForgeOptions,
 } from '@route-forge/core';
@@ -23,38 +34,48 @@ export const FORGE_INJECTION_KEY: InjectionKey<RouteForge> = Symbol('route-forge
 
 export interface RouteForgePluginOptions extends RouteForgeOptions {}
 
+/** 只读拦截器管理器：仅暴露查询方法，隐藏 use/eject/clear */
+interface ReadOnlyInterceptorManager<TIn, TOut = TIn> {
+  readonly size: number;
+
+  forEach(fn: (handler: InterceptorHandler<TIn, TOut>) => void): void;
+}
+
 /**
- * forge 实例统一接口（传 / 不传 level 方法集一致）：
- *   .api() / .route() / .url() — 传 level 后自动绑定，无需重复传
- *   .load() / .invalidate() / .isLoaded() / .interceptors
- *
- * 直接调用签名因是否绑定 level 而异，见 ForgeCallable / BoundForgeCallable
+ * 共享方法集（level 已绑定时的方法签名）
+ * .api() / .route() / .url() — name 和 params 根据 ForgeRouteMap 自动推断
+ * .load() / .invalidate() / .isLoaded() / .interceptors
  */
-export interface ForgeMethods extends Omit<RouteForge, 'api' | 'route'> {
-  /** 调用 API；绑定层级后无需传 level */
-  api(level: string, name: string, params?: ApiCallParams): Promise<unknown>;
+export interface BoundForgeMethods<L extends string = string> {
+  interceptors: {
+    request: ReadOnlyInterceptorManager<RequestConfig>;
+    response: ReadOnlyInterceptorManager<ResponseData>;
+  };
 
-  api(name: string, params?: ApiCallParams): Promise<unknown>;
+  api(name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): Promise<ForgeApiResponse<L, ForgeRouteName<L>>>;
 
-  /** 生成 URL；绑定层级后无需传 level */
-  route(level: string, name: string, params?: Record<string, unknown>): string;
+  route(name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): string;
 
-  route(name: string, params?: Record<string, unknown>): string;
+  url(name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): string;
 
-  /** route() 语义别名；绑定层级后无需传 level */
-  url(level: string, name: string, params?: Record<string, unknown>): string;
+  load(level: string | string[]): Promise<void>;
 
-  url(name: string, params?: Record<string, unknown>): string;
+  invalidate(level?: string): void;
+
+  isLoaded(level?: string): boolean;
+}
+
+/** 已绑定 level — 直接调用无需 level，api/route/url 的 name 自动限定到该层级 */
+export interface BoundForgeTyped<L extends string> extends BoundForgeMethods<L> {
+  (name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): Promise<ForgeApiResponse<L, ForgeRouteName<L>>>;
 }
 
 /** 未绑定 level — 直接调用需要传 level */
-export interface ForgeInstance extends ForgeMethods {
+export interface ForgeInstanceTyped extends Omit<BoundForgeMethods<string>, 'api' | 'route' | 'url'> {
   (level: string, name: string, params?: ApiCallParams): Promise<unknown>;
-}
-
-/** 已绑定 level — 直接调用无需 level */
-export interface BoundForge extends ForgeMethods {
-  (name: string, params?: ApiCallParams): Promise<unknown>;
+  api(level: string, name: string, params?: ApiCallParams): Promise<unknown>;
+  route(level: string, name: string, params?: Record<string, unknown>): string;
+  url(level: string, name: string, params?: Record<string, unknown>): string;
 }
 
 export function createRouteForgePlugin(options: RouteForgePluginOptions): Plugin<[]> {
@@ -85,12 +106,18 @@ export function createRouteForgePlugin(options: RouteForgePluginOptions): Plugin
  * const forge = useForge('admin')
  * forge('users.show', { user: 1 })
  * forge.api('users.show')
- * forge.route('users.show')
- * forge.url('users.show')
+ *
+ * @example
+ * // 绑定层级 + 前缀 — 路由名自动拼接
+ * const forge = useForge('admin', 'users')
+ * forge('show', { user: 1 })           // → forge.api('admin', 'users.show', ...)
+ * forge.api('index')                   // → forge.api('admin', 'users.index')
+ * forge.route('show', { user: 1 })     // → forge.route('admin', 'users.show', ...)
  */
-export function useForge(level: string): BoundForge;
-export function useForge(): ForgeInstance;
-export function useForge(level?: string): ForgeInstance | BoundForge {
+export function useForge<L extends string>(level: L, prefix: string): BoundForgeTyped<L>;
+export function useForge<L extends string>(level: L): BoundForgeTyped<L>;
+export function useForge(): ForgeInstanceTyped;
+export function useForge(level?: string, prefix?: string): ForgeInstanceTyped | BoundForgeTyped<string> {
   const forge = inject(FORGE_INJECTION_KEY);
   if (!forge) {
     throw new Error(
@@ -99,23 +126,26 @@ export function useForge(level?: string): ForgeInstance | BoundForge {
   }
 
   if (level !== undefined) {
+    const join = prefix
+      ? (suffix: string) => suffix ? `${prefix}.${suffix}` : prefix
+      : (suffix: string) => suffix;
     const callable = (name: string, params?: ApiCallParams) =>
-      forge.api(level, name, params);
-    Object.assign(callable, {
-      api: (name: string, params?: ApiCallParams) => forge.api(level, name, params),
-      route: (name: string, params?: Record<string, unknown>) => forge.route(level, name, params),
-      url: (name: string, params?: Record<string, unknown>) => forge.route(level, name, params),
+      forge.api(level, join(name), params);
+    defineImmutableProps(callable, {
+      api: (name: string, params?: ApiCallParams) => forge.api(level, join(name), params),
+      route: (name: string, params?: Record<string, unknown>) => forge.route(level, join(name), params),
+      url: (name: string, params?: Record<string, unknown>) => forge.route(level, join(name), params),
       load: forge.load.bind(forge),
       invalidate: forge.invalidate.bind(forge),
       isLoaded: forge.isLoaded.bind(forge),
       interceptors: forge.interceptors,
     });
-    return callable as BoundForge;
+    return callable as unknown as BoundForgeTyped<string>;
   }
 
   const callable = (lvl: string, name: string, params?: ApiCallParams) =>
     forge.api(lvl, name, params);
-  Object.assign(callable, {
+  defineImmutableProps(callable, {
     api: forge.api.bind(forge),
     route: forge.route.bind(forge),
     url: forge.url.bind(forge),
@@ -124,7 +154,25 @@ export function useForge(level?: string): ForgeInstance | BoundForge {
     isLoaded: forge.isLoaded.bind(forge),
     interceptors: forge.interceptors,
   });
-  return callable as ForgeInstance;
+  return callable as ForgeInstanceTyped;
 }
 
 export { readonly, reactive };
+
+/**
+ * 以不可变、不可枚举、不可重配置的方式将属性挂载到目标对象上。
+ * 相比 Object.assign 更安全——外部无法通过遍历/删除/重写篡改这些方法。
+ * 对象类型的值会浅冻结（Object.freeze），防止内部键被增删改。
+ */
+function defineImmutableProps<T extends object>(target: T, props: Record<string, unknown>): T {
+  for (const key of Object.keys(props)) {
+    const val = props[key];
+    Object.defineProperty(target, key, {
+      value: val !== null && typeof val === 'object' ? Object.freeze(val) : val,
+      writable: false,
+      enumerable: false,
+      configurable: false,
+    });
+  }
+  return target;
+}

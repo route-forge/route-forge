@@ -33,4 +33,8 @@ export type {
   RouteForge,
   RouteForgeOptions,
   SummaryResponse,
+  ForgeRouteMap,
+  ForgeRouteName,
+  ForgeApiParams,
+  ForgeApiResponse,
 } from './types.js';

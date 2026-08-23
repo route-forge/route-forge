@@ -14,35 +14,58 @@ function makeRoute(overrides: Partial<RouteMeta> = {}): RouteMeta {
 
 describe('generateRouteTypes', () => {
   it('emits method/params/response fields for GET route', () => {
-    const routes: Record<string, RouteMeta> = {
-      'user.show': makeRoute({ name: 'user.show' }),
+    const routesByLevel: Record<string, Record<string, RouteMeta>> = {
+      public: {
+        'user.show': makeRoute({ name: 'user.show' }),
+      },
     };
-    const dts = generateRouteTypes(routes);
+    const dts = generateRouteTypes(routesByLevel);
     expect(dts).toContain('method: "GET"');
     expect(dts).toContain('id: string | number');
     expect(dts).toContain('response: unknown');
-    expect(dts).toContain('export interface ForgeRoutes');
+    expect(dts).toContain('export interface ForgeRouteMap');
   });
 
   it('adds body field for POST route', () => {
-    const routes: Record<string, RouteMeta> = {
-      'user.create': makeRoute({
-        name: 'user.create',
-        uri: 'users',
-        methods: ['POST'],
-        parameters: [],
-      }),
+    const routesByLevel: Record<string, Record<string, RouteMeta>> = {
+      public: {
+        'user.create': makeRoute({
+          name: 'user.create',
+          uri: 'users',
+          methods: ['POST'],
+          parameters: [],
+        }),
+      },
     };
-    const dts = generateRouteTypes(routes);
+    const dts = generateRouteTypes(routesByLevel);
     expect(dts).toContain('body: unknown');
   });
 
   it('does not add body field for GET route', () => {
-    const routes: Record<string, RouteMeta> = {
-      'user.show': makeRoute({ name: 'user.show' }),
+    const routesByLevel: Record<string, Record<string, RouteMeta>> = {
+      public: {
+        'user.show': makeRoute({ name: 'user.show' }),
+      },
     };
-    const dts = generateRouteTypes(routes);
+    const dts = generateRouteTypes(routesByLevel);
     expect(dts).not.toContain('body:');
+  });
+
+  it('groups routes by level', () => {
+    const routesByLevel: Record<string, Record<string, RouteMeta>> = {
+      admin: {
+        'users.show': makeRoute({ name: 'users.show' }),
+      },
+      public: {
+        'login.show': makeRoute({ name: 'login.show', uri: 'login', parameters: [] }),
+      },
+    };
+    const dts = generateRouteTypes(routesByLevel);
+    expect(dts).toContain('"admin"');
+    expect(dts).toContain('"public"');
+    expect(dts).toContain('"users.show"');
+    expect(dts).toContain('"login.show"');
+    expect(dts).toContain('export interface ForgeRouteMap');
   });
 });
 

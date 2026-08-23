@@ -150,9 +150,16 @@ app.mount('#app')
   const forge = useForge('admin')
   const user = await forge('users.show', { user: 1 })
 
-  // 带 loading / error 状态的 API 调用
-  const { call, pending, error } = useForgeApi()
-  const { data } = await call('admin', 'users.show', { user: 1 })
+  // 绑定层级 + 前缀 — 路由名自动拼接
+  const userForge = useForge('admin', 'users')
+  const user2 = await userForge('show', { user: 1 })  // → admin.users.show
+
+  // 带 loading / error 状态的 API 调用（同样支持 level 绑定和前缀）
+  const { call, pending, error } = useForgeApi('admin')
+  const { data } = await call('users.show', { user: 1 })
+
+  const { call: callUser } = useForgeApi('admin', 'users')
+  const { data: user3 } = await callUser('show', { user: 1 })
 </script>
 
 <template>
@@ -168,10 +175,13 @@ app.mount('#app')
 php artisan route:forge:types --out=../frontend/src/types/forge-routes.d.ts
 ```
 
+生成的类型文件包含二级映射 `ForgeRouteMap`（level → routeName → meta），通过 TypeScript 模块增强自动生效：
+
 ```ts
-// 生成后，路由名错拼在编译期即报错
-forge.api('admin', 'users.show', { user: 123 })  // ✅ OK
+// 生成后，路由名错拼在编译期即报错，参数类型自动推断
+forge.api('admin', 'users.show', { user: 123 })  // ✅ OK — 'users.show' 自动补全，{ user } 类型校验
 forge.api('admin', 'users.sho', { user: 123 })   // ❌ TS Error: 路由名不存在
+forge.api('admin', 'users.show', { uid: 123 })   // ❌ TS Error: 参数名应为 user
 ```
 
 ## Adapter 适配
