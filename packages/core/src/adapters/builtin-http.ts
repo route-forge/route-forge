@@ -33,6 +33,38 @@ function isPassthroughBody(body: unknown): boolean {
   );
 }
 
+/**
+ * 判断错误是否为请求取消错误（AbortSignal 触发）
+ */
+function isAbortError(err: unknown): boolean {
+  const e = err as { name?: string } | null;
+  return !!e && e.name === 'AbortError';
+}
+
+/**
+ * 合并多个 AbortSignal：任一 signal abort 即返回合并后的 signal abort。
+ * 优先使用 AbortSignal.any（Node 20.3+ / 现代浏览器），否则回退到手动监听。
+ */
+function combineSignals(...signals: (AbortSignal | undefined)[]): AbortSignal | undefined {
+  const valid = signals.filter((s): s is AbortSignal => !!s);
+  if (valid.length === 0) return undefined;
+  if (valid.length === 1) return valid[0];
+  // AbortSignal.any 可用时直接使用（Node 20.3+ / 现代浏览器）
+  if (typeof AbortSignal !== 'undefined' && typeof (AbortSignal as any).any === 'function') {
+    return (AbortSignal as any).any(valid);
+  }
+  // 回退：手动构造 AbortController，监听任一 signal abort
+  const controller = new AbortController();
+  for (const s of valid) {
+    if (s.aborted) {
+      controller.abort(s.reason);
+      return controller.signal;
+    }
+    s.addEventListener('abort', () => controller.abort(s.reason), { once: true });
+  }
+  return controller.signal;
+}
+
 export function createBuiltinHttp(forgeInterceptors?: {
   request: InterceptorManager<RequestConfig, RequestConfig>;
   response: InterceptorManager<ResponseData, unknown>;
@@ -45,10 +77,13 @@ export function createBuiltinHttp(forgeInterceptors?: {
     const finalConfig = await runRequestInterceptors(requestMgr, config);
 
     // 2. 超时控制：timeout > 0 时用 AbortSignal.timeout
-    const signal: AbortSignal | undefined =
+    //    若同时有用户 signal，合并两者（任一 abort 即取消请求）
+    const signal = combineSignals(
+      finalConfig.signal,
       finalConfig.timeout && finalConfig.timeout > 0
         ? AbortSignal.timeout(finalConfig.timeout)
-        : undefined;
+        : undefined,
+    );
 
     // 3. paramsSerializer：自定义 query 序列化
     let url = finalConfig.url;
@@ -81,10 +116,12 @@ export function createBuiltinHttp(forgeInterceptors?: {
     }
 
     // 5. 调用 fetch（网络层错误转 NetworkError，便于独立使用 adapter 时错误语义一致）
+    //    请求取消（AbortError）不包装，保留原始错误以便上层转换为 RequestAbortedError
     let res: Response;
     try {
       res = await fetch(url, fetchInit);
     } catch (e) {
+      if (isAbortError(e)) throw e;
       throw new NetworkError(
         e instanceof Error ? e.message : String(e),
         finalConfig.route,

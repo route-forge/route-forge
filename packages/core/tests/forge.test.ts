@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRouteForge, MissingRouteParamError, UnknownRouteError } from '../src/index.js';
+import {
+  createRouteForge,
+  MissingRouteParamError,
+  RequestAbortedError,
+  UnknownLevelError,
+  UnknownRouteError,
+} from '../src/index.js';
 import type { LevelRoutesResponse, SummaryResponse } from '../src/types.js';
 
 // Helper: 模拟摘要端点响应
@@ -1243,5 +1249,233 @@ describe('api() smart param resolution', () => {
       Accept: 'application/json',
       'X-Token': 'abc',
     });
+  });
+});
+
+describe('AbortSignal request cancellation', () => {
+  let originalFetch: typeof globalThis.fetch;
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+  afterEach(() => {
+    (globalThis as any).fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  const summary = makeSummary({
+    config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
+  });
+
+  it('signal is passed to fetch init', async () => {
+    const calls = mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'user.show': {
+            name: 'user.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    await forge.load('public');
+
+    const controller = new AbortController();
+    void forge.api('public', 'user.show', { user: 1, signal: controller.signal }).catch(() => {
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const apiCall = calls.find((c) => c.url.includes('/users/1'));
+    expect(apiCall).toBeDefined();
+    expect(apiCall!.init?.signal).toBeDefined();
+  });
+
+  it('pre-aborted signal throws RequestAbortedError without calling fetch', async () => {
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'user.show': {
+            name: 'user.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    await forge.load('public');
+
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      forge.api('public', 'user.show', { user: 1, signal: controller.signal }),
+    ).rejects.toThrow(RequestAbortedError);
+  });
+});
+
+describe('unassigned virtual tier', () => {
+  let originalFetch: typeof globalThis.fetch;
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+  afterEach(() => {
+    (globalThis as any).fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it('summary with unassigned routes exposes "unassigned" level', async () => {
+    const summary = makeSummary({
+      config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
+      unassigned: [
+        {
+          name: 'debug.info',
+          uri: '_debug/info',
+          methods: ['GET', 'HEAD'],
+          parameters: [],
+        },
+      ],
+    });
+    const calls = mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'user.show': {
+            name: 'user.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public', 'unassigned'],  // 显式包含 unassigned
+      adapter: 'builtin',
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // load('unassigned') 应成功，且不发 HTTP 请求
+    await forge.load('unassigned');
+    const unassignedFetch = calls.find((c) => c.url.includes('/unassigned'));
+    expect(unassignedFetch).toBeUndefined();
+
+    // getRoutes('unassigned') 应返回摘要中的路由
+    const routes = forge.getRoutes('unassigned');
+    expect(routes['debug.info']).toBeDefined();
+    expect(routes['debug.info'].uri).toBe('_debug/info');
+
+    // route('unassigned', ...) 应正确生成 URL
+    const url = forge.route('unassigned', 'debug.info');
+    expect(url).toContain('_debug/info');
+
+    // hasRoute 应返回 true
+    expect(forge.hasRoute('unassigned', 'debug.info')).toBe(true);
+  });
+
+  it('api("unassigned", ...) calls the correct URL', async () => {
+    const summary = makeSummary({
+      config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
+      unassigned: [
+        {
+          name: 'debug.info',
+          uri: '_debug/info',
+          methods: ['GET', 'HEAD'],
+          parameters: [],
+        },
+      ],
+    });
+    const calls = mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'user.show': {
+            name: 'user.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public', 'unassigned'],  // 显式包含 unassigned
+      adapter: 'builtin',
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    void forge.api('unassigned', 'debug.info').catch(() => {
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const apiCall = calls.find((c) => c.url.includes('_debug/info'));
+    expect(apiCall).toBeDefined();
+  });
+
+  it('empty unassigned array does not expose "unassigned" level', async () => {
+    const summary = makeSummary({
+      config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
+      unassigned: [],
+    });
+    mockFull(summary, {});
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await expect(forge.load('unassigned')).rejects.toThrow(UnknownLevelError);
+  });
+
+  it('explicit levels including "unassigned" is preserved', async () => {
+    const summary = makeSummary({
+      config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
+      unassigned: [
+        {
+          name: 'debug.info',
+          uri: '_debug/info',
+          methods: ['GET', 'HEAD'],
+          parameters: [],
+        },
+      ],
+    });
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'user.show': {
+            name: 'user.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public', 'unassigned'],
+      adapter: 'builtin',
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await forge.load('unassigned');
+    expect(forge.hasRoute('unassigned', 'debug.info')).toBe(true);
   });
 });

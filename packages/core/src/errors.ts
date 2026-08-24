@@ -108,3 +108,15 @@ export class HTTPError extends ForgeError {
     });
   }
 }
+
+/** RF_FE_009：请求被 AbortSignal 取消 */
+export class RequestAbortedError extends ForgeError {
+  constructor(route?: string, level?: string, cause?: unknown) {
+    super(`Request aborted${route ? ` for route "${route}"` : ''}`, {
+      code: 'RF_FE_009',
+      route,
+      level,
+      cause,
+    });
+  }
+}

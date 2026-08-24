@@ -48,6 +48,7 @@ export async function wrapAxiosAdapter(): Promise<ResolvedAdapter | null> {
         data: config.body,
         // axios 会处理 baseURL/transformRequest 等 defaults；timeout 透传保证超时语义与 builtin 一致
         timeout: config.timeout,
+        signal: config.signal,  // 请求取消信号（AbortSignal）
       });
 
       return {

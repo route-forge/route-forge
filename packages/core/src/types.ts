@@ -82,6 +82,8 @@ export interface RequestConfig {
   timeout?: number;
   /** 自定义 query 序列化函数 */
   paramsSerializer?: (params: Record<string, unknown>) => string;
+  /** 请求取消信号（AbortSignal），用于取消已发出的请求 */
+  signal?: AbortSignal;
 }
 
 /**
@@ -135,6 +137,14 @@ export interface ApiCallParams {
    * 单次请求超时覆盖（毫秒）；不传时使用 createRouteForge({ timeout }) 全局值
    */
   timeout?: number;
+  /**
+   * 请求取消信号（AbortSignal）；调用 AbortController.abort() 即可取消请求
+   * @example
+   * const controller = new AbortController();
+   * forge.api('admin', 'users.index', { signal: controller.signal });
+   * controller.abort(); // 取消请求
+   */
+  signal?: AbortSignal;
 }
 
 /**

@@ -26,6 +26,7 @@ import {
   HTTPError,
   MissingRouteParamError,
   NetworkError,
+  RequestAbortedError,
   UnknownLevelError,
   UnknownRouteError,
 } from './errors.js';
@@ -43,6 +44,12 @@ import type {
 
 const DEFAULT_TIMEOUT = 30_000;
 const DEFAULT_CACHE_TTL = 3600;
+
+/**
+ * 后端摘要端点返回的未分配层级路由，前端作为虚拟层级 "unassigned" 消费
+ * @see .docs/SPEC.md §3.1.6
+ */
+const UNASSIGNED_LEVEL = 'unassigned';
 
 export function createRouteForge(options: RouteForgeOptions): RouteForge {
   if (!options.endpoint) throw new TypeError('options.endpoint is required');
@@ -70,6 +77,12 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   let effectiveStrict = explicitStrict;
   let effectiveEndpoint = explicitEndpoint;
   let effectiveUrlPrefix = '';  // 后端下发的 URL 前缀，默认为空
+
+  // 未分配层级路由：来自摘要端点的 unassigned 字段，前端作为虚拟层级 "unassigned" 消费
+  // @see .docs/SPEC.md §3.1.6
+  let summaryUnassigned: SummaryResponse['unassigned'] | undefined;
+  // 后端是否将 unassigned 作为真实层级注册（在 levels 中）；若是则走正常 HTTP 拉取，不走虚拟层级
+  let backendHasUnassignedLevel = false;
 
   // 拉取摘要端点（用于 strict_mode / endpoint / levels / eager 自动发现）
   const summaryPromise = (async (): Promise<SummaryResponse | null> => {
@@ -134,9 +147,23 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
 
     // 3. levels 取交集或自动发现
     const backendLevels = Object.keys(summary.levels);
+
+    // 3a. 捕获摘要端点的 unassigned 字段，作为虚拟层级 "unassigned" 消费（SPEC §3.1.6）
+    // 仅当后端未将 unassigned 作为真实层级注册时才启用虚拟层级
+    backendHasUnassignedLevel = backendLevels.includes(UNASSIGNED_LEVEL);
+    if (Array.isArray(summary.unassigned) && summary.unassigned.length > 0 && !backendHasUnassignedLevel) {
+      summaryUnassigned = summary.unassigned;
+    }
+
+    // 可用层级 = 后端真实层级 + 虚拟 unassigned 层级（若有未分配路由）
+    const availableLevels = backendLevels.slice();
+    if (summaryUnassigned && !backendHasUnassignedLevel) {
+      availableLevels.push(UNASSIGNED_LEVEL);
+    }
+
     if (explicitLevels && explicitLevels.length > 0) {
-      const intersection = explicitLevels.filter((l) => backendLevels.includes(l));
-      const removed = explicitLevels.filter((l) => !backendLevels.includes(l));
+      const intersection = explicitLevels.filter((l) => availableLevels.includes(l));
+      const removed = explicitLevels.filter((l) => !availableLevels.includes(l));
       if (removed.length > 0) {
         console.warn(
           `[route-forge] levels not in backend summary and dropped: ${removed.join(', ')}`,
@@ -144,7 +171,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       }
       effectiveLevels = intersection;
     } else {
-      effectiveLevels = backendLevels;
+      effectiveLevels = availableLevels;
     }
 
     // 4. eager：未传时取后端 load:'eager' 层级；显式传入时取并集（SPEC §5.3）
@@ -269,6 +296,15 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
 
     const p = (async () => {
       try {
+        // 虚拟层级 unassigned：直接从摘要数据构建响应，不发 HTTP 请求（SPEC §3.1.6）
+        if (level === UNASSIGNED_LEVEL && !backendHasUnassignedLevel && summaryUnassigned) {
+          const routes: Record<string, RouteMeta> = {};
+          for (const r of summaryUnassigned) {
+            routes[r.name] = { ...r, level: UNASSIGNED_LEVEL };
+          }
+          cache.set({ level: UNASSIGNED_LEVEL, routes, cache: null });
+          return;
+        }
         const resp = await fetchLevel(level);
         cache.set(resp);
       } finally {
@@ -362,7 +398,19 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   }
 
   async function doApiCall(meta: RouteMeta, params: ApiCallParams): Promise<unknown> {
-    const { pathParams, query, body, headers, timeout: perCallTimeout } = resolveApiParams(params);
+    const {
+      pathParams,
+      query,
+      body,
+      headers,
+      timeout: perCallTimeout,
+      signal,
+    } = resolveApiParams(params);
+
+    // 请求前检查：signal 已 abort 则直接抛错，不发请求
+    if (signal?.aborted) {
+      throw new RequestAbortedError(meta.name, meta.level, signal.reason);
+    }
 
     const method = pickMethod(meta);
     const urlWithQuery = appendQuery(buildRequestUrl(meta, pathParams), query);
@@ -375,6 +423,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       body,
       params: pathParams,
       timeout: perCallTimeout ?? timeout,
+      signal,
       meta,
     };
 
@@ -385,6 +434,11 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     const finalConfig = adp.runsInterceptors
       ? config
       : await runRequestInterceptors(requestInterceptors, config);
+
+    // 拦截链后再次检查：拦截器可能修改了 signal 或已 abort
+    if (finalConfig.signal?.aborted) {
+      throw new RequestAbortedError(meta.name, meta.level, finalConfig.signal.reason);
+    }
 
     // 6. adapter 调用 → 7/8 的错误转换 + 响应拦截链
     // HTTP 非 2xx 转 HTTPError；底层网络错误（非 ForgeError）转 NetworkError
@@ -411,6 +465,10 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
         (err) => {
           // 已经是 ForgeError（如拦截器内重新抛的）→ 原样抛
           if (err instanceof ForgeError) throw err;
+          // 请求被取消 → 转 RequestAbortedError
+          if (isAbortError(err, finalConfig.signal)) {
+            throw new RequestAbortedError(meta.name, meta.level, err);
+          }
           throw new NetworkError(
             err instanceof Error ? err.message : String(err),
             meta.name,
@@ -541,6 +599,7 @@ function resolveApiParams(input: ApiCallParams): {
   body?: unknown;
   headers?: Record<string, string>;
   timeout?: number;
+  signal?: AbortSignal;
 } {
   const {
     params: explicitParams,
@@ -548,6 +607,7 @@ function resolveApiParams(input: ApiCallParams): {
     body: rawBody,
     headers: rawHeaders,
     timeout: perCallTimeout,
+    signal,
     ...flatRest
   } = input;
 
@@ -595,7 +655,23 @@ function resolveApiParams(input: ApiCallParams): {
     }
   }
 
-  return { pathParams, query, body, headers, timeout: perCallTimeout };
+  return { pathParams, query, body, headers, timeout: perCallTimeout, signal };
+}
+
+/**
+ * 判断错误是否为请求取消错误（AbortSignal 触发）
+ * 兼容 fetch 的 DOMException AbortError 与 axios 的 CanceledError
+ */
+function isAbortError(err: unknown, signal?: AbortSignal): boolean {
+  // signal 已 abort → 无论错误类型，均视为取消
+  if (signal?.aborted) return true;
+  const e = err as { name?: string; code?: string } | null;
+  if (!e) return false;
+  // fetch 取消抛 DOMException (name === 'AbortError')
+  if (e.name === 'AbortError') return true;
+  // axios 取消抛 CanceledError (code === 'ERR_CANCELED')
+  if (e.code === 'ERR_CANCELED') return true;
+  return false;
 }
 
 // 显式重导出，便于业务代码按需导入工具件

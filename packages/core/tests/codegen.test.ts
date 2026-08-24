@@ -1,6 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { generateRouteTypes, parseArgs } from '../src/codegen/index.js';
-import type { RouteMeta } from '../src/types.js';
+import { generateRouteTypes, main as codegenMain, parseArgs } from '../src/codegen/index.js';
+import type { RouteMeta, SummaryResponse } from '../src/types.js';
+
+// Mock fs for codegen main tests
+let fsWrittenContent = '';
+vi.mock('node:fs/promises', () => ({
+  mkdir: vi.fn(async () => {
+  }),
+  writeFile: vi.fn(async (_p: string, content: string) => {
+    fsWrittenContent = content;
+  }),
+}));
 
 function makeRoute(overrides: Partial<RouteMeta> = {}): RouteMeta {
   return {
@@ -121,5 +131,101 @@ describe('parseArgs', () => {
 
   it('exits with error when --out missing', () => {
     expect(() => parseArgs(['--endpoint', 'http://x'])).toThrow(/exit:1/);
+  });
+});
+
+describe('codegen main with unassigned routes', () => {
+  let originalFetch: typeof globalThis.fetch;
+  let errSpy: ReturnType<typeof vi.spyOn>;
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    fsWrittenContent = '';
+    errSpy = vi.spyOn(console, 'error').mockImplementation(() => {
+    });
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {
+    });
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {
+    });
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {
+      throw new Error('exit:' + code);
+    });
+  });
+
+  afterEach(() => {
+    (globalThis as any).fetch = originalFetch;
+    errSpy.mockRestore();
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
+    exitSpy.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it('includes unassigned routes in generated types', async () => {
+    const summary: SummaryResponse = {
+      levels: {
+        public: { description: 'public', load: 'lazy', cache: 300, route_count: 1 },
+      },
+      config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
+      unassigned: [
+        {
+          name: 'debug.info',
+          uri: '_debug/info',
+          methods: ['GET', 'HEAD'],
+          parameters: [],
+        },
+      ],
+    };
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url === '/_forge/routes') {
+        const body = JSON.stringify(summary);
+        return {
+          ok: true, status: 200,
+          json: async () => summary,
+          text: async () => body,
+          headers: new Headers({ 'content-type': 'application/json' }),
+        } as any;
+      }
+      if (url.startsWith('/_forge/routes/')) {
+        const level = url.slice('/_forge/routes/'.length);
+        if (level === 'public') {
+          const lr = {
+            level: 'public',
+            routes: {
+              'user.show': {
+                name: 'user.show',
+                uri: 'users/{user}',
+                methods: ['GET'],
+                parameters: ['user'],
+              },
+            },
+          };
+          const body = JSON.stringify(lr);
+          return {
+            ok: true, status: 200,
+            json: async () => lr,
+            text: async () => body,
+            headers: new Headers({ 'content-type': 'application/json' }),
+          } as any;
+        }
+      }
+      return {
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+        text: async () => '',
+        headers: new Headers(),
+      } as any;
+    });
+
+    await codegenMain(['--endpoint', '/_forge/routes', '--out', 'test.d.ts']);
+
+    expect(fsWrittenContent).toContain('"unassigned"');
+    expect(fsWrittenContent).toContain('"debug.info"');
+    expect(fsWrittenContent).toContain('"public"');
+    expect(fsWrittenContent).toContain('"user.show"');
   });
 });

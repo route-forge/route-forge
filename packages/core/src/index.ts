@@ -17,6 +17,7 @@ export {
   InvalidInterceptorReturnError,
   NetworkError,
   HTTPError,
+  RequestAbortedError,
 } from './errors.js';
 
 export type {

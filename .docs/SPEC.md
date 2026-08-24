@@ -349,6 +349,12 @@ GET /_forge/routes   # 返回所有层级摘要 + 全局配置
   时，所有未分配层级的命名路由列表。包含完整的路由元信息（name/uri/methods/parameters/parameter_defaults），前端可按需加载和调用。fallback_level
   非 null 时此字段为空数组。
 
+> 前端处理：前端将 `unassigned` 字段作为虚拟层级 `"unassigned"` 消费。当摘要端点返回非空的
+> `unassigned` 数组时，前端自动将其加入可用层级列表，允许通过 `forge.load('unassigned')` /
+> `forge.api('unassigned', name)` / `forge.route('unassigned', name)`
+> 调用未分配层级的路由。虚拟层级的路由数据直接来自摘要端点，无需额外的 HTTP 请求。若后端将 `unassigned`
+> 作为真实层级注册（在 `levels` 中），则前端走正常 HTTP 拉取流程，不走虚拟层级。
+
 摘要端点同样受 `cache_driver` 控制缓存，TTL 取所有层级中最大的 `cache` 值；若所有层级均为
 `null` 则不缓存。
 
@@ -541,6 +547,8 @@ await forge.load(['client', 'manage']);
 - 调用 `forge.invalidate(level?)` 手动失效：传参失效指定层级，不传则失效全部。
 - `forge.isLoaded(level?)` 检查缓存状态：传参检查指定层级是否已加载，不传检查全部已声明层级。
 - `storage: 'localStorage'` 时，跨会话保留路由表；`sessionStorage` 仅当前标签页有效；`memory` 重载即丢。
+- 虚拟层级 `unassigned`：路由数据直接来自摘要端点（不发独立 HTTP 请求），缓存条目在
+  `forge.load('unassigned')` 时从已获取的摘要数据构建，TTL 遵循摘要端点响应的 `cache` 字段。
 
 #### 4.1.3 通过层级 + 路由名调用 API（核心 API）
 
@@ -609,6 +617,37 @@ forge.api('admin', 'items.show', {
 })
 ```
 
+##### 请求取消（AbortSignal）
+
+`forge.api()` 支持通过 `signal` 参数取消请求，适用于组件卸载时清理未完成的请求、避免竞态条件等场景：
+
+```ts
+const controller = new AbortController();
+
+// 发起请求，传入 signal
+const promise = forge.api('admin', 'users.index', { signal: controller.signal });
+
+// 取消请求
+controller.abort();
+
+// promise 将 reject 为 RequestAbortedError (code: RF_FE_009)
+try {
+  await promise;
+} catch (e) {
+  if (e instanceof RequestAbortedError) {
+    console.log('请求已取消');
+  }
+}
+```
+
+取消行为说明：
+
+- 若 `signal` 在调用 `forge.api()` 前已 abort，直接抛出 `RequestAbortedError`，不发请求
+- 若请求已发出后 abort，底层 fetch/axios 取消请求，抛出 `AbortError`/`CanceledError`，上层转换为
+  `RequestAbortedError`
+- `signal` 与 `timeout` 同时存在时，任一触发均取消请求（builtin adapter 内部合并两个 signal）
+- 拦截器可通过修改 `config.signal` 替换或移除取消信号
+
 调用流程：
 
 > 设计要点：路由校验前置到拦截链之前，错误恢复从下一个拦截器继续
@@ -673,6 +712,8 @@ type RequestConfig = {
     body?: unknown;           // 请求体（已序列化前）
     params: Record<string, unknown>;  // 已填入路径的参数
     meta: RouteMeta;          // 路由元信息（uri/methods/parameters 等）
+  timeout?: number;         // 单次请求超时覆盖（毫秒）
+  signal?: AbortSignal;     // 请求取消信号
 };
 
 // 响应拦截器接收的数据对象（首段 onFulfilled 接收完整 ResponseData，后续段接收上一段返回值）
@@ -1143,6 +1184,7 @@ const forge = createRouteForge({
 | `InvalidInterceptorReturnError` | `RF_FE_006` | 请求拦截器返回非 `RequestConfig`           |
 | `NetworkError`                  | `RF_FE_007` | adapter 抛出的网络错误（DNS、连接超时等）  |
 | `HTTPError`                     | `RF_FE_008` | HTTP 非 2xx 且未被 `onRejected` 拦截器恢复 |
+| `RequestAbortedError`           | `RF_FE_009` | 请求被 `AbortSignal` 取消                  |
 
 ### 6.3 错误对象结构
 
