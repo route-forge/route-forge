@@ -24,6 +24,7 @@ import {
   type ForgeApiResponse,
   type ForgeRouteName,
   type InterceptorHandler,
+  type LoadingChangeCallback,
   type RequestConfig,
   type ResponseData,
   type RouteForge,
@@ -67,6 +68,12 @@ export interface BoundForgeMethods<L extends string = string> {
   isLoaded(level?: string): boolean;
 
   hasRoute(level: string, name: string): boolean;
+
+  /** 查询加载中标识状态 */
+  isLoading(): boolean;
+
+  /** 订阅加载状态变更，返回取消订阅函数 */
+  onLoadingChange(cb: LoadingChangeCallback): () => void;
 
   /** 获取指定层级下全部路由元信息（深拷贝，修改不影响内部缓存） */
   getRoutes(level: string): Record<string, RouteMeta>;
@@ -171,6 +178,8 @@ export function useForge(level?: string, prefix?: string): ForgeInstanceTyped | 
       invalidate: forge.invalidate.bind(forge),
       isLoaded: forge.isLoaded.bind(forge),
       hasRoute: forge.hasRoute.bind(forge),
+      isLoading: forge.isLoading.bind(forge),
+      onLoadingChange: forge.onLoadingChange.bind(forge),
       getRoutes: forge.getRoutes.bind(forge),
       interceptors: forge.interceptors,
     });
@@ -187,6 +196,8 @@ export function useForge(level?: string, prefix?: string): ForgeInstanceTyped | 
     invalidate: forge.invalidate.bind(forge),
     isLoaded: forge.isLoaded.bind(forge),
     hasRoute: forge.hasRoute.bind(forge),
+    isLoading: forge.isLoading.bind(forge),
+    onLoadingChange: forge.onLoadingChange.bind(forge),
     getRoutes: forge.getRoutes.bind(forge),
     interceptors: forge.interceptors,
   });
