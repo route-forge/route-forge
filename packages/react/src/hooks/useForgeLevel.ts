@@ -3,7 +3,7 @@
  * @see .docs/SPEC.md §4.1.7
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useForge } from '../provider.js';
 
 export interface UseForgeLevelReturn {
@@ -17,18 +17,20 @@ export function useForgeLevel(level: string): UseForgeLevelReturn {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    setError(null);
     try {
       await forge.load(level);
       setLoaded(true);
     } catch (e) {
       setError(e);
     }
-  };
+  }, [forge, level]);
 
   useEffect(() => {
-    load();
-  }, [level]);
+    setLoaded(forge.isLoaded(level));
+    void load();
+  }, [forge, level, load]);
 
   return { loaded, error, load };
 }

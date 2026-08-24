@@ -127,7 +127,12 @@ export async function fetchLevel(endpoint: string, level: string): Promise<{ rou
 export function generateRouteTypes(routesByLevel: Record<string, Record<string, RouteMeta>>): string {
   const levelEntries = Object.entries(routesByLevel).map(([level, routes]) => {
     const routeEntries = Object.entries(routes).map(([name, meta]) => {
-      const params = (meta.parameters ?? []).map((p) => `${p}: string | number;`).join(' ');
+      const defaults = meta.parameter_defaults ?? {};
+      const params = (meta.parameters ?? []).map((p) => {
+        // URI 中的 {p?} 或有后端默认值的参数 → 生成可选字段，避免调用方被迫传参
+        const optional = meta.uri?.includes(`{${p}?}`) || p in defaults;
+        return `${p}${optional ? '?' : ''}: string | number;`;
+      }).join(' ');
       const method = meta.methods?.find((m) => m.toUpperCase() !== 'HEAD') ?? 'GET';
       const methodUpper = method.toUpperCase();
       const bodyField = BODY_METHODS.has(methodUpper) ? '\n      body: unknown;' : '';

@@ -52,17 +52,20 @@ export class RouteCache {
       return this.getFromMemory(level);
     }
     const raw = this.backend.getItem(this.key(level));
-    if (!raw) return undefined;
-    try {
-      const entry = JSON.parse(raw) as CacheEntry;
-      if (this.isExpired(entry)) {
-        this.del(level);
+    if (raw) {
+      try {
+        const entry = JSON.parse(raw) as CacheEntry;
+        if (this.isExpired(entry)) {
+          this.del(level);
+          return undefined;
+        }
+        return entry;
+      } catch {
         return undefined;
       }
-      return entry;
-    } catch {
-      return undefined;
     }
+    // storage 写入曾失败（如配额满/被禁用）时，条目可能仅存在于内存回退中，需兼顾读取
+    return this.getFromMemory(level);
   }
 
   private getFromMemory(level: string): CacheEntry | undefined {

@@ -247,7 +247,10 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     // 拉取元信息直接走 adapter（不走 forge.interceptors 链，避免与业务调用混淆）
     const resp = await adp.request(config);
     if (!resp || resp.status < 200 || resp.status >= 300) {
-      throw new Error(`Failed to load level ${level}: HTTP ${resp?.status}`);
+      throw new HTTPError(
+        `Failed to load level "${level}": HTTP ${resp?.status}`,
+        { level, status: resp?.status, url: buildUrl(level), method: 'GET' },
+      );
     }
     const data = resp.data as LevelRoutesResponse;
     // 后端可能下发 cache 字段，让 RouteCache 优先采用
@@ -292,9 +295,11 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   }
 
   function buildRequestUrl(meta: RouteMeta, params: Record<string, unknown>): string {
-    let uri = meta.uri;
     const defaults = meta.parameter_defaults ?? {};
     const missingRequired: string[] = [];
+
+    // 1. 预解析每个声明参数的最终值（显式传参 > 后端默认值），并收集缺失的必填参数
+    const values: Record<string, unknown> = {};
     for (const p of meta.parameters) {
       let v = params[p];
       // 参数未传时回退到后端下发的默认值
@@ -302,20 +307,28 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
         v = defaults[p];
       }
       if (v === undefined || v === null) {
-        // 可选参数（URI 中 {param?}）：替换为空字符串
-        if (uri.includes(`{${p}?}`)) {
-          uri = uri.replace(`{${p}?}`, '');
-          continue;
+        // 可选参数（URI 中 {param?}）：稍后替换为空字符串；其余记为缺失
+        if (!meta.uri.includes(`{${p}?}`)) {
+          missingRequired.push(p);
         }
-        missingRequired.push(p);
       } else {
-        // 替换 {param} 或 {param?}
-        uri = uri.replace(`{${p}?}`, encodeURIComponent(String(v))).replace(`{${p}}`, encodeURIComponent(String(v)));
+        values[p] = v;
       }
     }
     if (missingRequired.length > 0) {
       throw new MissingRouteParamError(meta.name, missingRequired);
     }
+
+    // 2. 单次遍历替换所有占位符：避免参数值中的 "{other}" 文本被后续参数二次替换（占位符注入）
+    let uri = meta.uri.replace(/\{([^{}]+)\}/g, (match, raw: string) => {
+      const optional = raw.endsWith('?');
+      const name = optional ? raw.slice(0, -1) : raw;
+      if (values[name] !== undefined) {
+        return encodeURIComponent(String(values[name]));
+      }
+      // 值缺失：可选参数替换为空，未声明的占位符保持原样（不在 parameters 中）
+      return optional ? '' : match;
+    });
     // 清理可选参数移除后残留的连续 / 或尾部 /
     uri = uri.replace(/\/+/g, '/').replace(/\/$/, '');
     // url_prefix 含协议（如 https://api.example.com）时直接作为完整基础 URL，跳过 baseURL
@@ -430,7 +443,8 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
 
   function isLoaded(level?: string): boolean {
     if (level) return cache.get(level) !== undefined;
-    return effectiveLevels.every((lvl) => cache.get(lvl) !== undefined);
+    // 无任何已声明层级（如自动发现未完成）时不应谎报全部已加载
+    return effectiveLevels.length > 0 && effectiveLevels.every((lvl) => cache.get(lvl) !== undefined);
   }
 
   function hasRoute(level: string, name: string): boolean {

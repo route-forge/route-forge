@@ -1,0 +1,331 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createRouteForge, HTTPError, NetworkError } from '../src/index.js';
+import type { LevelRoutesResponse, ResponseData, SummaryResponse } from '../src/types.js';
+
+// ─── mock helpers ───────────────────────────────────────────
+
+function makeSummary(): SummaryResponse {
+  return {
+    levels: {
+      public: { description: 'public', load: 'lazy', cache: 300, route_count: 1 },
+    },
+    config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
+    unassigned: [],
+  };
+}
+
+interface MockOpts {
+  /** 业务 api 请求的响应状态码 */
+  apiStatus?: number;
+  /** 业务 api 请求的响应体 */
+  apiBody?: unknown;
+  /** 业务请求直接抛错（模拟网络层失败） */
+  apiNetworkError?: Error;
+}
+
+function mockBackend(opts: MockOpts = {}) {
+  const calls: { url: string; init?: RequestInit }[] = [];
+  const summary = makeSummary();
+  const level: LevelRoutesResponse = {
+    level: 'public',
+    routes: {
+      'users.index': { name: 'users.index', uri: 'users', methods: ['GET'], parameters: [] },
+      'users.update': {
+        name: 'users.update',
+        uri: 'users/{user}',
+        methods: ['PUT'],
+        parameters: ['user'],
+      },
+      'users.upload': {
+        name: 'users.upload',
+        uri: 'users/upload',
+        methods: ['POST'],
+        parameters: [],
+      },
+    },
+  };
+  (globalThis as any).fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    calls.push({ url, init });
+    const ep = summary.config.endpoint_prefix;
+    if (url === ep) return jsonResponse(summary);
+    if (url.startsWith(ep + '/')) {
+      const lvl = url.slice(ep.length + 1).split('/')[0]!;
+      return lvl === 'public' ? jsonResponse(level) : jsonResponse({}, 404);
+    }
+    // 业务请求
+    if (opts.apiNetworkError) throw opts.apiNetworkError;
+    return jsonResponse(opts.apiBody ?? { success: true }, opts.apiStatus ?? 200);
+  });
+  return calls;
+}
+
+function jsonResponse(data: unknown, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => data,
+    text: async () => JSON.stringify(data),
+    headers: new Headers({ 'content-type': 'application/json' }),
+  } as any;
+}
+
+async function createLoadedForge(opts: MockOpts = {}) {
+  const calls = mockBackend(opts);
+  const forge = createRouteForge({
+    endpoint: '/_forge/routes',
+    levels: ['public'],
+    adapter: 'builtin',
+  });
+  await forge.load('public');
+  return { forge, calls };
+}
+
+// ─── tests ──────────────────────────────────────────────────
+
+let originalFetch: typeof globalThis.fetch;
+beforeEach(() => {
+  originalFetch = globalThis.fetch;
+});
+afterEach(() => {
+  (globalThis as any).fetch = originalFetch;
+  vi.restoreAllMocks();
+});
+
+describe('HTTP error semantics (builtin adapter)', () => {
+  it('non-2xx rejects with HTTPError carrying status/route/code', async () => {
+    const { forge } = await createLoadedForge({ apiStatus: 500 });
+    try {
+      await forge.api('public', 'users.index');
+      expect.fail('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(HTTPError);
+      const err = e as HTTPError;
+      expect(err.code).toBe('RF_FE_008');
+      expect(err.route).toBe('users.index');
+      expect(err.context?.status).toBe(500);
+    }
+  });
+
+  it('HTTP non-2xx enters response interceptor onRejected chain (SPEC §4.1.3a)', async () => {
+    const { forge } = await createLoadedForge({ apiStatus: 404 });
+    const seen: unknown[] = [];
+    forge.interceptors.response.use(undefined, (e) => {
+      seen.push(e);
+      return { recovered: true };
+    });
+    const result = await forge.api('public', 'users.index');
+    // onRejected 收到的是 HTTPError 实例，且恢复值成为 api() 的 resolve 值
+    expect(seen.length).toBe(1);
+    expect(seen[0]).toBeInstanceOf(HTTPError);
+    expect(result).toEqual({ recovered: true });
+  });
+
+  it('response onFulfilled only receives 2xx responses', async () => {
+    const { forge } = await createLoadedForge({ apiStatus: 404 });
+    const fulfilled: unknown[] = [];
+    forge.interceptors.response.use((r) => {
+      fulfilled.push(r);
+      return r;
+    });
+    await expect(forge.api('public', 'users.index')).rejects.toThrow(HTTPError);
+    expect(fulfilled.length).toBe(0);
+  });
+
+  it('response chain resumes after onRejected recovery: later onFulfilled gets recovered value', async () => {
+    const { forge } = await createLoadedForge({ apiStatus: 503 });
+    const seen: string[] = [];
+    forge.interceptors.response.use(undefined, () => {
+      seen.push('recover');
+      return { fallback: true };
+    });
+    forge.interceptors.response.use((v) => {
+      seen.push('after:' + JSON.stringify(v));
+      return v;
+    });
+    const result = await forge.api('public', 'users.index');
+    expect(seen).toEqual(['recover', 'after:{"fallback":true}']);
+    expect(result).toEqual({ fallback: true });
+  });
+
+  it('fetch-level failure rejects with NetworkError carrying cause', async () => {
+    const boom = new TypeError('fetch failed');
+    const { forge } = await createLoadedForge({ apiNetworkError: boom });
+    try {
+      await forge.api('public', 'users.index');
+      expect.fail('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(NetworkError);
+      const err = e as NetworkError;
+      expect(err.code).toBe('RF_FE_007');
+      expect(err.route).toBe('users.index');
+      expect(err.cause).toBe(boom);
+    }
+  });
+});
+
+describe('request/response interceptor integration', () => {
+  it('request interceptor mutations reach the actual fetch call', async () => {
+    const { forge, calls } = await createLoadedForge();
+    forge.interceptors.request.use((c) => {
+      c.headers['X-Trace'] = 'abc';
+      c.url = c.url + '?injected=1';
+      return c;
+    });
+    await forge.api('public', 'users.index');
+    const bizCall = calls.find((c) => c.url.startsWith('/users'));
+    expect(bizCall).toBeDefined();
+    expect(bizCall!.url).toBe('/users?injected=1');
+    const sentHeaders = bizCall!.init!.headers as Headers;
+    expect(sentHeaders.get('X-Trace')).toBe('abc');
+  });
+
+  it('unrecovered request interceptor error aborts before business fetch', async () => {
+    const { forge, calls } = await createLoadedForge();
+    const before = calls.filter((c) => c.url.startsWith('/users')).length;
+    forge.interceptors.request.use(() => {
+      throw new Error('blocked by interceptor');
+    });
+    await expect(forge.api('public', 'users.index')).rejects.toThrow('blocked by interceptor');
+    const after = calls.filter((c) => c.url.startsWith('/users')).length;
+    // 业务请求未发出
+    expect(after).toBe(before);
+  });
+
+  it('request interceptor onRejected can recover and continue', async () => {
+    const { forge } = await createLoadedForge();
+    // 先注册恢复器（LIFO 下后执行），再注册抛错器（LIFO 下先执行）
+    const base = {
+      route: 'users.index',
+      level: 'public',
+      method: 'GET',
+      url: '/users',
+      headers: { Accept: 'application/json' },
+      params: {},
+      meta: { name: 'users.index', uri: 'users', methods: ['GET'], parameters: [] },
+    };
+    forge.interceptors.request.use(undefined, () => base);
+    forge.interceptors.request.use(() => {
+      throw new Error('boom');
+    });
+    const result = (await forge.api('public', 'users.index')) as any;
+    // 恢复后的配置正常发出请求，api() resolve 完整 ResponseData（data 为业务响应体）
+    expect(result.status).toBe(200);
+    expect(result.data).toEqual({ success: true });
+  });
+
+  it('response interceptor transforms resolved value of api()', async () => {
+    const { forge } = await createLoadedForge({ apiBody: { data: { list: [1, 2, 3] } } });
+    forge.interceptors.response.use((r: ResponseData) => (r.data as any).data.list);
+    const result = await forge.api('public', 'users.index');
+    expect(result).toEqual([1, 2, 3]);
+  });
+
+  it('ejected interceptor no longer runs', async () => {
+    const { forge } = await createLoadedForge();
+    let count = 0;
+    const id = forge.interceptors.response.use((r) => {
+      count++;
+      return r;
+    });
+    forge.interceptors.response.eject(id);
+    await forge.api('public', 'users.index');
+    expect(count).toBe(0);
+  });
+
+  it('declarative interceptors (tuple form) run in the pipeline', async () => {
+    const calls = mockBackend({});
+    const order: string[] = [];
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+      interceptors: {
+        // 仅对业务请求计数（层级拉取 __forge__.load.* 也共享同一拦截器管理器）
+        request: [
+          (c) => {
+            if (c.route === 'users.index') order.push('req-fn');
+            return c;
+          },
+          [(c) => {
+            if (c.route === 'users.index') order.push('req-tuple');
+            return c;
+          }, undefined],
+        ],
+        response: [
+          (r) => {
+            if ((r as ResponseData).route === 'users.index') order.push('resp-fn');
+            return r;
+          },
+          [(r) => {
+            if ((r as ResponseData).route === 'users.index') order.push('resp-tuple');
+            return r;
+          }, undefined],
+        ],
+      },
+    });
+    await forge.load('public');
+    await forge.api('public', 'users.index');
+    // 请求拦截器 LIFO：元组后注册 → 先执行；响应拦截器 FIFO：先注册先执行
+    expect(order).toEqual(['req-tuple', 'req-fn', 'resp-fn', 'resp-tuple']);
+    expect(calls.some((c) => c.url.startsWith('/users'))).toBe(true);
+  });
+});
+
+describe('request body serialization (builtin adapter)', () => {
+  it('object body is JSON-stringified with auto Content-Type', async () => {
+    const { forge, calls } = await createLoadedForge();
+    await forge.api('public', 'users.update', { user: 1, body: { name: 'Alice' } });
+    const bizCall = calls.find((c) => c.url.startsWith('/users/'));
+    expect(bizCall!.init!.method).toBe('PUT');
+    expect(bizCall!.init!.body).toBe(JSON.stringify({ name: 'Alice' }));
+    const headers = bizCall!.init!.headers as Headers;
+    expect(headers.get('Content-Type')).toBe('application/json');
+  });
+
+  it('explicit Content-Type header is preserved (not overwritten)', async () => {
+    const { forge, calls } = await createLoadedForge();
+    await forge.api('public', 'users.update', {
+      user: 1,
+      body: { a: 1 },
+      headers: { 'Content-Type': 'application/vnd.custom+json' },
+    });
+    const bizCall = calls.find((c) => c.url.startsWith('/users/'));
+    const headers = bizCall!.init!.headers as Headers;
+    expect(headers.get('Content-Type')).toBe('application/vnd.custom+json');
+  });
+
+  it('GET requests never carry a body', async () => {
+    const { forge, calls } = await createLoadedForge();
+    // body 对象在 GET 路由上被忽略（不发送请求体）
+    await forge.api('public', 'users.index', { body: { ignored: true } });
+    const bizCall = calls.find((c) => c.url.startsWith('/users'));
+    expect(bizCall!.init!.body).toBeUndefined();
+  });
+
+  it('FormData body is passed through without JSON serialization', async () => {
+    const { forge, calls } = await createLoadedForge();
+    const fd = new FormData();
+    fd.append('file', 'content');
+    await forge.api('public', 'users.upload', { body: fd });
+    const bizCall = calls.find((c) => c.url.startsWith('/users/upload'));
+    expect(bizCall!.init!.body).toBe(fd);
+    // FormData 交由 fetch 自行设置 multipart boundary，不应强加 JSON Content-Type
+    const headers = bizCall!.init!.headers as Headers;
+    expect(headers.get('Content-Type')).toBeNull();
+  });
+
+  it('string body is sent as-is', async () => {
+    const { forge, calls } = await createLoadedForge();
+    // string body 走智能消解是路径参数；此处通过拦截器直接注入 body 验证透传
+    forge.interceptors.request.use((c) => {
+      if (c.route === 'users.upload') {
+        c.method = 'POST';
+        c.body = 'raw-text-payload';
+      }
+      return c;
+    });
+    await forge.api('public', 'users.upload');
+    const bizCall = calls.find((c) => c.url.startsWith('/users/upload'));
+    expect(bizCall!.init!.body).toBe('raw-text-payload');
+  });
+});

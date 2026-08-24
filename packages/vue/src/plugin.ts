@@ -153,7 +153,8 @@ export function useForge(level?: string, prefix?: string): ForgeInstanceTyped | 
         forge.api(level, name, params);
     defineImmutableProps(callable, {
       level,
-      prefix,
+      // 未传 prefix 时不定义该属性，与 React 包行为保持一致（'prefix' in forge === false）
+      ...(prefix !== undefined ? { prefix } : {}),
       api: prefix
         ? async (name: string, params?: ApiCallParams) =>
           forge.api(level, await resolveRouteName(forge, level, prefix, name), params)

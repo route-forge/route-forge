@@ -10,12 +10,28 @@
  * - 体积目标：min+gzip < 3KB，仅作为兜底，不追求覆盖 axios 全部 API
  */
 
-import type { RequestConfig, ResponseData, InterceptorManager } from '../types.js';
+import type { InterceptorManager, RequestConfig, ResponseData } from '../types.js';
 import {
   createInterceptorManager,
   runRequestInterceptors,
   runResponseInterceptors,
 } from '../interceptors.js';
+import { HTTPError, NetworkError } from '../errors.js';
+
+/**
+ * 判断 body 是否为宿主原生可直接传输的类型（跳过 JSON 序列化）。
+ */
+function isPassthroughBody(body: unknown): boolean {
+  if (body === null) return false;
+  return (
+    (typeof FormData !== 'undefined' && body instanceof FormData) ||
+    (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) ||
+    (typeof Blob !== 'undefined' && body instanceof Blob) ||
+    (typeof ArrayBuffer !== 'undefined' &&
+      (body instanceof ArrayBuffer || ArrayBuffer.isView(body))) ||
+    (typeof ReadableStream !== 'undefined' && body instanceof ReadableStream)
+  );
+}
 
 export function createBuiltinHttp(forgeInterceptors?: {
   request: InterceptorManager<RequestConfig, RequestConfig>;
@@ -43,24 +59,39 @@ export function createBuiltinHttp(forgeInterceptors?: {
       }
     }
 
-    // 4. 构建 fetchInit
+    // 4. 构建 fetchInit（body 序列化 + JSON Content-Type 自动补齐）
+    const headers = new Headers(finalConfig.headers);
     const fetchInit: RequestInit = {
       method: finalConfig.method,
-      headers: new Headers(finalConfig.headers),
+      headers,
     };
     if (signal) fetchInit.signal = signal;
     if (
       finalConfig.body !== undefined &&
       !['GET', 'HEAD'].includes(finalConfig.method.toUpperCase())
     ) {
-      fetchInit.body =
-        typeof finalConfig.body === 'string'
-          ? finalConfig.body
-          : JSON.stringify(finalConfig.body);
+      if (typeof finalConfig.body === 'string' || isPassthroughBody(finalConfig.body)) {
+        fetchInit.body = finalConfig.body as BodyInit;
+      } else {
+        fetchInit.body = JSON.stringify(finalConfig.body);
+        if (!headers.has('Content-Type')) {
+          headers.set('Content-Type', 'application/json');
+        }
+      }
     }
 
-    // 5. 调用 fetch
-    const res = await fetch(url, fetchInit);
+    // 5. 调用 fetch（网络层错误转 NetworkError，便于独立使用 adapter 时错误语义一致）
+    let res: Response;
+    try {
+      res = await fetch(url, fetchInit);
+    } catch (e) {
+      throw new NetworkError(
+        e instanceof Error ? e.message : String(e),
+        finalConfig.route,
+        finalConfig.level,
+        e,
+      );
+    }
     const text = await res.text();
     let data: unknown = text;
     const contentType = res.headers.get('content-type') ?? '';
@@ -85,9 +116,25 @@ export function createBuiltinHttp(forgeInterceptors?: {
     };
 
     // 7. 执行响应拦截器（FIFO，对齐 axios）；末段返回值即 request() 的 resolve 值
+    // HTTP 非 2xx → 转 HTTPError 后进入响应拦截器 onRejected 链（SPEC §4.1.3a 步骤 9）
+    const source: Promise<ResponseData> =
+      res.status >= 200 && res.status < 300
+        ? Promise.resolve(responseData)
+        : Promise.reject(
+          new HTTPError(
+            `HTTP ${res.status} for route "${finalConfig.route}" (${finalConfig.method} ${url})`,
+            {
+              route: finalConfig.route,
+              level: finalConfig.level,
+              status: res.status,
+              url,
+              method: finalConfig.method,
+            },
+          ),
+        );
     return runResponseInterceptors(
       responseMgr,
-      Promise.resolve(responseData),
+      source,
     ) as Promise<ResponseData>;
   }
 

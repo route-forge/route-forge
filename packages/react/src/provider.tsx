@@ -14,7 +14,7 @@
  *   level / name / params 均自动推断，IDE 提供补全提示。
  */
 
-import { createContext, type ReactNode, useContext, useMemo } from 'react';
+import { createContext, type ReactNode, useContext, useMemo, useRef } from 'react';
 import {
   type ApiCallParams,
   createRouteForge,
@@ -42,6 +42,9 @@ export interface RouteForgeProviderProps {
 /**
  * RouteForge Provider — 替代 Vue 的 createRouteForgePlugin
  *
+ * 实例稳定性：仅当 options 实际变化（浅比较，含数组元素与 cache 嵌套字段）时才重建 forge，
+ * 避免父组件重渲染时内联 options 字面量导致每次渲染都重建实例（重复拉取摘要/丢失缓存）。
+ *
  * @example
  * ```tsx
  * import { RouteForgeProvider } from '@route-forge/react'
@@ -54,8 +57,42 @@ export interface RouteForgeProviderProps {
  * ```
  */
 export function RouteForgeProvider({ options, children }: RouteForgeProviderProps) {
-  const forge = useMemo(() => createRouteForge(options), [options]);
-  return <ForgeContext.Provider value={forge}>{children}</ForgeContext.Provider>;
+  const ref = useRef<{ options: RouteForgeOptions; forge: RouteForge } | null>(null);
+  if (ref.current === null || !optionsEqual(ref.current.options, options)) {
+    ref.current = { options, forge: createRouteForge(options) };
+  }
+  return <ForgeContext.Provider value={ref.current.forge}>{children}</ForgeContext.Provider>;
+}
+
+/** 比较两个 options 是否等价：原始值按 ===，数组逐元素 ===，嵌套纯对象（如 cache）浅比较 */
+function optionsEqual(a: RouteForgeOptions, b: RouteForgeOptions): boolean {
+  if (a === b) return true;
+  const ka = Object.keys(a);
+  const kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) {
+    const va = (a as unknown as Record<string, unknown>)[k];
+    const vb = (b as unknown as Record<string, unknown>)[k];
+    if (va === vb) continue;
+    if (Array.isArray(va) && Array.isArray(vb)) {
+      if (va.length !== vb.length || !va.every((v, i) => v === vb[i])) return false;
+      continue;
+    }
+    if (
+      va !== null && vb !== null &&
+      typeof va === 'object' && typeof vb === 'object' &&
+      !Array.isArray(va) && !Array.isArray(vb)
+    ) {
+      const vaObj = va as Record<string, unknown>;
+      const vbObj = vb as Record<string, unknown>;
+      const vak = Object.keys(vaObj);
+      if (vak.length !== Object.keys(vbObj).length) return false;
+      if (!vak.every((kk) => vaObj[kk] === vbObj[kk])) return false;
+      continue;
+    }
+    return false;
+  }
+  return true;
 }
 
 /** React Context — 供高级用户直接 useContext(ForgeContext) 使用 */

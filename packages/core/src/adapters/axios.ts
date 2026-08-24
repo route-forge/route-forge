@@ -13,6 +13,18 @@
 import type { RequestConfig, ResponseData } from '../types.js';
 import type { ResolvedAdapter } from './index.js';
 
+/** 把 axios 响应头（可能是 AxiosHeaders 实例）安全转为标准 Headers */
+function toHeaders(raw: unknown): Headers {
+  if (!raw) return new Headers();
+  const init =
+    typeof (raw as any).toJSON === 'function' ? (raw as any).toJSON() : raw;
+  try {
+    return new Headers(init);
+  } catch {
+    return new Headers();
+  }
+}
+
 export async function wrapAxiosAdapter(): Promise<ResolvedAdapter | null> {
   // ESM 友好的动态探测：尝试 import('axios')，失败则查全局 window.axios
   let axios: any;
@@ -28,24 +40,45 @@ export async function wrapAxiosAdapter(): Promise<ResolvedAdapter | null> {
 
   async function request(config: RequestConfig): Promise<ResponseData> {
     const headers: Record<string, string> = { ...config.headers };
-    const res = await axios.request({
-      url: config.url,
-      method: config.method,
-      headers,
-      data: config.body,
-      // axios 会处理 baseURL/transformRequest 等 defaults
-    });
+    try {
+      const res = await axios.request({
+        url: config.url,
+        method: config.method,
+        headers,
+        data: config.body,
+        // axios 会处理 baseURL/transformRequest 等 defaults；timeout 透传保证超时语义与 builtin 一致
+        timeout: config.timeout,
+      });
 
-    return {
-      route: config.route,
-      level: config.level,
-      method: config.method,
-      url: config.url,
-      status: res.status,
-      headers: new Headers(res.headers ?? {}),
-      data: res.data,
-      config,
-    };
+      return {
+        route: config.route,
+        level: config.level,
+        method: config.method,
+        url: config.url,
+        status: res.status,
+        headers: toHeaders(res.headers),
+        data: res.data,
+        config,
+      };
+    } catch (e: any) {
+      // axios 默认 validateStatus 对非 2xx 抛错：携带响应时转为 ResponseData 返回，
+      // 由上层统一转 HTTPError 并触发响应拦截器 onRejected 链（与 builtin 行为一致）；
+      // 无响应（网络错误/超时）则原样重抛，由上层转 NetworkError。
+      if (e && e.response) {
+        const resp = e.response;
+        return {
+          route: config.route,
+          level: config.level,
+          method: config.method,
+          url: config.url,
+          status: resp.status,
+          headers: toHeaders(resp.headers),
+          data: resp.data,
+          config,
+        };
+      }
+      throw e;
+    }
   }
 
   // 不暴露宿主 axios 的 interceptors manager（避免覆盖 Route Forge 的统一时序）；
