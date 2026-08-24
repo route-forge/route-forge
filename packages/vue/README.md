@@ -43,6 +43,14 @@ forge.api('users.show', { user: 1 })              // 同上
 forge.route('users.show', { user: 1 })            // 生成 URL，自动带 admin
 forge.url('users.show', { user: 1 })              // route() 语义别名
 
+// 绑定层级 + 前缀 — 路由名自动拼接
+const forge = useForge('admin', 'users')
+forge.level                                    // → 'admin'
+forge.prefix                                   // → 'users'
+forge('show', { user: 1 })                     // → forge.api('admin', 'users.show', ...)
+forge.api('index')                             // → forge.api('admin', 'users.index')
+forge.route('show', { user: 1 })               // → forge.route('admin', 'users.show', ...)
+
 // 通用方法（无论是否绑定 level 均可用）
 forge.load('admin')                               // 加载层级
 forge.isLoaded('admin')                           // 检查缓存
