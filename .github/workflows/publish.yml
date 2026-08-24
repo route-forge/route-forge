@@ -1,0 +1,174 @@
+name: Release npm
+
+# 通过 npm Trusted Publishing (OIDC) 发布 @route-forge/{core,react,vue} 到 npm registry
+# 无需 NPM_TOKEN，包带 Provenance 签名。
+#
+# 触发方式：
+#   tag push：v1.0.0 → 全量 | core-v* / react-v* / vue-v* → 仅对应包
+#   workflow_dispatch：手动勾选发布哪些包（支持 dry-run）
+#
+# 前置条件（仅首次配置）：
+#   在 npmjs.com 每个包的 Settings → Trusted Publishers 添加：
+#     Owner: xyj2156 | Repo: route-forge | Workflow: publish.yml
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - 'core-v*'
+      - 'react-v*'
+      - 'vue-v*'
+  workflow_dispatch:
+    inputs:
+      publish_core:
+        description: '发布 @route-forge/core'
+        type: boolean
+        default: true
+      publish_react:
+        description: '发布 @route-forge/react'
+        type: boolean
+        default: true
+      publish_vue:
+        description: '发布 @route-forge/vue'
+        type: boolean
+        default: true
+      dry_run:
+        description: 'Dry-run（不实际发布，仅校验构建）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: release-npm-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish npm packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Upgrade npm
+        run: npm install -g npm@latest
+
+      - name: Resolve release targets
+        id: targets
+        run: |
+          set -euo pipefail
+          CORE=false REACT=false VUE=false REASON=""
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            [ "${{ inputs.publish_core }}"  = "true" ] && CORE=true
+            [ "${{ inputs.publish_react }}" = "true" ] && REACT=true
+            [ "${{ inputs.publish_vue }}"   = "true" ] && VUE=true
+            REASON="workflow_dispatch"
+          else
+            TAG="${GITHUB_REF_NAME}"
+            if [[ "$TAG" =~ ^v[0-9] ]]; then
+              CORE=true REACT=true VUE=true
+              REASON="all (v* tag)"
+            elif [[ "$TAG" =~ ^core-v[0-9] ]]; then
+              CORE=true; REASON="core only"
+            elif [[ "$TAG" =~ ^react-v[0-9] ]]; then
+              REACT=true; REASON="react only"
+            elif [[ "$TAG" =~ ^vue-v[0-9] ]]; then
+              VUE=true; REASON="vue only"
+            else
+              REASON="no matching target"
+            fi
+          fi
+
+          {
+            echo "publish_core=$CORE"
+            echo "publish_react=$REACT"
+            echo "publish_vue=$VUE"
+            echo "reason=$REASON"
+          } >> "$GITHUB_OUTPUT"
+          echo "::notice::Targets: core=$CORE react=$REACT vue=$VUE ($REASON)"
+
+      - name: Install dependencies
+        if: steps.targets.outputs.publish_core == 'true' || steps.targets.outputs.publish_react == 'true' || steps.targets.outputs.publish_vue == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build & type-check
+        if: steps.targets.outputs.publish_core == 'true' || steps.targets.outputs.publish_react == 'true' || steps.targets.outputs.publish_vue == 'true'
+        run: |
+          pnpm build
+          pnpm typecheck
+
+      - name: Verify dist artifacts
+        if: steps.targets.outputs.publish_core == 'true' || steps.targets.outputs.publish_react == 'true' || steps.targets.outputs.publish_vue == 'true'
+        run: |
+          for pkg in core react vue; do
+            if [ "$(eval echo \$\{steps.targets.outputs.publish_$pkg\})" = "true" ]; then
+              test -f "packages/$pkg/dist/index.js"
+              test -f "packages/$pkg/dist/index.cjs"
+              test -f "packages/$pkg/dist/index.d.ts"
+              echo "✓ $pkg dist verified"
+            fi
+          done
+
+      - name: Publish @route-forge/core
+        if: steps.targets.outputs.publish_core == 'true'
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            pnpm publish --filter "@route-forge/core" --no-git-checks --access public --dry-run
+          else
+            pnpm publish --filter "@route-forge/core" --no-git-checks --access public --provenance
+          fi
+
+      # core 必须先发布，vue / react 的 workspace:* 依赖需要它
+      - name: Publish @route-forge/react
+        if: steps.targets.outputs.publish_react == 'true'
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            pnpm publish --filter "@route-forge/react" --no-git-checks --access public --dry-run
+          else
+            pnpm publish --filter "@route-forge/react" --no-git-checks --access public --provenance
+          fi
+
+      - name: Publish @route-forge/vue
+        if: steps.targets.outputs.publish_vue == 'true'
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            pnpm publish --filter "@route-forge/vue" --no-git-checks --access public --dry-run
+          else
+            pnpm publish --filter "@route-forge/vue" --no-git-checks --access public --provenance
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## npm release summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| trigger | \`${{ github.event_name }}\` |"
+            echo "| tag | \`${{ github.ref_name }}\` |"
+            echo "| reason | ${{ steps.targets.outputs.reason }} |"
+            echo "| dry-run | ${{ inputs.dry_run == true }} |"
+            echo "| auth | OIDC Trusted Publishing |"
+            echo "| core | ${{ steps.targets.outputs.publish_core == 'true' && '✅ publish' || '⏭️ skip' }} |"
+            echo "| react | ${{ steps.targets.outputs.publish_react == 'true' && '✅ publish' || '⏭️ skip' }} |"
+            echo "| vue | ${{ steps.targets.outputs.publish_vue == 'true' && '✅ publish' || '⏭️ skip' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
