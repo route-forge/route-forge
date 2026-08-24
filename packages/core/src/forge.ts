@@ -1,12 +1,10 @@
 /**
  * Route Forge 主入口：createRouteForge
- * @see .docs/SPEC.md §4.1.1 ~ §4.1.6
+ * @see .docs/SPEC.md §4.1.1 ~ §4.1.4
  *
  * 能力清单（v1.0 MVP）：
  *   - 按层级懒加载与隔离缓存（§4.1.2）
  *   - 并发去重（§4.1.4）
- *   - 登录态感知（§4.1.5）
- *   - 严格模式（§4.1.6）
  *   - 通过路由名调用 API（§4.1.3）
  *   - 拦截器（§4.1.3a）
  *   - Adapter auto 检测 / builtin / axios / 自定义 Fetcher（§4.3）
@@ -26,7 +24,6 @@ import {
   AdapterNotFoundError,
   ForgeError,
   HTTPError,
-  InsufficientAuthError,
   MissingRouteParamError,
   NetworkError,
   UnknownLevelError,
@@ -54,7 +51,6 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     adapter = 'auto',
     timeout = DEFAULT_TIMEOUT,
     baseURL = '',
-    auth,
     interceptors: declarativeInterceptors,
     cache: cacheOpts = {},
   } = options;
@@ -210,16 +206,6 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
 
   const inflight = new Map<string, Promise<void>>();
 
-  function isAuthRequired(level: string): boolean {
-    return Boolean(auth?.levels?.[level]);
-  }
-
-  function assertAuth(level: string): void {
-    if (isAuthRequired(level) && auth?.state && !auth.state()) {
-      throw new InsufficientAuthError(level);
-    }
-  }
-
   function assertLevelDeclared(level: string): void {
     if (!effectiveLevels.includes(level)) {
       throw new UnknownLevelError(level);
@@ -262,7 +248,6 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
 
   async function loadOne(level: string): Promise<void> {
     assertLevelDeclared(level);
-    assertAuth(level);
 
     // 缓存命中直接返回
     if (cache.get(level)) return;
@@ -356,7 +341,6 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   }
 
   async function doApiCall(meta: RouteMeta, params: ApiCallParams): Promise<unknown> {
-    assertAuth(meta.level ?? '');
     const { pathParams, query, body, headers } = resolveApiParams(params);
 
     const method = pickMethod(meta);

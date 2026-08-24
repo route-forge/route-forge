@@ -66,16 +66,6 @@ export class MissingRouteParamError extends ForgeError {
   }
 }
 
-/** RF_FE_004：未登录访问受保护层级 */
-export class InsufficientAuthError extends ForgeError {
-  constructor(level: string) {
-    super(`Insufficient auth: level "${level}" requires login`, {
-      code: 'RF_FE_004',
-      level,
-    });
-  }
-}
-
 /** RF_FE_005：adapter: 'axios' 但未检测到 axios */
 export class AdapterNotFoundError extends ForgeError {
   constructor(adapter: string) {

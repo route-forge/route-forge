@@ -24,7 +24,9 @@
 - 后端测试 **13 tests 全绿**：GroupTier 5（tier 宏/group 透传/嵌套覆盖/优先级）+ Exceptions 2 + Endpoint 6（200 结构/level 隔离/未命名路由/404/500 strict/缓存命中）
 
 #### 3. 前端 Core 包（~85%）
-- [forge.ts](file:///f:/web/route-forge/packages/core/src/forge.ts)：`createRouteForge` 主入口，含懒加载、隔离缓存、**并发去重**（已实测验证无 bug）、登录态感知、strict 模式、`api(name, params)` 调用
+
+- [forge.ts](file:///f:/web/route-forge/packages/core/src/forge.ts)：`createRouteForge`
+  主入口，含懒加载、隔离缓存、 **并发去重**（已实测验证无 bug）、strict 模式、`api(name, params)` 调用
 - [interceptors.ts](file:///f:/web/route-forge/packages/core/src/interceptors.ts)：基于标准 Promise 链语义，API 完全匹配 axios（use/eject/clear），注册正序执行
 - [cache.ts](file:///f:/web/route-forge/packages/core/src/cache.ts)：memory/sessionStorage/localStorage 三种 storage，TTL 后端 > 前端兜底
 - [adapters/](file:///f:/web/route-forge/packages/core/src/adapters)：auto 检测 / builtin-http（fetch）/ axios 包装 / 自定义 Fetcher
@@ -40,14 +42,14 @@
 
 ### 待完成（v1.0 剩余 30%）
 
-| 优先级 | 项目 | 状态 |
-|---|---|---|
-| P1 | core 包 forge.ts 完整单测（懒加载/缓存/调用/strict/登录态） | 缺失 |
-| P1 | Vue composables 完整实现 + 单测 | 仅占位 |
-| P1 | codegen CLI 实现（argv 解析 + fetch + merge + 写文件） | [codegen/index.ts](file:///f:/web/route-forge/packages/core/src/codegen/index.ts) 仅 stub |
-| P2 | Adapter 完整单测（auto/builtin/axios/自定义） | 缺失 |
-| P2 | 三版本兼容矩阵实测（Laravel 11/12/13 + Testbench 9/10/11） | 仅 13.x 验证过 |
-| P3 | 端到端示例项目（Laravel + Vue） | 缺失 |
+| 优先级 | 项目                                                       | 状态                                                                                      |
+|--------|------------------------------------------------------------|-------------------------------------------------------------------------------------------|
+| P1     | core 包 forge.ts 完整单测（懒加载/缓存/调用/strict）       | 缺失                                                                                      |
+| P1     | Vue composables 完整实现 + 单测                            | 仅占位                                                                                    |
+| P1     | codegen CLI 实现（argv 解析 + fetch + merge + 写文件）     | [codegen/index.ts](file:///f:/web/route-forge/packages/core/src/codegen/index.ts) 仅 stub |
+| P2     | Adapter 完整单测（auto/builtin/axios/自定义）              | 缺失                                                                                      |
+| P2     | 三版本兼容矩阵实测（Laravel 11/12/13 + Testbench 9/10/11） | 仅 13.x 验证过                                                                            |
+| P3     | 端到端示例项目（Laravel + Vue）                            | 缺失                                                                                      |
 
 ---
 

@@ -1,6 +1,6 @@
 # @route-forge/core
 
-框架无关的命名路由客户端核心：分级懒加载、隔离缓存、并发去重、登录态感知、拦截器。
+框架无关的命名路由客户端核心：分级懒加载、隔离缓存、并发去重、拦截器。
 
 ## 安装
 
@@ -92,6 +92,68 @@ forge.api('admin', 'search.show', {
 ```
 
 规则：`params` 优先 > 平铺 `string|number` → 路径参数 > 对象类型按原定义（`query`/`body`/`headers`）。
+
+## 认证（Authentication）
+
+Route Forge 不内置登录态管理，认证逻辑通过拦截器实现，灵活且完全可控。
+
+### Token 注入
+
+```ts
+// 声明式（初始化时配置）
+const forge = createRouteForge({
+  endpoint: '/_forge/routes',
+  interceptors: {
+    request: [
+      (config) => {
+        const token = authStore.getToken()
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`
+        }
+        return config
+      },
+    ],
+  },
+})
+
+// 或运行时动态注册
+forge.interceptors.request.use((config) => {
+  const token = authStore.getToken()
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+```
+
+### 401 响应处理
+
+```ts
+forge.interceptors.response.use(
+  (res) => res,  // 2xx 正常通过
+  (err) => {
+    if (err instanceof HTTPError && err.context?.status === 401) {
+      authStore.logout()
+      window.location.href = '/login'
+    }
+    return Promise.reject(err)
+  },
+)
+```
+
+### 登出清理
+
+```ts
+function logout() {
+  authStore.clearToken()
+  forge.invalidate()                        // 清空路由缓存
+  forge.interceptors.request.clear()        // 清空拦截器
+  forge.interceptors.response.clear()
+}
+```
+
+> 拦截器 API 与 axios 完全一致（`use` / `eject` / `clear`），如果项目已使用 axios 拦截器，可跳过此节——
+> `adapter: 'auto'` 模式下宿主 axios 的拦截器会自动生效。
 
 ## 加载状态跟踪
 

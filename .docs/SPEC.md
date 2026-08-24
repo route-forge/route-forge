@@ -438,7 +438,7 @@ declare const routes: {
 
 ### 4.1 核心能力
 
-`@route-forge/core` 是框架无关的命名路由客户端核心，提供按层级懒加载、隔离缓存、并发去重、登录态感知四项基础能力。
+`@route-forge/core` 是框架无关的命名路由客户端核心，提供按层级懒加载、隔离缓存、并发去重三项基础能力。
 `@route-forge/vue` 在其上提供 Vue 3 插件与 composable。
 
 #### 4.1.1 客户端初始化
@@ -460,10 +460,6 @@ const forge = createRouteForge({
     cache: {
         ttl: 3600,                  // 默认缓存 TTL（秒），可被后端 levels[level].cache 覆盖
         storage: 'memory',          // 'memory' | 'sessionStorage' | 'localStorage'
-    },
-    auth: {
-        state: () => isLoggedIn(),  // 登录态读取函数；返回 false 时跳过需登录层级
-        levels: {client: true, manage: true, admin: true},  // 标记哪些层级依赖登录
     },
     interceptors: {              // 声明式注册（等价于 forge.interceptors.use），可选
         // 支持两种形式
@@ -522,6 +518,10 @@ forge.interceptors.request.clear();
   精简实现（见 4.3.1）。adapter 必须在 `createRouteForge()` 调用前确定，未显式指定时使用 `'auto'`检测，检测失败自动降级为内置实现，确保零配置即可运行。
 - `interceptors` 声明式配置支持两种形式：单个函数（视为 `onFulfilled`）或 [onFulfilled?, onRejected?] 数组。与所有内置
   adapter（axios、builtin）行为一致，均按 4.1.3 的执行规则工作；自定义 Fetcher 接口需自行实现拦截器逻辑（详见 4.3.3）。
+- 登录态与 Token 注入通过拦截器实现，而非内置配置。推荐模式：
+    - 请求拦截器注入 `Authorization` 头（Token 从业务层状态读取）
+    - 响应拦截器处理 401 响应（跳转登录页、刷新 Token 等）
+    - 登出时调用 `forge.interceptors.request.clear()` 清空拦截器
 
 #### 4.1.2 按层级懒加载与隔离缓存
 
@@ -752,35 +752,7 @@ const [a, b, c] = await Promise.all([
 await forge.load(['client', 'manage', 'admin']);  // 并发去重 + 并发请求
 ```
 
-#### 4.1.5 登录态感知
-
-前端通过 `auth.state()` 函数读取登录态，避免未登录用户拉取受保护层级的路由表（同时减少无效请求与信息泄露，DESIGN.md §2.2）：
-
-```ts
-const forge = createRouteForge({
-    auth: {
-        state: () => authStore.isLoggedIn,
-        levels: {client: true, manage: true, admin: true},
-    },
-});
-
-// 未登录时：
-await forge.load('client');   // 抛 InsufficientAuthError，不发请求
-await forge.api('client', 'xxx'); // 同上
-
-// 登录后：
-authStore.isLoggedIn = true;
-await forge.load('client');    // 正常拉取
-```
-
-行为约定：
-
-- `auth.state()` 返回 `false` 且目标层级在 `auth.levels` 里标记为 `true`：拒绝拉取，抛 `InsufficientAuthError`。
-- `public` 层级（未在 `auth.levels` 中标记）不受登录态影响，随时可拉取，供登录页等场景使用。
-- 登录态变化时，业务侧需主动调用 `forge.invalidate()` 清空受保护层级的缓存，避免脏数据。
-- 后端在 `auth.levels` 标记的层级对应的端点应配合 `auth` 中间件，前端拦截只是优化体验，权限判定以后端为准。
-
-#### 4.1.6 严格模式
+#### 4.1.5 严格模式
 
 前端 `strict` 默认 `false`（与后端 `strict_mode` 默认值一致，减少心智负担），可通过 `createRouteForge({ strict: true })`
 开启。后端 `strict_mode` 为权威值，前端不能覆盖后端设定（见 §5.3 分级覆盖策略）：
@@ -791,7 +763,6 @@ await forge.load('client');    // 正常拉取
 | 必填路径参数缺失（有默认值） | 用默认值填充，不抛错        | 同左（始终填充，不受 strict 影响） |
 | 路由名不存在                 | 抛 `UnknownRouteError`      | 同左（始终抛出，不受 strict 影响） |
 | 路由所在层级未声明           | 抛 `UnknownLevelError`      | 静默忽略                           |
-| 未登录访问受保护层级         | 抛 `InsufficientAuthError`  | 同左（安全相关不允许放行）         |
 
 > 设计意图（DESIGN.md §5 原则 2）：前后端统一默认 `false`，降低新用户接入门槛；需要严格校验的项目可通过配置开启。后端
 > `strict_mode` 始终为权威值，防止前端误配导致安全漏洞（如后端要求严格模式但前端关闭了校验）。
@@ -1095,8 +1066,6 @@ const forge = createRouteForge({
 | `adapter`               | `'auto'\|'axios'\|'builtin'\|Fetcher`        | `'auto'`           | 详见 §4.3.2；必须在 `createRouteForge()` 调用前确定，调用后不再切换   |
 | `cache.ttl`             | `number`                                     | `3600`             | 本地兜底缓存 TTL（秒）；后端响应 `cache` 字段优先（且为上限）         |
 | `cache.storage`         | `'memory'\|'sessionStorage'\|'localStorage'` | `'memory'`         | 缓存存储介质                                                          |
-| `auth.state`            | `() => boolean`                              | `() => true`       | 登录态读取函数                                                        |
-| `auth.levels`           | `Record<string, boolean>`                    | `{}`               | 标记哪些层级依赖登录态                                                |
 | `interceptors.request`  | `Array<Fn \| [onFulfilled?, onRejected?]>`   | `[]`               | 声明式请求拦截器列表，支持单函数或元组两种形式（见 §4.1.1）           |
 | `interceptors.response` | `Array<Fn \| [onFulfilled?, onRejected?]>`   | `[]`               | 声明式响应拦截器列表，支持单函数或元组两种形式                        |
 | `strict`                | `boolean`                                    | `false`            | 前端严格模式，默认与后端一致；受后端 `strict_mode` 约束（见 §5.3）    |
@@ -1125,7 +1094,6 @@ const forge = createRouteForge({
 | `url_prefix`                   | `config.url_prefix`      | —                            | **URL 构建相关**：后端为权威值。支持路径前缀（拼接在 `baseURL` 后）和完整 URL（含协议+域名，此时忽略 `baseURL`）。后端未下发或为空字符串时不拼接 |
 | `levels`                       | `levels` 键列表          | `levels` 数组                | **发现相关**：前端未传 `levels` 时自动从摘要端点发现；显式传入时取与后端交集（前端不能声明后端不存在的层级）                                     |
 | `eager`                        | `levels[name].load`      | `eager` 数组                 | **加载相关**：前端未传 `eager` 时自动取后端 `load: 'eager'` 的层级；显式传入时取并集（前端可额外预加载后端标记为 lazy 的层级）                   |
-| `auth.*`                       | —                        | `auth.state` / `auth.levels` | **纯前端**：后端不下发登录态配置，完全由前端控制                                                                                                 |
 | `interceptors.*`               | —                        | `interceptors`               | **纯前端**：后端不下发拦截器配置                                                                                                                 |
 
 摘要端点返回的 `config` 字段示例：
@@ -1171,7 +1139,6 @@ const forge = createRouteForge({
 | `UnknownRouteError`             | `RF_FE_001` | 路由名不存在于已加载层级中                 |
 | `UnknownLevelError`             | `RF_FE_002` | 路由所在层级未在 `levels` 声明             |
 | `MissingRouteParamError`        | `RF_FE_003` | 路径参数缺失（strict=true 时）             |
-| `InsufficientAuthError`         | `RF_FE_004` | 未登录访问受保护层级                       |
 | `AdapterNotFoundError`          | `RF_FE_005` | `adapter: 'axios'` 但未检测到 axios        |
 | `InvalidInterceptorReturnError` | `RF_FE_006` | 请求拦截器返回非 `RequestConfig`           |
 | `NetworkError`                  | `RF_FE_007` | adapter 抛出的网络错误（DNS、连接超时等）  |
@@ -1222,7 +1189,6 @@ class ForgeError extends Error {
 | 拦截器   | 多段串联、注册顺序执行、`onFulfilled`/`onRejected` 链、`eject`/`clear`、async 拦截器、单函数与元组两种声明形式             |
 | 调用     | 路由校验（参数缺失/路由名不存在/层级未声明）、路径参数填充、`parameter_defaults` 默认值填充、query/body 拼装、方法自动选取 |
 | Adapter  | auto 检测、builtin adapter 行为、axios 复用、自定义 Fetcher                                                                |
-| 登录态   | 未登录拒绝拉取、登录后拉取、`invalidate` 清理                                                                              |
 | 类型生成 | `route:forge:types` 生成的声明约束 `forge.api(level, name, params)` 调用（路由名字面量校验、参数类型校验，见 §3.2）        |
 
 ### 7.3 端到端测试
@@ -1231,14 +1197,14 @@ class ForgeError extends Error {
 
 1. 后端定义 admin/manage/client 三层级路由。
 2. 前端 `createRouteForge()` 初始化、登录、按层级懒加载、调用 API。
-3. 验证：未登录访问 client 抛 `InsufficientAuthError`、登录后正常调用、路由名错拼编译期报错。
+3. 验证：路由名错拼编译期报错、按层级懒加载正常、API 调用成功。
 
 ## 8. 版本与发布
 
 ### 8.1 v1.0 能力清单（MVP）
 
 - ✅ 后端：层级分配（3 种方式）、五级优先级、元信息端点、摘要端点、`middleware_match`（any/all/DNF）、缓存、`php artisan route:forge:list`、`php artisan route:forge:types` Artisan 命令
-- ✅ 前端：懒加载、隔离缓存、并发去重、登录态感知、拦截器、严格模式、摘要端点自动发现
+- ✅ 前端：懒加载、隔离缓存、并发去重、拦截器、严格模式、摘要端点自动发现
 - ✅ Adapter：auto 检测、内置 builtin、axios 复用、自定义 Fetcher
 - ✅ Vue 插件：`useForge(level?)`（可直接调用的 forge 实例 + 层级绑定）/`useForgeApi`/`useForgeLevel`/
   `useForgeRoute`/`useForgeByPrefix`

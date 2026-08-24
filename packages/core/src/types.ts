@@ -248,10 +248,6 @@ export interface RouteForgeOptions {
     ttl?: number;
     storage?: CacheStorage;
   };
-  auth?: {
-    state?: () => boolean;
-    levels?: Record<string, boolean>;
-  };
   interceptors?: {
     /**
      * 声明式请求拦截器列表，支持两种形式（SPEC §4.1.1）：
