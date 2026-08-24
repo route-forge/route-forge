@@ -24,7 +24,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rimraf node_modules",
-    "publish:core": "cd packages/core && pnpm publish --no-git-checks",
+    "publish:core": "cd packages/core && pnpm publish --access public",
     "publish:vue": "cd packages/vue && pnpm publish --no-git-checks",
     "publish:react": "cd packages/react && pnpm publish --no-git-checks",
     "publish:only": "pnpm run publish:core && pnpm run publish:vue && pnpm run publish:react",
