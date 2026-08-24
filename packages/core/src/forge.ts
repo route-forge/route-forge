@@ -101,6 +101,14 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       return;
     }
 
+    // 0. schemaVersion 向前兼容（DESIGN.md §6.3）
+    const schemaVersion = summary.schemaVersion ?? 1;
+    if (schemaVersion > 1) {
+      console.warn(
+        `[route-forge] backend schemaVersion=${schemaVersion} > client supported 1; some features may be unavailable`,
+      );
+    }
+
     // 1. endpoint 后端权威
     if (summary.config.endpoint_prefix && summary.config.endpoint_prefix !== explicitEndpoint) {
       console.warn(
@@ -341,7 +349,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   }
 
   async function doApiCall(meta: RouteMeta, params: ApiCallParams): Promise<unknown> {
-    const { pathParams, query, body, headers } = resolveApiParams(params);
+    const { pathParams, query, body, headers, timeout: perCallTimeout } = resolveApiParams(params);
 
     const method = pickMethod(meta);
     const urlWithQuery = appendQuery(buildRequestUrl(meta, pathParams), query);
@@ -353,7 +361,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       headers: { Accept: 'application/json', ...(headers ?? {}) },
       body,
       params: pathParams,
-      timeout,
+      timeout: perCallTimeout ?? timeout,
       meta,
     };
 
@@ -410,9 +418,14 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     }
   }
 
-  function invalidate(level?: string): void {
-    if (level) cache.del(level);
-    else cache.clear();
+  function invalidate(level?: string | string[]): void {
+    if (level === undefined) {
+      cache.clear();
+    } else if (Array.isArray(level)) {
+      for (const lvl of level) cache.del(lvl);
+    } else {
+      cache.del(level);
+    }
   }
 
   function isLoaded(level?: string): boolean {
@@ -513,12 +526,14 @@ function resolveApiParams(input: ApiCallParams): {
   query?: Record<string, unknown>;
   body?: unknown;
   headers?: Record<string, string>;
+  timeout?: number;
 } {
   const {
     params: explicitParams,
     query: rawQuery,
     body: rawBody,
     headers: rawHeaders,
+    timeout: perCallTimeout,
     ...flatRest
   } = input;
 
@@ -566,7 +581,7 @@ function resolveApiParams(input: ApiCallParams): {
     }
   }
 
-  return { pathParams, query, body, headers };
+  return { pathParams, query, body, headers, timeout: perCallTimeout };
 }
 
 // 显式重导出，便于业务代码按需导入工具件

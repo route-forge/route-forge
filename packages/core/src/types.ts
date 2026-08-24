@@ -40,6 +40,8 @@ export interface LevelRoutesResponse {
  * GET /_forge/routes 返回此结构
  */
 export interface SummaryResponse {
+  /** manifest 协议版本号（DESIGN.md §6.3），默认 1；前端可据此做向前兼容 */
+  schemaVersion?: number;
   levels: Record<
     string,
     {
@@ -129,6 +131,10 @@ export interface ApiCallParams {
    * 自定义请求头（对象 → headers）或路径参数（string | number → 填充 {headers} 占位符）
    */
   headers?: Record<string, string> | string | number;
+  /**
+   * 单次请求超时覆盖（毫秒）；不传时使用 createRouteForge({ timeout }) 全局值
+   */
+  timeout?: number;
 }
 
 /**
@@ -195,8 +201,14 @@ export interface RouteForge {
 
   /** route() 的语义别名，适用于链接生成等场景 */
   url(level: string, name: string, params?: Record<string, unknown>): string;
-  /** 失效指定层级缓存；不传参失效全部 */
-  invalidate(level?: string): void;
+
+  /**
+   * 失效缓存：
+   * - invalidate()：失效全部层级
+   * - invalidate('admin')：失效指定层级
+   * - invalidate(['admin', 'manage'])：批量失效指定层级
+   */
+  invalidate(level?: string | string[]): void;
 
   /** 检查指定层级路由是否已加载并缓存；不传参检查全部 */
   isLoaded(level?: string): boolean;

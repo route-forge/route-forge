@@ -89,7 +89,7 @@ export interface BoundForgeMethods<L extends string = string> {
 
   load(level: string | string[]): Promise<void>;
 
-  invalidate(level?: string): void;
+  invalidate(level?: string | string[]): void;
 
   isLoaded(level?: string): boolean;
 

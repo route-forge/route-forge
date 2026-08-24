@@ -50,7 +50,7 @@ forge.route('show', { user: 1 })               // → forge.route('admin', 'user
 // 通用方法（无论是否绑定 level 均可用）
 forge.load('admin')                            // 加载层级
 forge.isLoaded('admin')                        // 检查缓存
-forge.invalidate('admin')                      // 失效缓存
+forge.invalidate('admin')                      // 失效缓存（支持单层级 / 数组批量 / 不传失效全部）
 forge.interceptors.request.use(...)            // 拦截器管理
 ```
 

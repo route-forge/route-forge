@@ -42,8 +42,9 @@ if (!forge.isLoaded('admin')) {
 }
 
 // 失效缓存
-forge.invalidate('admin')   // 失效指定层级
-forge.invalidate()          // 失效全部
+forge.invalidate('admin')                     // 失效指定层级
+forge.invalidate(['admin', 'manage'])         // 批量失效多个层级
+forge.invalidate()                            // 失效全部
 ```
 
 ## URL 前缀（`url_prefix`）
@@ -92,6 +93,16 @@ forge.api('admin', 'search.show', {
 ```
 
 规则：`params` 优先 > 平铺 `string|number` → 路径参数 > 对象类型按原定义（`query`/`body`/`headers`）。
+
+## 单次超时覆盖
+
+`forge.api()` 支持通过 `timeout` 参数覆盖单次请求的超时时间（毫秒），不传时使用
+`createRouteForge({ timeout })` 的全局值（默认 30s）：
+
+```ts
+// 全局超时 30s，单次导出请求覆盖为 120s
+forge.api('admin', 'reports.export', { timeout: 120_000 })
+```
 
 ## 认证（Authentication）
 
