@@ -3,6 +3,8 @@
  * @see .docs/SPEC.md §4.1.3a, §4.1.1
  */
 
+import type { LoadingChangeCallback } from './loading.js';
+
 /**
  * 路由元信息（后端 /_forge/routes/{level} 返回的单条路由结构）
  */
@@ -114,12 +116,19 @@ export interface ApiCallParams {
 
   /** 显式指定路径参数（优先级最高，解决路径参数名与 query/body/headers 冲突的场景） */
   params?: Record<string, unknown>;
-  /** 查询参数，序列化到 URL query string */
-  query?: Record<string, unknown>;
-  /** 请求体，按 method 决定是否发送 */
+  /**
+   * 查询参数（对象 → query string）或路径参数（string | number → 填充 {query} 占位符）
+   * @see .docs/SPEC.md §4.1.3 参数智能解析
+   */
+  query?: Record<string, unknown> | string | number;
+  /**
+   * 请求体（非基元值 → body）或路径参数（string | number → 填充 {body} 占位符）
+   */
   body?: unknown;
-  /** 自定义请求头（与拦截器叠加） */
-  headers?: Record<string, string>;
+  /**
+   * 自定义请求头（对象 → headers）或路径参数（string | number → 填充 {headers} 占位符）
+   */
+  headers?: Record<string, string> | string | number;
 }
 
 /**
@@ -192,8 +201,19 @@ export interface RouteForge {
   /** 检查指定层级路由是否已加载并缓存；不传参检查全部 */
   isLoaded(level?: string): boolean;
 
-  /** 检查指定层级下某条路由是否存在（需该层级缓存已加载） */
+  /** 检查指定层级下某路由是否存在（需该层级缓存已加载） */
   hasRoute(level: string, name: string): boolean;
+
+  /**
+   * 查询加载中标识状态
+   */
+  isLoading(): boolean;
+
+  /**
+   * 订阅加载状态变更
+   * @returns 取消订阅函数
+   */
+  onLoadingChange(cb: LoadingChangeCallback): () => void;
 
   /**
    * 获取路由元信息快照（深拷贝，修改返回值不影响内部缓存）。

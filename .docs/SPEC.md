@@ -9,7 +9,7 @@
 - **[route-forge/laravel](https://github.com/xyj2156/route-forge-laravel)**（Composer 包）：后端路由扫描、分级、缓存、API 端点
 - **@route-forge/core**（npm 包）：框架无关的命名路由客户端核心
 - **@route-forge/vue**（npm 包）：Vue 3 集成（插件 + composable）
-- **@route-forge/react**（npm 包，规划中）：React 集成
+- **@route-forge/react**（npm 包）：React 集成
 
 两侧通过 HTTP manifest 契约交互，版本独立演进。
 
@@ -796,6 +796,47 @@ await forge.load('client');    // 正常拉取
 > 设计意图（DESIGN.md §5 原则 2）：前后端统一默认 `false`，降低新用户接入门槛；需要严格校验的项目可通过配置开启。后端
 > `strict_mode` 始终为权威值，防止前端误配导致安全漏洞（如后端要求严格模式但前端关闭了校验）。
 
+#### 4.1.8 加载中标识
+
+核心提供加载状态跟踪能力，通过引用计数器跟踪并发 API 请求数。不内置任何 UI
+组件或样式，仅提供状态查询与变更订阅，由框架层或业务层自行消费。
+
+加载状态始终跟踪，无需配置开关。如果不需要使用加载状态，不订阅 `onLoadingChange`、不调用 `isLoading()`
+即可。
+
+##### 状态查询与订阅
+
+```ts
+// 查询当前是否处于加载中
+forge.isLoading();  // boolean
+
+// 订阅状态变更
+const unsub = forge.onLoadingChange((event) => {
+  console.log(event.loading);  // true / false
+  console.log(event.count);    // 当前并发请求数
+});
+
+// 取消订阅
+unsub();
+```
+
+##### LoadingChangeEvent
+
+| 字段      | 类型      | 说明                 |
+|-----------|-----------|----------------------|
+| `loading` | `boolean` | 当前是否仍处于加载中 |
+| `count`   | `number`  | 当前并发请求数       |
+
+##### 行为规则
+
+- 每次 `api()` 调用在请求发出前 `count+1`，在请求 settle 后 `count-1`
+- 请求成功或失败均正确触发 `stop`（基于 `try/finally`）
+- 并发请求正确累积 `count`，全部完成后归零
+
+> 设计意图：核心层只负责状态跟踪，不绑定任何 UI 框架或样式体系。Vue/React 包可通过 `onLoadingChange`
+> 订阅状态变更驱动组件显隐，业务层也可直接使用 `isLoading()` 做条件判断。这种分层设计避免了路由工具库与
+> UI 体系的耦合。加载状态始终跟踪，用户不使用则不订阅即可，无需额外配置开关。
+
 #### 4.1.7 Vue 3 集成（`@route-forge/vue`）
 
 ```ts
@@ -1201,13 +1242,14 @@ class ForgeError extends Error {
 - ✅ Adapter：auto 检测、内置 builtin、axios 复用、自定义 Fetcher
 - ✅ Vue 插件：`useForge(level?)`（可直接调用的 forge 实例 + 层级绑定）/`useForgeApi`/`useForgeLevel`/
   `useForgeRoute`/`useForgeByPrefix`
+- ✅ React 集成：`RouteForgeProvider` / `useForge({ level? })` / `useForgeApi` / `useForgeLevel` /
+  `useForgeRoute` / `useForgeByPrefix`
 
 ### 8.2 v1.x 路线图
 
-- v1.1：React 集成（`@route-forge/react`）
-- v1.2：可视化路由管理面板（独立 SPA，连接 Route Forge 端点）
-- v1.3：OpenAPI 桥接（从 OpenAPI spec 生成 Route Forge 类型）
-- v1.4：Vite 插件（dev 时自动 codegen，HMR 同步路由变更）
+- v1.1：可视化路由管理面板（独立 SPA，连接 Route Forge 端点）
+- v1.2：OpenAPI 桥接（从 OpenAPI spec 生成 Route Forge 类型）
+- v1.3：Vite 插件（dev 时自动 codegen，HMR 同步路由变更）
 
 ### 8.3 兼容性承诺
 

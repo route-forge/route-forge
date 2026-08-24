@@ -64,7 +64,7 @@ function mockFull(
     }
     // 层级拉取：URL 形如 {endpoint}/{level}
     if (url.startsWith(ep + '/')) {
-      const level = url.slice(ep.length + 1).split('/')[0].split('?')[0];
+      const level = url.slice(ep.length + 1).split('/')[0]!.split('?')[0]!;
       const lr = levelRoutes[level];
       if (!lr) {
         return {

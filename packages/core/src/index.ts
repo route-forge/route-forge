@@ -6,6 +6,7 @@
 export { createRouteForge } from './forge.js';
 export { createInterceptorManager, InterceptorManagerImpl } from './interceptors.js';
 export { RouteCache } from './cache.js';
+export { LoadingTracker } from './loading.js';
 
 export {
   ForgeError,
@@ -38,3 +39,8 @@ export type {
   ForgeApiParams,
   ForgeApiResponse,
 } from './types.js';
+
+export type {
+  LoadingChangeCallback,
+  LoadingChangeEvent,
+} from './loading.js';

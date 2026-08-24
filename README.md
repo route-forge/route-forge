@@ -39,7 +39,8 @@ TypeScript 类型保护。
 route-forge/
 ├── packages/
 │   ├── core/       # @route-forge/core — 框架无关的命名路由客户端核心
-│   └── vue/        # @route-forge/vue — Vue 3 集成（插件 + composable）
+│   ├── vue/        # @route-forge/vue — Vue 3 集成（插件 + composable）
+│   └── react/      # @route-forge/react — React 集成（Provider + hooks）
 ├── .docs/
 │   ├── SPEC.md     # 功能规格说明书
 │   └── DESIGN.md   # 设计思路
@@ -99,6 +100,9 @@ pnpm add @route-forge/core
 
 # Vue 3 集成（可选）
 pnpm add @route-forge/vue
+
+# React 集成（可选）
+pnpm add @route-forge/react
 
 # axios 适配器（可选，不装则使用内置 fetch 实现）
 pnpm add axios
@@ -264,6 +268,7 @@ pnpm publish:vue
 - [设计思路](.docs/DESIGN.md) — 架构决策与演进思路
 - [@route-forge/core](packages/core/README.md) — 核心包文档
 - [@route-forge/vue](packages/vue/README.md) — Vue 3 集成文档
+- [@route-forge/react](packages/react/README.md) — React 集成文档
 
 ## License
 

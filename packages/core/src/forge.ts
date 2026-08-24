@@ -20,6 +20,8 @@ import {
   runResponseInterceptors,
 } from './interceptors.js';
 import { resolveAdapter } from './adapters/index.js';
+import type { LoadingChangeCallback } from './loading.js';
+import { LoadingTracker } from './loading.js';
 import {
   AdapterNotFoundError,
   ForgeError,
@@ -56,6 +58,9 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     interceptors: declarativeInterceptors,
     cache: cacheOpts = {},
   } = options;
+
+  // --- 加载中标识跟踪器（始终跟踪，用户不监听即可）---
+  const loadingTracker = new LoadingTracker();
 
   // --- 自动发现（SPEC §4.1.1 + §5.3）---
   const explicitLevels = options.levels;
@@ -356,8 +361,8 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
 
     const adp = await ensureAdapter();
 
-    // 5. 请求拦截链（LIFO，对齐 axios）；任一段抛错且 onRejected 未消化 → 进入调用方 catch，不发请求
-    // builtin adapter 内部已执行 forge 拦截器（同一管理器对象引用，runsInterceptors=true）→ 跳过
+    // 5. 请求拦截链（LIFO，对齐 axios）；任段抛错且 onRejected 未消化 → 进入调用方 catch，不发请求
+    // builtin.adapter 内部已执行 forge 拦截器（同一管理器对象引用，runsInterceptors=true）→ 跳过
     const finalConfig = adp.runsInterceptors
       ? config
       : await runRequestInterceptors(requestInterceptors, config);
@@ -365,38 +370,46 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     // 6. adapter 调用 → 7/8 的错误转换 + 响应拦截链
     // HTTP 非 2xx 转 HTTPError；底层网络错误（非 ForgeError）转 NetworkError
     // 注意：source 始终构造（含错误转换逻辑），runsInterceptors=true 时直接返回 source
-    const source: Promise<ResponseData> = adp.request(finalConfig).then(
-      (resp) => {
-        if (resp.status < 200 || resp.status >= 300) {
-          throw new HTTPError(
-            `HTTP ${resp.status} for route "${resp.route}" (${resp.method} ${resp.url})`,
-            {
-              route: resp.route,
-              level: resp.level,
-              status: resp.status,
-              url: resp.url,
-              method: resp.method,
-            },
+    // 加载中标识：始终跟踪，用户不监听即可
+    loadingTracker.start();
+    try {
+      const source: Promise<ResponseData> = adp.request(finalConfig).then(
+        (resp) => {
+          if (resp.status < 200 || resp.status >= 300) {
+            throw new HTTPError(
+              `HTTP ${resp.status} for route "${resp.route}" (${resp.method} ${resp.url})`,
+              {
+                route: resp.route,
+                level: resp.level,
+                status: resp.status,
+                url: resp.url,
+                method: resp.method,
+              },
+            );
+          }
+          return resp;
+        },
+        (err) => {
+          // 已经是 ForgeError（如拦截器内重新抛的）→ 原样抛
+          if (err instanceof ForgeError) throw err;
+          throw new NetworkError(
+            err instanceof Error ? err.message : String(err),
+            meta.name,
+            meta.level,
+            err,
           );
-        }
-        return resp;
-      },
-      (err) => {
-        // 已经是 ForgeError（如拦截器内重新抛的）→ 原样抛
-        if (err instanceof ForgeError) throw err;
-        throw new NetworkError(
-          err instanceof Error ? err.message : String(err),
-          meta.name,
-          meta.level,
-          err,
-        );
-      },
-    );
+        },
+      );
 
-    // 响应拦截链（FIFO，对齐 axios）；末段返回值即 api() resolve 值
-    // builtin adapter 内部已执行 forge 响应拦截器（runsInterceptors=true）→ 直接返回 source
-    if (adp.runsInterceptors) return source;
-    return runResponseInterceptors(responseInterceptors, source);
+      // 响应拦截链（FIFO，对齐 axios）；末段返回值即 api() resolve 值
+      // builtin.adapter 内部已执行 forge 响应拦截器（runsInterceptors=true）→ 直接返回 source
+      const result = adp.runsInterceptors
+        ? await source
+        : await runResponseInterceptors(responseInterceptors, source);
+      return result;
+    } finally {
+      loadingTracker.stop();
+    }
   }
 
   function invalidate(level?: string): void {
@@ -461,6 +474,8 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     isLoaded,
     hasRoute,
     getRoutes,
+    isLoading: () => loadingTracker.isLoading(),
+    onLoadingChange: (cb: LoadingChangeCallback) => loadingTracker.subscribe(cb),
     interceptors: {
       request: requestInterceptors,
       response: responseInterceptors,

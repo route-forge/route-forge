@@ -6,7 +6,7 @@
 
 ```bash
 pnpm add @route-forge/core
-# 可选:axios 适配器
+# 可选：axios 适配器
 pnpm add axios
 ```
 
@@ -28,6 +28,13 @@ const url = forge.route('public', 'login.show')
 
 // url() 是 route() 的语义别名
 const url2 = forge.url('public', 'login.show')
+
+// 检查路由是否存在
+forge.hasRoute('admin', 'users.show')  // true / false
+
+// 获取路由元信息
+const routes = forge.getRoutes('admin')          // 指定层级
+const allRoutes = forge.getRoutes()              // 全部层级
 
 // 检查层级是否已加载
 if (!forge.isLoaded('admin')) {
@@ -85,6 +92,26 @@ forge.api('admin', 'search.show', {
 ```
 
 规则：`params` 优先 > 平铺 `string|number` → 路径参数 > 对象类型按原定义（`query`/`body`/`headers`）。
+
+## 加载状态跟踪
+
+核心始终跟踪并发 API 请求的加载状态，无需配置。不需要使用时，不调用相关 API 即可。
+
+```ts
+// 查询当前是否处于加载中
+forge.isLoading()  // boolean
+
+// 订阅状态变更
+const unsub = forge.onLoadingChange((event) => {
+  console.log(event.loading)  // true / false
+  console.log(event.count)    // 当前并发请求数
+})
+
+// 取消订阅
+unsub()
+```
+
+> 加载状态始终跟踪，用户不使用则不订阅即可。Vue/React 包可通过 `onLoadingChange` 订阅状态变更驱动组件显隐。
 
 ## 文档
 
