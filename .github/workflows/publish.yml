@@ -4,7 +4,7 @@ name: Release npm
 # 无需 NPM_TOKEN，包带 Provenance 签名。
 #
 # 触发方式：
-#   tag push：v1.0.0 → 全量 | core-v* / react-v* / vue-v* → 仅对应包
+#   tag push：1.0.0 → 全量 | core-1.0.0 / react-1.0.0 / vue-1.0.0 → 仅对应包
 #   workflow_dispatch：手动勾选发布哪些包（支持 dry-run）
 #
 # 前置条件（仅首次配置）：
@@ -14,10 +14,10 @@ name: Release npm
 on:
   push:
     tags:
-      - 'v*'
-      - 'core-v*'
-      - 'react-v*'
-      - 'vue-v*'
+      - '[0-9]*'
+      - 'core-[0-9]*'
+      - 'react-[0-9]*'
+      - 'vue-[0-9]*'
   workflow_dispatch:
     inputs:
       publish_core:
@@ -83,14 +83,14 @@ jobs:
             REASON="workflow_dispatch"
           else
             TAG="${GITHUB_REF_NAME}"
-            if [[ "$TAG" =~ ^v[0-9] ]]; then
+            if [[ "$TAG" =~ ^[0-9] ]]; then
               CORE=true REACT=true VUE=true
-              REASON="all (v* tag)"
-            elif [[ "$TAG" =~ ^core-v[0-9] ]]; then
+              REASON="all (semver tag)"
+            elif [[ "$TAG" =~ ^core-[0-9] ]]; then
               CORE=true; REASON="core only"
-            elif [[ "$TAG" =~ ^react-v[0-9] ]]; then
+            elif [[ "$TAG" =~ ^react-[0-9] ]]; then
               REACT=true; REASON="react only"
-            elif [[ "$TAG" =~ ^vue-v[0-9] ]]; then
+            elif [[ "$TAG" =~ ^vue-[0-9] ]]; then
               VUE=true; REASON="vue only"
             else
               REASON="no matching target"
