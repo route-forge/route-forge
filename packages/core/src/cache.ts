@@ -76,7 +76,15 @@ export class RouteCache {
   }
 
   set(resp: LevelRoutesResponse): void {
-    const ttl = resp.cache !== undefined && resp.cache !== null ? resp.cache : this.fallbackTtl;
+    // SPEC §5.3：后端 cache 为上限，前端可缩短但不能延长
+    let ttl: number | null;
+    if (resp.cache !== undefined && resp.cache !== null) {
+      // 后端有值：取 min(后端, 前端兜底)，确保前端不能延长后端设定的 TTL
+      ttl = resp.cache > 0 ? Math.min(resp.cache, this.fallbackTtl) : resp.cache;
+    } else {
+      // 后端未下发：使用前端兜底 TTL
+      ttl = this.fallbackTtl;
+    }
     const entry: CacheEntry = {
       level: resp.level,
       routes: resp.routes,

@@ -253,8 +253,24 @@ export interface RouteForgeOptions {
     levels?: Record<string, boolean>;
   };
   interceptors?: {
-    request?: Array<[((c: RequestConfig) => RequestConfig | Promise<RequestConfig>) | undefined, ((e: unknown) => unknown | Promise<unknown>) | undefined]>;
-    response?: Array<[((r: ResponseData) => unknown | Promise<unknown>) | undefined, ((e: unknown) => unknown | Promise<unknown>) | undefined]>;
+    /**
+     * 声明式请求拦截器列表，支持两种形式（SPEC §4.1.1）：
+     * - 单一函数 → 视为 onFulfilled
+     * - [onFulfilled?, onRejected?] 元组 → 完整拦截器定义
+     */
+    request?: Array<
+      | ((c: RequestConfig) => RequestConfig | Promise<RequestConfig>)
+      | [((c: RequestConfig) => RequestConfig | Promise<RequestConfig>) | undefined, ((e: unknown) => unknown | Promise<unknown>) | undefined]
+    >;
+    /**
+     * 声明式响应拦截器列表，支持两种形式（SPEC §4.1.1）：
+     * - 单一函数 → 视为 onFulfilled
+     * - [onFulfilled?, onRejected?] 元组 → 完整拦截器定义
+     */
+    response?: Array<
+      | ((r: ResponseData) => unknown | Promise<unknown>)
+      | [((r: ResponseData) => unknown | Promise<unknown>) | undefined, ((e: unknown) => unknown | Promise<unknown>) | undefined]
+    >;
   };
   strict?: boolean;
   timeout?: number;

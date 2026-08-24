@@ -6,8 +6,8 @@
  *   - RouteForgeProvider：React Context Provider，注入 RouteForge 实例
  *   - useForge() / useForge({ level }) / useForge({ level, prefix }) 返回统一方法的 forge 实例
  *     • 不传 level：forge.api(level, name, params?) 直接调用
- *     • 传 level：forge.api(name, params?) 直接调用，自动绑定层级
- *     • 传 level + prefix：forge.api(suffix, params?) 自动拼接 prefix
+ *     • 传 level：forge(name, params?) 可直接调用（= api 快捷方式），自动绑定层级
+ *     • 传 level + prefix：forge(suffix, params?) 自动拼接 prefix
  *
  * 类型推断：
  *   当 ForgeRouteMap 通过 codegen 或 module augmentation 定义时，
@@ -99,8 +99,10 @@ export interface BoundForgeMethods<L extends string = string> {
   getRoutes(level: string): Record<string, RouteMeta>;
 }
 
-/** 已绑定 level — 直接调用无需 level，api/route/url 的 name 自动限定到该层级 */
+/** 已绑定 level — 可直接调用（= api 快捷方式），无需传 level */
 export interface BoundForgeTyped<L extends string> extends BoundForgeMethods<L> {
+  /** 直接调用 = forge.api() 快捷方式，自动带绑定的 level */
+  (name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): Promise<ForgeApiResponse<L, ForgeRouteName<L>>>;
   /** 当前绑定的 level 值 */
   readonly level: L;
   /** 路由名前缀（仅在 useForge({ level, prefix }) 传入 prefix 时存在） */
@@ -134,9 +136,10 @@ export interface ForgeInstanceTyped extends Omit<BoundForgeMethods<string>, 'api
  * const forge = useForge()
  * forge.api('admin', 'users.show', { user: 1 })
  *
- * // 绑定层级 — api/route/url 无需传 level
+ * // 绑定层级 — 可直接调用，也可通过 api/route/url
  * const forge = useForge({ level: 'admin' })
  * forge.level                    // → 'admin'
+ * forge('users.show', { user: 1 })         // 直接调用 = forge.api() 快捷方式
  * forge.api('users.show', { user: 1 })
  * forge.route('users.show', { user: 1 })
  *
@@ -170,15 +173,19 @@ export function useForge(opts?: {
 
   return useMemo(() => {
     if (level !== undefined) {
-      const bound: BoundForgeMethods<string> & { level: string; prefix?: string } = {
+      const apiFn = prefix
+        ? (name: string, params?: ApiCallParams) =>
+          resolveRouteName(forge, level, prefix, name).then(
+            (resolved) => forge.api(level, resolved, params),
+          )
+        : (name: string, params?: ApiCallParams) => forge.api(level, name, params);
+
+      // 返回 callable 函数（与 Vue useForge 对齐）：直接调用 = api 快捷方式
+      const callable = apiFn as unknown as BoundForgeTyped<string>;
+      defineImmutableProps(callable, {
         level,
         ...(prefix !== undefined ? { prefix } : {}),
-        api: prefix
-          ? (name: string, params?: ApiCallParams) =>
-            resolveRouteName(forge, level, prefix, name).then(
-              (resolved) => forge.api(level, resolved, params),
-            )
-          : (name: string, params?: ApiCallParams) => forge.api(level, name, params),
+        api: apiFn,
         route: prefix
           ? (name: string, params?: Record<string, unknown>) =>
             forge.route(level, resolveRouteNameSync(forge, level, prefix, name), params)
@@ -193,8 +200,8 @@ export function useForge(opts?: {
         hasRoute: forge.hasRoute.bind(forge),
         getRoutes: forge.getRoutes.bind(forge),
         interceptors: forge.interceptors,
-      };
-      return bound as unknown as BoundForgeTyped<string>;
+      });
+      return callable;
     }
 
     const instance: ForgeInstanceTyped = {
@@ -210,4 +217,22 @@ export function useForge(opts?: {
     };
     return instance;
   }, [forge, level, prefix]);
+}
+
+/**
+ * 以不可变、不可枚举、不可重配置的方式将属性挂载到目标对象上。
+ * 与 Vue 包的 defineImmutableProps 行为一致。
+ * 对象类型的值会浅冻结（Object.freeze），防止内部键被增删改。
+ */
+function defineImmutableProps<T extends object>(target: T, props: Record<string, unknown>): T {
+  for (const key of Object.keys(props)) {
+    const val = props[key];
+    Object.defineProperty(target, key, {
+      value: val !== null && typeof val === 'object' ? Object.freeze(val) : val,
+      writable: false,
+      enumerable: false,
+      configurable: false,
+    });
+  }
+  return target;
 }
