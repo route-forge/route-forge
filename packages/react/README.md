@@ -1,6 +1,6 @@
 # @route-forge/react
 
-Route Forge 的 React 集成：Provider + hooks（`useForge` / `useForgeApi` / `useForgeLevel` /
+Route Forge 的 React 集成：Provider + hooks（`useForge` / `useForgeApi` /
 `useForgeRoute` / `useForgeByPrefix`）。
 
 ## 安装
@@ -15,9 +15,16 @@ pnpm add @route-forge/react @route-forge/core
 // main.tsx
 import { createRoot } from 'react-dom/client'
 import { RouteForgeProvider } from '@route-forge/react'
+import { createRouteForge } from '@route-forge/core'
 
+// 推荐：使用 onSummaryReady 回调确保路由数据就绪后再渲染
 createRoot(document.getElementById('root')!).render(
-  <RouteForgeProvider options={{ endpoint: '/_forge/routes' }}>
+  <RouteForgeProvider options={{
+    endpoint: '/_forge/routes',
+    onSummaryReady: () => {
+      // 路由数据已就绪
+    },
+  }}>
     <App />
   </RouteForgeProvider>,
 )
@@ -30,29 +37,34 @@ createRoot(document.getElementById('root')!).render(
 ```tsx
 import { useForge } from '@route-forge/react'
 
-// 不绑定层级 — 需要传 level
+// 不绑定层级 — 仅提供异步 API + 工具方法
 const forge = useForge()
 forge.api('admin', 'users.show', { user: 1 })
-forge.route('admin', 'users.show', { user: 1 })
+forge.ready                                        // Promise<void>
+forge.onLevelLoaded('admin', () => { ... })        // 订阅 level 加载
 
-// 绑定层级 — api/route/url 无需传 level
+// 绑定层级 — 自动触发 load，提供同步方法 + levelLoaded 状态
 const forge = useForge({ level: 'admin' })
-forge.level                                    // → 'admin'
+forge.level                                        // → 'admin'
+forge.levelLoaded                                  // boolean，加载完成后为 true
 forge.api('users.show', { user: 1 })
 forge.route('users.show', { user: 1 })
-forge.url('users.show', { user: 1 })           // route() 语义别名
+forge.url('users.show', { user: 1 })               // route() 语义别名
 
 // 绑定层级 + 前缀 — 路由名自动拼接
 const forge = useForge({ level: 'admin', prefix: 'users' })
-forge.api('show', { user: 1 })                 // → forge.api('admin', 'users.show', ...)
-forge.route('show', { user: 1 })               // → forge.route('admin', 'users.show', ...)
+forge.api('show', { user: 1 })                     // → forge.api('admin', 'users.show', ...)
+forge.route('show', { user: 1 })                   // → forge.route('admin', 'users.show', ...)
 
 // 通用方法（无论是否绑定 level 均可用）
-forge.load('admin')                            // 加载层级
-forge.isLoaded('admin')                        // 检查缓存
-forge.invalidate('admin')                      // 失效缓存（支持单层级 / 数组批量 / 不传失效全部）
-forge.interceptors.request.use(...)            // 拦截器管理
+forge.load('admin')                                // 加载层级
+forge.isLoaded('admin')                            // 检查缓存
+forge.invalidate('admin')                          // 失效缓存
+forge.interceptors.request.use(...)                // 拦截器管理
 ```
+
+> **注意**：`useForge()` 无 level 时 **不提供** `route`/`url`/`hasRoute`/`getRoutes` 同步方法，
+> 因为 auto-discovery 可能未完成。请使用 `useForgeRoute` 或 `await forge.ready` 后再调用。
 
 ### 参数智能解析
 
@@ -76,7 +88,6 @@ forge.api('search.show', {
 ```tsx
 import {
   useForgeApi,
-  useForgeLevel,
   useForgeRoute,
   useForgeByPrefix,
 } from '@route-forge/react'
@@ -85,10 +96,8 @@ import {
 const { call, pending, error } = useForgeApi()
 const { data } = await call('admin', 'users.show', { user: 1 })
 
-// useForgeLevel — 挂载时自动加载层级
-const { loaded, error } = useForgeLevel('admin')
-
-// useForgeRoute — memoized URL 生成（用于 <a href> 等）
+// useForgeRoute — 响应式 URL 生成器，内部处理 level 加载状态
+// level 未加载时返回 ''，加载后自动更新
 const url = useForgeRoute('public', 'login.show')
 
 // useForgeByPrefix — 层级 + 名字前缀封装

@@ -251,6 +251,19 @@ export interface RouteForge {
     request: InterceptorManager<RequestConfig, RequestConfig>;
     response: InterceptorManager<ResponseData, unknown>;
   };
+
+  /**
+   * Promise，auto-discovery + eager load 完成后 resolve。
+   * 推荐用法：await forge.ready 后再调用 route() / hasRoute() 等同步方法。
+   */
+  ready: Promise<void>;
+
+  /**
+   * 订阅指定层级路由元数据加载完成事件。
+   * 框架层（Vue/React）用于驱动响应式状态更新。
+   * @returns 取消订阅函数
+   */
+  onLevelLoaded(level: string, cb: () => void): () => void;
 }
 
 /**
@@ -293,6 +306,16 @@ export interface RouteForgeOptions {
   strict?: boolean;
   timeout?: number;
   baseURL?: string;
+  /**
+   * 摘要端点（auto-discovery）完成后的回调。
+   * 推荐用法：在回调中 mount 应用，确保 route() / hasRoute() 等同步方法可用。
+   * @example
+   * createRouteForgePlugin({
+   *   endpoint: '/_forge/routes',
+   *   onSummaryReady: () => app.mount('#app'),
+   * });
+   */
+  onSummaryReady?: () => void;
 }
 
 /**

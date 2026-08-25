@@ -15,8 +15,8 @@
  *   level / name / params 均自动推断，IDE 提供补全提示。
  */
 
-import type { App, InjectionKey, Plugin } from 'vue';
-import { inject, reactive, readonly } from 'vue';
+import type { App, InjectionKey, Plugin, Ref } from 'vue';
+import { inject, ref } from 'vue';
 import {
   type ApiCallParams,
   createRouteForge,
@@ -77,6 +77,9 @@ export interface BoundForgeMethods<L extends string = string> {
 
   /** 获取指定层级下全部路由元信息（深拷贝，修改不影响内部缓存） */
   getRoutes(level: string): Record<string, RouteMeta>;
+
+  /** 指定层级的路由元数据是否已加载完成（响应式） */
+  levelLoaded: Ref<boolean>;
 }
 
 /** 已绑定 level — 直接调用无需 level，api/route/url 的 name 自动限定到该层级 */
@@ -88,24 +91,37 @@ export interface BoundForgeTyped<L extends string> extends BoundForgeMethods<L> 
   readonly prefix?: string;
 }
 
-/** 未绑定 level — 直接调用需要传 level */
-export interface ForgeInstanceTyped extends Omit<BoundForgeMethods<string>, 'api' | 'route' | 'url' | 'hasRoute' | 'getRoutes'> {
+/** 未绑定 level — 直接调用需要传 level（不提供 route/url/hasRoute/getRoutes 等同步方法） */
+export interface ForgeInstanceTyped {
   (level: string, name: string, params?: ApiCallParams): Promise<unknown>;
   api(level: string, name: string, params?: ApiCallParams): Promise<unknown>;
-  route(level: string, name: string, params?: Record<string, unknown>): string;
-  url(level: string, name: string, params?: Record<string, unknown>): string;
 
-  hasRoute(level: string, name: string): boolean;
+  interceptors: {
+    request: ReadOnlyInterceptorManager<RequestConfig>;
+    response: ReadOnlyInterceptorManager<ResponseData>;
+  };
+  ready: Promise<void>;
 
-  /** 获取全部层级路由（深拷贝）；传 level 时仅返回该层级 */
-  getRoutes(): Record<string, Record<string, RouteMeta>>;
-  getRoutes(level: string): Record<string, RouteMeta>;
+  load(level: string | string[]): Promise<void>;
+
+  invalidate(level?: string | string[]): void;
+
+  isLoaded(level?: string): boolean;
+
+  isLoading(): boolean;
+
+  onLoadingChange(cb: LoadingChangeCallback): () => void;
+
+  onLevelLoaded(level: string, cb: () => void): () => void;
 }
 
-export function createRouteForgePlugin(options: RouteForgePluginOptions): Plugin<[]> {
+export function createRouteForgePlugin(options: RouteForgePluginOptions): Plugin<[]> & {
+  ready: Promise<void>
+} {
   const forge = createRouteForge(options);
 
   return {
+    ready: forge.ready,
     install(app: App) {
       app.provide(FORGE_INJECTION_KEY, forge);
       app.config.globalProperties.$forge = {
@@ -153,6 +169,18 @@ export function useForge(level?: string, prefix?: string): ForgeInstanceTyped | 
   }
 
   if (level !== undefined) {
+    // 自动触发 level 加载 + 响应式 levelLoaded 状态
+    const levelLoaded = ref(forge.isLoaded(level));
+    forge.load(level).then(() => {
+      levelLoaded.value = true;
+    }).catch(() => { /* 加载失败时 levelLoaded 保持 false */
+    });
+    // 订阅 level 加载完成事件（兜底：如果 load() 在 ref 赋值后才完成）
+    const unsub = forge.onLevelLoaded(level, () => {
+      levelLoaded.value = true;
+      unsub();
+    });
+
     const callable = prefix
       ? async (name: string, params?: ApiCallParams) =>
         forge.api(level, await resolveRouteName(forge, level, prefix, name), params)
@@ -183,6 +211,13 @@ export function useForge(level?: string, prefix?: string): ForgeInstanceTyped | 
       getRoutes: forge.getRoutes.bind(forge),
       interceptors: forge.interceptors,
     });
+    // levelLoaded 需要保持响应式，不能通过 defineImmutableProps（会 Object.freeze）
+    Object.defineProperty(callable, 'levelLoaded', {
+      value: levelLoaded,
+      writable: false,
+      enumerable: true,
+      configurable: false,
+    });
     return callable as unknown as BoundForgeTyped<string>;
   }
 
@@ -190,21 +225,18 @@ export function useForge(level?: string, prefix?: string): ForgeInstanceTyped | 
     forge.api(lvl, name, params);
   defineImmutableProps(callable, {
     api: forge.api.bind(forge),
-    route: forge.route.bind(forge),
-    url: forge.url.bind(forge),
     load: forge.load.bind(forge),
     invalidate: forge.invalidate.bind(forge),
     isLoaded: forge.isLoaded.bind(forge),
-    hasRoute: forge.hasRoute.bind(forge),
     isLoading: forge.isLoading.bind(forge),
     onLoadingChange: forge.onLoadingChange.bind(forge),
-    getRoutes: forge.getRoutes.bind(forge),
     interceptors: forge.interceptors,
+    ready: forge.ready,
+    onLevelLoaded: forge.onLevelLoaded.bind(forge),
   });
   return callable as ForgeInstanceTyped;
 }
 
-export { readonly, reactive };
 
 /**
  * 以不可变、不可枚举、不可重配置的方式将属性挂载到目标对象上。

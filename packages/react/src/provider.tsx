@@ -141,6 +141,9 @@ export interface BoundForgeMethods<L extends string = string> {
 
   /** 获取指定层级下全部路由元信息（深拷贝，修改不影响内部缓存） */
   getRoutes(level: string): Record<string, RouteMeta>;
+
+  /** 指定层级的路由元数据是否已加载完成 */
+  levelLoaded: boolean;
 }
 
 /** 已绑定 level — 可直接调用（= api 快捷方式），无需传 level */
@@ -153,20 +156,27 @@ export interface BoundForgeTyped<L extends string> extends BoundForgeMethods<L> 
   readonly prefix?: string;
 }
 
-/** 未绑定 level — 直接调用需要传 level */
-export interface ForgeInstanceTyped extends Omit<BoundForgeMethods<string>, 'api' | 'route' | 'url' | 'hasRoute' | 'getRoutes'> {
+/** 未绑定 level — 直接调用需要传 level（不提供 route/url/hasRoute/getRoutes 等同步方法） */
+export interface ForgeInstanceTyped {
   api(level: string, name: string, params?: ApiCallParams): Promise<unknown>;
 
-  route(level: string, name: string, params?: Record<string, unknown>): string;
+  interceptors: {
+    request: ReadOnlyInterceptorManager<RequestConfig, RequestConfig>;
+    response: ReadOnlyInterceptorManager<ResponseData, unknown>;
+  };
+  ready: Promise<void>;
 
-  url(level: string, name: string, params?: Record<string, unknown>): string;
+  load(level: string | string[]): Promise<void>;
 
-  hasRoute(level: string, name: string): boolean;
+  invalidate(level?: string | string[]): void;
 
-  /** 获取全部层级路由（深拷贝）；传 level 时仅返回该层级 */
-  getRoutes(): Record<string, Record<string, RouteMeta>>;
+  isLoaded(level?: string): boolean;
 
-  getRoutes(level: string): Record<string, RouteMeta>;
+  isLoading(): boolean;
+
+  onLoadingChange(cb: LoadingChangeCallback): () => void;
+
+  onLevelLoaded(level: string, cb: () => void): () => void;
 }
 
 // ─── useForge hook ───────────────────────────────────────────
@@ -217,6 +227,10 @@ export function useForge(opts?: {
 
   return useMemo(() => {
     if (level !== undefined) {
+      // 自动触发 level 加载（在 useMemo 内发起，确保仅执行一次）
+      forge.load(level).catch(() => { /* 加载失败时 levelLoaded 保持 false */
+      });
+
       const apiFn = prefix
         ? (name: string, params?: ApiCallParams) =>
           resolveRouteName(forge, level, prefix, name).then(
@@ -246,22 +260,21 @@ export function useForge(opts?: {
         onLoadingChange: forge.onLoadingChange.bind(forge),
         getRoutes: forge.getRoutes.bind(forge),
         interceptors: forge.interceptors,
+        levelLoaded: forge.isLoaded(level),
       });
       return callable;
     }
 
     const instance: ForgeInstanceTyped = {
       api: forge.api.bind(forge),
-      route: forge.route.bind(forge),
-      url: forge.url.bind(forge),
       load: forge.load.bind(forge),
       invalidate: forge.invalidate.bind(forge),
       isLoaded: forge.isLoaded.bind(forge),
-      hasRoute: forge.hasRoute.bind(forge),
       isLoading: forge.isLoading.bind(forge),
       onLoadingChange: forge.onLoadingChange.bind(forge),
-      getRoutes: forge.getRoutes.bind(forge),
       interceptors: forge.interceptors,
+      ready: forge.ready,
+      onLevelLoaded: forge.onLevelLoaded.bind(forge),
     };
     return instance;
   }, [forge, level, prefix]);

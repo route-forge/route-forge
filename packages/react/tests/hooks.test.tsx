@@ -1,12 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
-import { useContext, useRef, useState } from 'react';
+import { useContext } from 'react';
 import {
   ForgeContext,
   RouteForgeProvider,
   useForge,
   useForgeApi,
-  useForgeLevel,
   useForgeRoute,
 } from '../src/index.js';
 import type { LevelRoutesResponse, SummaryResponse } from '@route-forge/core';
@@ -242,101 +241,70 @@ describe('useForgeApi', () => {
   });
 });
 
-// ─── useForgeLevel ──────────────────────────────────────────
-
-describe('useForgeLevel', () => {
-  it('auto-loads on mount and flips loaded to true', async () => {
-    let state: any;
-    let ctxForge: any;
-
-    function C() {
-      ctxForge = useContext(ForgeContext);
-      state = useForgeLevel('public');
-      return null;
-    }
-
-    render(
-      <RouteForgeProvider options={makeOptions()}>
-        <C />
-      </RouteForgeProvider>,
-    );
-    await waitFor(() => expect(state.loaded).toBe(true));
-    expect(state.error).toBeNull();
-    expect(ctxForge.isLoaded('public')).toBe(true);
-  });
-
-  it('load failure sets error, manual load() retries and recovers', async () => {
-    backend.levelOk = false;
-    let state: any;
-
-    function C() {
-      state = useForgeLevel('public');
-      return null;
-    }
-
-    render(
-      <RouteForgeProvider options={makeOptions()}>
-        <C />
-      </RouteForgeProvider>,
-    );
-    await waitFor(() => expect(state.error).toBeTruthy());
-    expect(state.loaded).toBe(false);
-
-    // 后端恢复 → 手动重试
-    backend.levelOk = true;
-    await act(async () => {
-      await state.load();
-    });
-    await waitFor(() => expect(state.loaded).toBe(true));
-    expect(state.error).toBeNull();
-  });
-
-  it('load identity is stable across re-renders with unchanged level', () => {
-    const loads: Array<() => Promise<void>> = [];
-
-    function C() {
-      const { load } = useForgeLevel('public');
-      const first = useRef(load);
-      loads.push(load);
-      const [, force] = useState(0);
-      // 触发一次重渲染
-      if (loads.length === 1) force(1);
-      return first.current === load ? null : <div data-changed="1" />;
-    }
-
-    const { container } = render(
-      <RouteForgeProvider options={makeOptions()}>
-        <C />
-      </RouteForgeProvider>,
-    );
-    expect(loads.length).toBeGreaterThanOrEqual(2);
-    expect(container.querySelector('[data-changed]')).toBeNull();
-  });
-});
-
 // ─── useForgeRoute ──────────────────────────────────────────
 
 describe('useForgeRoute', () => {
-  it('builds url after level auto-load', async () => {
-    let url: string | undefined;
+  it('returns empty string initially, then builds url after level auto-load', async () => {
+    const urls: string[] = [];
 
-    function Outer() {
-      const { loaded } = useForgeLevel('public');
-      if (!loaded) return <div>loading</div>;
-      return <Inner />;
-    }
-
-    function Inner() {
-      url = useForgeRoute('public', 'users.show', { user: 42 });
-      return null;
+    function C() {
+      const url = useForgeRoute('public', 'users.show', { user: 42 });
+      urls.push(url);
+      return <div data-url={url || 'empty'}>{url || 'loading'}</div>;
     }
 
     const { getByText } = render(
       <RouteForgeProvider options={makeOptions()}>
-        <Outer />
+        <C />
       </RouteForgeProvider>,
     );
     getByText('loading');
-    await waitFor(() => expect(url).toBe('/users/42'));
+    await waitFor(() => expect(urls).toContain('/users/42'));
+  });
+});
+
+// ─── API trimming & levelLoaded ─────────────────────────────
+
+describe('useForge API trimming', () => {
+  it('useForge() without level does not expose route/url/hasRoute/getRoutes', () => {
+    let forge: any;
+
+    function C() {
+      forge = useForge();
+      return null;
+    }
+
+    render(
+      <RouteForgeProvider options={makeOptions()}>
+        <C />
+      </RouteForgeProvider>,
+    );
+    expect(typeof forge.api).toBe('function');
+    expect(typeof forge.load).toBe('function');
+    expect(typeof forge.isLoaded).toBe('function');
+    expect(forge.ready).toBeDefined();
+    expect(typeof forge.onLevelLoaded).toBe('function');
+    // removed sync methods
+    expect(forge.route).toBeUndefined();
+    expect(forge.url).toBeUndefined();
+    expect(forge.hasRoute).toBeUndefined();
+    expect(forge.getRoutes).toBeUndefined();
+  });
+
+  it('useForge({ level }) returns levelLoaded and auto-triggers load', async () => {
+    let bound: any;
+
+    function C() {
+      bound = useForge({ level: 'public' });
+      return null;
+    }
+
+    render(
+      <RouteForgeProvider options={makeOptions()}>
+        <C />
+      </RouteForgeProvider>,
+    );
+    expect(bound.levelLoaded).toBeDefined();
+    await waitFor(() => expect(bound.isLoaded('public')).toBe(true));
   });
 });

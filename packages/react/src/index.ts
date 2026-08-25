@@ -23,9 +23,6 @@ export type {
   UseForgeApiBoundCall,
 } from './hooks/useForgeApi.js';
 
-export { useForgeLevel } from './hooks/useForgeLevel.js';
-export type { UseForgeLevelReturn } from './hooks/useForgeLevel.js';
-
 export { useForgeRoute } from './hooks/useForgeRoute.js';
 
 export { useForgeByPrefix } from './hooks/useForgeByPrefix.js';

@@ -13,8 +13,8 @@
  *   api('test.1')   → 歧义：优先 test.test.1，回退 test.1
  */
 
-import { useCallback, useMemo } from 'react';
-import { useForge } from '../provider.js';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { ForgeContext } from '../provider.js';
 import { resolveRouteName, resolveRouteNameSync } from '../utils/resolveRouteName.js';
 import type { ApiCallParams } from '@route-forge/core';
 
@@ -24,7 +24,30 @@ export interface UseForgeByPrefixReturn {
 }
 
 export function useForgeByPrefix(level: string, prefix: string, separator = '.'): UseForgeByPrefixReturn {
-  const forge = useForge();
+  const forge = useContext(ForgeContext);
+  if (!forge) {
+    throw new Error(
+      '[route-forge/react] useForgeByPrefix() must be used within a <RouteForgeProvider>',
+    );
+  }
+
+  // 追踪 level 加载状态，level 未加载时 route 返回 ''
+  const [levelLoaded, setLevelLoaded] = useState(() => forge.isLoaded(level));
+
+  useEffect(() => {
+    if (forge.isLoaded(level)) {
+      setLevelLoaded(true);
+      return;
+    }
+    let cancelled = false;
+    forge.load(level).then(() => {
+      if (!cancelled) setLevelLoaded(true);
+    }).catch(() => { /* 加载失败时 levelLoaded 保持 false */
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [forge, level]);
 
   const api = useCallback(
     (suffix: string, params?: ApiCallParams) =>
@@ -35,9 +58,12 @@ export function useForgeByPrefix(level: string, prefix: string, separator = '.')
   );
 
   const route = useCallback(
-    (suffix: string, params?: Record<string, unknown>) =>
-      forge.route(level, resolveRouteNameSync(forge, level, prefix, suffix, separator), params),
-    [forge, level, prefix, separator],
+    (suffix: string, params?: Record<string, unknown>) => {
+      // level 未加载时返回空字符串，避免 resolveRouteNameSync 内部 hasRoute() 抛错
+      if (!levelLoaded) return '';
+      return forge.route(level, resolveRouteNameSync(forge, level, prefix, suffix, separator), params);
+    },
+    [forge, level, prefix, separator, levelLoaded],
   );
 
   return useMemo(() => ({ api, route }), [api, route]);

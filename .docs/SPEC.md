@@ -857,85 +857,106 @@ import {createApp} from 'vue';
 import {createRouteForgePlugin} from '@route-forge/vue';
 
 const app = createApp(App);
-app.use(createRouteForgePlugin({ /* 同 4.1.1 */}));
-app.mount('#app');
+const plugin = createRouteForgePlugin({
+  /* 同 4.1.1 */
+  onSummaryReady: () => {
+    app.mount('#app');  // 推荐：在路由数据就绪后挂载应用
+  },
+});
+app.use(plugin);
+// 也可直接挂载（不使用 onSummaryReady 回调）
+// app.mount('#app');
 ```
 
 ##### useForge — 核心 composable
 
-`useForge()` 返回一个可直接调用的 forge 实例（`forge.api()` 的快捷方式），支持可选传入 `level`
-绑定层级。无论是否传 level，返回的方法集一致（`api` / `route` / `url` / `load` / `invalidate` /
-`isLoaded` / `interceptors`），区别在于绑定 level 后 `api` / `route` / `url` 及直接调用均无需再传
-level：
+`useForge()` 返回一个 forge 实例。`useForge()` 无 level 时仅提供异步 API + 工具方法（不含 `route`/
+`url`/`hasRoute`/`getRoutes` 同步方法）； 传入 `level` 时自动触发 load，提供同步方法 + `levelLoaded`
+响应式状态：
 
 ```ts
 import {useForge} from '@route-forge/vue';
 
-// 不绑定层级
+// 不绑定层级 — 仅提供异步 API + 工具方法
 const forge = useForge();
 forge('admin', 'users.show', {user: 1});      // 直接调用 = forge.api() 快捷方式
 forge.api('admin', 'users.show', {user: 1});   // 显式调用
+forge.ready;                                    // Promise<void>
+forge.onLevelLoaded('admin', () => { ... });   // 订阅 level 加载
 
-// 绑定层级 — 直接调用和 api/route/url 均无需 level
+// 绑定层级 — 自动触发 load，提供同步方法 + levelLoaded 状态
 const forge = useForge('admin');
-forge('users.show', {user: 1});               // 自动带 admin
-forge.api('users.show');                       // 同上
-forge.route('users.show');                     // 生成 URL，自动带 admin
-forge.url('users.show');                       // route() 语义别名
+forge.level;                                    // → 'admin'
+forge.levelLoaded;                              // Ref<boolean>
+forge('users.show', {user: 1});                // 自动带 admin
+forge.api('users.show');                        // 同上
+forge.route('users.show');                      // 生成 URL
+forge.url('users.show');                        // route() 语义别名
 
 // 通用方法（无论是否绑定 level 均可用）
-forge.load('admin');                           // 加载层级
-forge.isLoaded('admin');                       // 检查缓存
-forge.invalidate('admin');                     // 失效缓存
-forge.interceptors.request.use(...);           // 拦截器管理
+forge.load('admin');                            // 加载层级
+forge.isLoaded('admin');                        // 检查缓存
+forge.invalidate('admin');                      // 失效缓存
+forge.interceptors.request.use(...);            // 拦截器管理
 ```
 
 类型定义：
 
 ```ts
-// 未绑定 level — 直接调用需要传 level
-interface ForgeInstance extends ForgeMethods {
+// 未绑定 level — 不提供 route/url/hasRoute/getRoutes 同步方法
+interface ForgeInstanceTyped {
   (level: string, name: string, params?: ApiCallParams): Promise<unknown>;
-}
-
-// 已绑定 level — 直接调用无需 level
-interface BoundForge extends ForgeMethods {
-  (name: string, params?: ApiCallParams): Promise<unknown>;
-}
-
-// 统一方法集
-interface ForgeMethods {
   api(level: string, name: string, params?: ApiCallParams): Promise<unknown>;
+  load(level: string | string[]): Promise<void>;
+  invalidate(level?: string | string[]): void;
+  isLoaded(level?: string): boolean;
+  isLoading(): boolean;
+  onLoadingChange(cb: LoadingChangeCallback): () => void;
+  interceptors: { request: ReadOnlyInterceptorManager<...>; response: ReadOnlyInterceptorManager<...> };
+  ready: Promise<void>;
+  onLevelLoaded(level: string, cb: () => void): () => void;
+}
+
+// 已绑定 level — 提供同步方法 + levelLoaded
+interface BoundForgeMethods {
   api(name: string, params?: ApiCallParams): Promise<unknown>;
-  route(level: string, name: string, params?: Record<string, unknown>): string;
   route(name: string, params?: Record<string, unknown>): string;
-  url(level: string, name: string, params?: Record<string, unknown>): string;
   url(name: string, params?: Record<string, unknown>): string;
   load(level: string | string[]): Promise<void>;
-  invalidate(level?: string): void;
+  invalidate(level?: string | string[]): void;
   isLoaded(level?: string): boolean;
-  interceptors: { request: InterceptorManager<...>; response: InterceptorManager<...> };
+  hasRoute(level: string, name: string): boolean;
+  isLoading(): boolean;
+  onLoadingChange(cb: LoadingChangeCallback): () => void;
+  getRoutes(level: string): Record<string, RouteMeta>;
+  interceptors: { request: ReadOnlyInterceptorManager<...>; response: ReadOnlyInterceptorManager<...> };
+  levelLoaded: Ref<boolean>;
+}
+
+interface BoundForgeTyped extends BoundForgeMethods {
+  (name: string, params?: ApiCallParams): Promise<unknown>;
+  readonly level: string;
+  readonly prefix?: string;
 }
 
 // useForge 重载签名
-declare function useForge(level: string): BoundForge;
-declare function useForge(): ForgeInstance;
+declare function useForge(level: string, prefix: string): BoundForgeTyped;
+declare function useForge(level: string): BoundForgeTyped;
+declare function useForge(): ForgeInstanceTyped;
 ```
 
 ##### 其他 composable
 
 ```vue
 <script setup lang="ts">
-import {useForgeApi, useForgeLevel, useForgeRoute, useForgeByPrefix} from '@route-forge/vue';
+import {useForgeApi, useForgeRoute, useForgeByPrefix} from '@route-forge/vue';
 
 // useForgeApi：包装 forge.api()，自动管理 loading/error 状态
 const {call, pending, error} = useForgeApi();
 const {data} = await call('admin', 'users.show', {user: 123});
 
-// useForgeLevel：声明组件依赖某层级，挂载时自动 forge.load(level)
-const {loaded} = useForgeLevel('admin');
-
-// useForgeRoute：仅生成 URL，不发请求（用于 <a href>、外部跳转等）
+// useForgeRoute：响应式 URL 生成器，内部处理 level 加载状态
+// level 未加载时返回 ''，加载后自动更新
 const url = useForgeRoute('public', 'login.show');
 
 // useForgeByPrefix：带层级 + 名字前缀的封装
@@ -946,13 +967,103 @@ await api('show', {user: 1});   // = forge.api('admin', 'users.show', {user: 1})
 
 插件提供的完整能力清单：
 
-- `useForge(level?)`：获取 forge 实例。传 level 时 `api` / `route` / `url` 及直接调用自动绑定该层级。可直接调用（=
-  `forge.api()` 快捷方式）。
+- `useForge(level?)`：获取 forge 实例。不传 level 时仅提供异步 API + 工具方法（`ready`/
+  `onLevelLoaded`）； 传 level 时自动触发 load，提供同步方法 + `levelLoaded` 响应式状态。
 - `useForgeApi()`：包装 `forge.api()`，自动管理 loading/error 状态。
-- `useForgeByPrefix(level, prefix)`：带指定层级和名字前缀的封装，方便后续减少名称传入。
-- `useForgeLevel(level)`：声明组件依赖某层级，挂载时自动 `forge.load(level)`，组件销毁时不主动失效。
-- `useForgeRoute(level, name, params?)`：仅生成 URL，不发请求（用于 `<a href>`、外部跳转等）。
+- `useForgeByPrefix(level, prefix)`：带指定层级和名字前缀的封装，`route` 方法在 level 未加载时返回
+  `''`。
+- `useForgeRoute(level, name, params?)`：响应式 URL 生成器，内部处理 level 加载状态，未加载返回 `''`
+  ，加载后自动更新。
 - 全局属性 `$forge` 与模板内 `{{ $forge.route('admin', 'users.show', { user: 1 }) }}` 工具函数。
+
+#### 4.1.9 初始化合时序与推荐模式
+
+Route Forge 的初始化涉及三个独立的异步阶段，理解它们的关系对于正确挂载应用至关重要：
+
+```
+① Auto-discovery（摘要端点）  ──  获取所有层级的元信息索引
+       ↓
+② Level load（层级加载）      ──  拉取 eager 层级的完整路由表
+       ↓
+③ API request（业务请求）      ──  forge.api() 发起的实际业务请求
+```
+
+##### `onSummaryReady` 回调
+
+`RouteForgeOptions` 新增 `onSummaryReady` 回调，在 auto-discovery（摘要端点）完成后触发。推荐在此回调中挂载应用，确保路由数据已就绪：
+
+```ts
+// Vue 推荐初始化模式
+const app = createApp(App);
+const plugin = createRouteForgePlugin({
+  onSummaryReady: () => {
+    app.mount('#app');  // 路由数据就绪后再挂载
+  },
+});
+app.use(plugin);
+
+// React 推荐初始化模式
+const forge = createRouteForge({
+  onSummaryReady: () => {
+    ReactDOM.createRoot(document.getElementById('root')!).render(<App />);
+  },
+});
+```
+
+如果不使用 `onSummaryReady`，应用可能在路由数据就绪前渲染，此时 `route()` / `hasRoute()` 会触发
+auto-discovery 守卫错误（见下方）。
+
+##### `forge.ready` Promise
+
+`forge.ready: Promise<void>` 在 auto-discovery + eager load 全部完成后 resolve。适合在 async
+初始化流程中使用：
+
+```ts
+const forge = createRouteForge({ /* ... */ });
+await forge.ready;  // 等待 discovery + eager load 完成
+// 此时 route() / hasRoute() 可安全使用
+```
+
+> `onSummaryReady` 在 discovery 完成后即触发（eager load 可能尚未完成）；`forge.ready` 等待 discovery +
+> eager load 全部完成。
+> 如果只需要确保 `route()` / `hasRoute()` 可用，`onSummaryReady` 即可；如果需要 eager 层级也已加载，使用
+> `forge.ready`。
+
+##### `onLevelLoaded` 订阅
+
+`forge.onLevelLoaded(level, cb)` 允许订阅指定 level 的加载完成事件，返回取消订阅函数。框架层
+composable（`useForge(level)`、`useForgeRoute` 等）内部使用此机制驱动响应式更新：
+
+```ts
+const unsub = forge.onLevelLoaded('admin', () => {
+  console.log('admin level routes loaded');
+});
+// 取消订阅
+unsub();
+```
+
+##### Auto-discovery 守卫
+
+当 auto-discovery 尚未完成 **且** 未通过 `levels` 显式声明层级时，`route()` 和 `hasRoute()` 会抛出
+`ForgeError (RF_FE_010)`，提示用户使用 `onSummaryReady` 回调挂载应用或等待 `forge.ready` /
+`forge.load(level)` 完成。
+
+以下方法 **不受** 守卫影响：
+
+- `forge.api()` — 异步方法，内部自动 await 加载
+- `forge.load()` / `forge.isLoaded()` / `forge.invalidate()` — 加载管理方法
+- `forge.interceptors.*` — 拦截器管理
+
+显式声明 `levels` 时（如 `createRouteForge({ levels: ['admin'] })`），守卫不生效，因为无需
+auto-discovery 即可知道层级存在。
+
+##### 推荐初始化模式
+
+| 场景                              | 推荐方式                                         |
+|-----------------------------------|--------------------------------------------------|
+| 传统 SPA（document 加载后 mount） | `onSummaryReady` 回调中 mount 应用               |
+| 异步初始化（如 SSR hydration）    | `await forge.ready` 后 mount                     |
+| 组件级懒加载                      | `useForge(level)` / `useForgeRoute` 内部自动处理 |
 
 ### 4.2 类型生成（可选）
 
@@ -1112,6 +1223,7 @@ const forge = createRouteForge({
 | `strict`                | `boolean`                                    | `false`            | 前端严格模式，默认与后端一致；受后端 `strict_mode` 约束（见 §5.3）    |
 | `timeout`               | `number`                                     | `30000`            | 默认请求超时（毫秒）                                                  |
 | `baseURL`               | `string`                                     | `''`               | 前端 baseURL；为空时使用相对路径                                      |
+| `onSummaryReady`        | `() => void`                                 | `undefined`        | Auto-discovery 完成后回调；推荐在此回调中挂载应用（见 §4.1.9）        |
 
 ### 5.3 配置覆盖关系
 

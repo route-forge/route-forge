@@ -192,6 +192,14 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     autoDiscoveryError = e;
   });
 
+  // --- Auto-discovery 完成状态 + ready Promise + level 加载订阅 ---
+  let autoDiscoveryCompleted = false;
+  let resolveReady!: () => void;
+  const readyPromise = new Promise<void>((resolve) => {
+    resolveReady = resolve;
+  });
+  const levelLoadedListeners = new Map<string, Set<() => void>>();
+
   const cacheTtl = cacheOpts.ttl ?? DEFAULT_CACHE_TTL;
   const cacheStorage = cacheOpts.storage ?? 'memory';
   const cache = new RouteCache({ storage: cacheStorage, ttl: cacheTtl });
@@ -248,6 +256,16 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   function assertLevelDeclared(level: string): void {
     if (!effectiveLevels.includes(level)) {
       throw new UnknownLevelError(level);
+    }
+  }
+
+  function assertDiscoveryReady(): void {
+    if (!autoDiscoveryCompleted && !explicitLevels?.length) {
+      throw new ForgeError(
+        'Route data not available. Auto-discovery has not completed. ' +
+        'Use onSummaryReady callback to mount app, or await forge.ready / forge.load(level) first.',
+        { code: 'RF_FE_010' },
+      );
     }
   }
 
@@ -309,12 +327,18 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
             routes[r.name] = { ...r, level: UNASSIGNED_LEVEL };
           }
           cache.set({ level: UNASSIGNED_LEVEL, routes, cache: null });
+          // 通知 level 加载完成订阅者
+          const listeners = levelLoadedListeners.get(level);
+          if (listeners) listeners.forEach((cb) => cb());
           return;
         }
         const resp = await fetchLevel(level);
         // 仅在缓存未被 invalidate 清除时写入，防止旧数据回写
         if ((invalidationGens.get(level) ?? 0) === gen) {
           cache.set(resp);
+          // 通知 level 加载完成订阅者
+          const listeners = levelLoadedListeners.get(level);
+          if (listeners) listeners.forEach((cb) => cb());
         }
       } finally {
         inflight.delete(level);
@@ -331,6 +355,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   }
 
   function route(level: string, name: string, params?: Record<string, unknown>): string {
+    assertDiscoveryReady();
     // 静态生成 URL：仅查已加载缓存，未加载时抛 UnknownRouteError
     const meta = findRouteMeta(level, name);
     if (!meta) {
@@ -533,6 +558,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   }
 
   function hasRoute(level: string, name: string): boolean {
+    assertDiscoveryReady();
     return findRouteMeta(level, name) !== undefined;
   }
 
@@ -564,17 +590,25 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     return result;
   }
 
-  // eager 层级自动加载（不阻塞 createRouteForge 返回；在自动发现完成后触发）
+  // eager 层级自动加载 + onSummaryReady 回调 + ready Promise resolve
+  // 不阻塞 createRouteForge 返回；在自动发现完成后触发
   void autoDiscoveryPromise
     .then(() => {
+      // 摘要处理完成，触发 onSummaryReady（eager load 之前）
+      options.onSummaryReady?.();
+      // eager load
       if (effectiveEager.length > 0) {
-        void Promise.all(effectiveEager.map((lvl) => load(lvl))).catch((e) => {
+        return Promise.all(effectiveEager.map((lvl) => load(lvl))).catch((e) => {
           console.warn(`[route-forge] eager load failed: ${(e as Error).message}`);
         });
       }
     })
+    .then(() => {
+      autoDiscoveryCompleted = true;
+      resolveReady();
+    })
     .catch(() => {
-      /* 自动发现失败时不触发 eager */
+      /* 自动发现失败时不触发 eager / ready */
     });
 
   return {
@@ -591,6 +625,14 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     interceptors: {
       request: requestInterceptors,
       response: responseInterceptors,
+    },
+    ready: readyPromise,
+    onLevelLoaded(level: string, cb: () => void): () => void {
+      if (!levelLoadedListeners.has(level)) {
+        levelLoadedListeners.set(level, new Set());
+      }
+      levelLoadedListeners.get(level)!.add(cb);
+      return () => levelLoadedListeners.get(level)?.delete(cb);
     },
   };
 }

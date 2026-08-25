@@ -13,9 +13,10 @@
  *   api('test.1')   → 歧义：优先 test.test.1，回退 test.1
  */
 
-import { useForge } from '../plugin.js';
+import { inject } from 'vue';
+import { FORGE_INJECTION_KEY } from '../plugin.js';
 import { resolveRouteName, resolveRouteNameSync } from '../utils/resolveRouteName.js';
-import type { ApiCallParams } from '@route-forge/core';
+import type { ApiCallParams, RouteForge } from '@route-forge/core';
 
 export interface UseForgeByPrefixReturn {
   api: (suffix: string, params?: ApiCallParams) => Promise<unknown>;
@@ -23,14 +24,17 @@ export interface UseForgeByPrefixReturn {
 }
 
 export function useForgeByPrefix(level: string, prefix: string, separator = '.'): UseForgeByPrefixReturn {
-  const forge = useForge();
+  const forge = inject(FORGE_INJECTION_KEY) as RouteForge;
 
   return {
     api: (suffix, params) =>
       resolveRouteName(forge, level, prefix, suffix, separator).then(
         (name) => forge.api(level, name, params),
       ),
-    route: (suffix, params) =>
-      forge.route(level, resolveRouteNameSync(forge, level, prefix, suffix, separator), params),
+    route: (suffix, params) => {
+      // level 未加载时返回空字符串，避免 resolveRouteNameSync 内部 hasRoute() 抛错
+      if (!forge.isLoaded(level)) return '';
+      return forge.route(level, resolveRouteNameSync(forge, level, prefix, suffix, separator), params);
+    },
   };
 }

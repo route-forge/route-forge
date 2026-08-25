@@ -1,13 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, getCurrentInstance, ref } from 'vue';
+import { defineComponent, getCurrentInstance, nextTick, ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
-import {
-  createRouteForgePlugin,
-  useForge,
-  useForgeApi,
-  useForgeLevel,
-  useForgeRoute,
-} from '../src/index.js';
+import { createRouteForgePlugin, useForge, useForgeApi, useForgeRoute } from '../src/index.js';
 import type { LevelRoutesResponse, SummaryResponse } from '@route-forge/core';
 
 // ─── mock backend ───────────────────────────────────────────
@@ -218,39 +212,6 @@ describe('useForgeApi', () => {
   });
 });
 
-// ─── useForgeLevel ──────────────────────────────────────────
-
-describe('useForgeLevel', () => {
-  it('auto-loads on mount and flips loaded to true', async () => {
-    let state: any;
-    const C = defineComponent({
-      setup() {
-        state = useForgeLevel('public');
-        return () => null;
-      },
-    });
-    mount(C, { global: { plugins: [makePlugin()] } });
-    await flushPromises();
-    expect(state.loaded.value).toBe(true);
-    expect(state.error.value).toBeNull();
-  });
-
-  it('load failure sets error ref', async () => {
-    backend.levelOk = false;
-    let state: any;
-    const C = defineComponent({
-      setup() {
-        state = useForgeLevel('public');
-        return () => null;
-      },
-    });
-    mount(C, { global: { plugins: [makePlugin()] } });
-    await flushPromises();
-    expect(state.loaded.value).toBe(false);
-    expect(state.error.value).toBeTruthy();
-  });
-});
-
 // ─── useForgeRoute ──────────────────────────────────────────
 
 describe('useForgeRoute', () => {
@@ -258,32 +219,30 @@ describe('useForgeRoute', () => {
     let url: string | undefined;
     const C = defineComponent({
       setup() {
-        const { loaded } = useForgeLevel('public');
         const urlRef = useForgeRoute('public', 'users.show', () => ({ user: 42 }));
         return () => {
-          if (loaded.value) url = urlRef.value;
+          url = urlRef.value; // always access reactive value to trigger re-render
           return null;
         };
       },
     });
     mount(C, { global: { plugins: [makePlugin()] } });
     await flushPromises();
+    await flushPromises();
     expect(url).toBe('/users/42');
   });
 
-  it('reactive params: url updates when ref changes', async () => {
+  it('returns empty string before level loads, then updates', async () => {
     const urls: string[] = [];
     const C = defineComponent({
       setup() {
-        const { loaded } = useForgeLevel('public');
         const userId = ref(1);
         const urlRef = useForgeRoute('public', 'users.show', () => ({ user: userId.value }));
         return () => {
-          if (loaded.value) {
-            urls.push(urlRef.value);
-            if (urls.length === 1) {
-              userId.value = 2;
-            }
+          urls.push(urlRef.value);
+          if (urlRef.value === '/users/1') {
+            // level loaded with user 1, now change param to test reactivity
+            userId.value = 2;
           }
           return null;
         };
@@ -291,8 +250,58 @@ describe('useForgeRoute', () => {
     });
     mount(C, { global: { plugins: [makePlugin()] } });
     await flushPromises();
+    await nextTick();
     await flushPromises();
+    expect(urls).toContain('');
     expect(urls).toContain('/users/1');
     expect(urls).toContain('/users/2');
+  });
+});
+
+// ─── API trimming & levelLoaded ─────────────────────────────
+
+describe('useForge API trimming', () => {
+  it('useForge() without level does not expose route/url/hasRoute/getRoutes', () => {
+    let forge: any;
+    const C = defineComponent({
+      setup() {
+        forge = useForge();
+        return () => null;
+      },
+    });
+    mount(C, { global: { plugins: [makePlugin()] } });
+    expect(typeof forge.api).toBe('function');
+    expect(typeof forge.load).toBe('function');
+    expect(typeof forge.isLoaded).toBe('function');
+    expect(typeof forge.ready).not.toBe('undefined');
+    expect(typeof forge.onLevelLoaded).toBe('function');
+    // removed sync methods
+    expect(forge.route).toBeUndefined();
+    expect(forge.url).toBeUndefined();
+    expect(forge.hasRoute).toBeUndefined();
+    expect(forge.getRoutes).toBeUndefined();
+  });
+
+  it('useForge(level) returns levelLoaded ref and auto-triggers load', async () => {
+    let bound: any;
+    const C = defineComponent({
+      setup() {
+        bound = useForge('public');
+        return () => null;
+      },
+    });
+    mount(C, { global: { plugins: [makePlugin()] } });
+    // levelLoaded should exist
+    expect(bound.levelLoaded).toBeDefined();
+    await flushPromises();
+    // after auto-load, levelLoaded should be true
+    expect(bound.levelLoaded.value).toBe(true);
+    expect(bound.isLoaded('public')).toBe(true);
+  });
+
+  it('createRouteForgePlugin returns ready promise', () => {
+    const plugin = makePlugin();
+    expect(plugin.ready).toBeDefined();
+    expect(typeof plugin.ready.then).toBe('function');
   });
 });

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createRouteForge,
+  ForgeError,
   MissingRouteParamError,
   RequestAbortedError,
   UnknownLevelError,
@@ -1477,5 +1478,194 @@ describe('unassigned virtual tier', () => {
 
     await forge.load('unassigned');
     expect(forge.hasRoute('unassigned', 'debug.info')).toBe(true);
+  });
+});
+
+// ─── auto-discovery guard + callbacks ─────────────────────────
+
+describe('auto-discovery guard & callbacks', () => {
+  let originalFetch: typeof globalThis.fetch;
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+  afterEach(() => {
+    (globalThis as any).fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it('route() throws ForgeError RF_FE_010 when discovery not completed and no explicit levels', () => {
+    // 使用延迟 fetch 模拟 discovery 未完成
+    (globalThis as any).fetch = vi.fn(() => new Promise(() => {
+    })); // never resolves
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      adapter: 'builtin',
+    });
+    expect(() => forge.route('public', 'users.index')).toThrow(ForgeError);
+    try {
+      forge.route('public', 'users.index');
+    } catch (e) {
+      expect((e as ForgeError).code).toBe('RF_FE_010');
+    }
+  });
+
+  it('hasRoute() throws ForgeError RF_FE_010 when discovery not completed and no explicit levels', () => {
+    (globalThis as any).fetch = vi.fn(() => new Promise(() => {
+    }));
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      adapter: 'builtin',
+    });
+    expect(() => forge.hasRoute('public', 'users.index')).toThrow(ForgeError);
+    try {
+      forge.hasRoute('public', 'users.index');
+    } catch (e) {
+      expect((e as ForgeError).code).toBe('RF_FE_010');
+    }
+  });
+
+  it('route() works with explicit levels even before discovery completes', async () => {
+    const summary: SummaryResponse = {
+      levels: {
+        public: { description: 'public', load: 'lazy', cache: 300, route_count: 1 },
+      },
+      config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
+      unassigned: [],
+    };
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'users.index': {
+            name: 'users.index',
+            uri: 'users',
+            methods: ['GET'],
+            parameters: [],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    // 显式加载 public 层级
+    await forge.load('public');
+    // 有 explicit levels，守卫不触发，route() 可用
+    expect(forge.route('public', 'users.index')).toBe('/users');
+  });
+
+  it('api() is not affected by discovery guard', async () => {
+    const summary: SummaryResponse = {
+      levels: {
+        public: { description: 'public', load: 'lazy', cache: 300, route_count: 1 },
+      },
+      config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
+      unassigned: [],
+    };
+    // 使用 mockFull 提供路由元数据，同时处理业务请求
+    const calls = mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'users.index': {
+            name: 'users.index',
+            uri: 'users',
+            methods: ['GET'],
+            parameters: [],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      adapter: 'builtin',
+    });
+    // 先加载 level
+    await forge.load('public');
+    // api() 内部会 await discovery，不受守卫影响
+    // 业务请求 /users 会被 mockFull 返回 404（因为它只处理摘要和层级拉取）
+    // 这里只验证 api() 能正常执行到发起请求阶段（不因守卫而阻塞）
+    try {
+      await forge.api('public', 'users.index');
+    } catch (e) {
+      // HTTP 404 说明请求确实发出了（路由解析成功），只是 mock 没有对应的业务响应
+      expect((e as any).code).toBe('RF_FE_008'); // HTTPError
+    }
+  });
+
+  it('onSummaryReady callback fires after discovery completes', async () => {
+    const summary = makeSummary();
+    mockSummary(summary);
+    let readyCalled = false;
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+      onSummaryReady: () => {
+        readyCalled = true;
+      },
+    });
+    await forge.ready;
+    expect(readyCalled).toBe(true);
+  });
+
+  it('forge.ready resolves after discovery + eager load completes', async () => {
+    const summary = makeSummary();
+    mockFull(summary, {
+      admin: {
+        level: 'admin',
+        routes: {
+          'dashboard': {
+            name: 'dashboard',
+            uri: 'dashboard',
+            methods: ['GET'],
+            parameters: [],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['admin'],
+      adapter: 'builtin',
+    });
+    await forge.ready;
+    // eager load 完成后 route() 应该可用
+    expect(forge.route('admin', 'dashboard')).toBe('/dashboard');
+  });
+
+  it('onLevelLoaded callback fires after level load', async () => {
+    const summary = makeSummary();
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'users.index': {
+            name: 'users.index',
+            uri: 'users',
+            methods: ['GET'],
+            parameters: [],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      adapter: 'builtin',
+    });
+    let callbackFired = false;
+    const unsub = forge.onLevelLoaded('public', () => {
+      callbackFired = true;
+    });
+    await forge.load('public');
+    expect(callbackFired).toBe(true);
+    // unsubscribe should work
+    callbackFired = false;
+    unsub();
+    forge.invalidate('public');
+    await forge.load('public');
+    expect(callbackFired).toBe(false);
   });
 });

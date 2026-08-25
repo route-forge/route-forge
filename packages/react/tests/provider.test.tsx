@@ -22,8 +22,8 @@ describe('@route-forge/react provider (scaffold smoke test)', () => {
 
     expect(forgeInstance).toBeTruthy();
     expect(typeof forgeInstance!.api).toBe('function');
-    expect(typeof forgeInstance!.route).toBe('function');
     expect(typeof forgeInstance!.load).toBe('function');
+    expect(typeof forgeInstance!.isLoaded).toBe('function');
   });
 
   it('throws when useForge is used outside provider', () => {

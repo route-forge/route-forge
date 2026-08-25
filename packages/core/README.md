@@ -186,6 +186,58 @@ unsub()
 
 > 加载状态始终跟踪，用户不使用则不订阅即可。Vue/React 包可通过 `onLoadingChange` 订阅状态变更驱动组件显隐。
 
+## 初始化合时序与推荐模式
+
+### 三种加载状态
+
+| 类型           | 说明                           | 跟踪方式                    |
+|----------------|--------------------------------|-----------------------------|
+| Auto-discovery | 拉取摘要端点发现 levels/config | 内部 `autoDiscoveryPromise` |
+| Level load     | 拉取某层级路由元数据           | `forge.isLoaded(level)`     |
+| API request    | 业务接口请求                   | `forge.isLoading()`         |
+
+### `onSummaryReady` 回调
+
+推荐在回调中挂载应用，确保路由数据就绪：
+
+```ts
+const forge = createRouteForge({
+  endpoint: '/_forge/routes',
+  onSummaryReady: () => {
+    // 摘要端点完成，路由数据已可用
+    app.mount('#app')
+  },
+})
+```
+
+### `forge.ready` Promise
+
+auto-discovery + eager load 完成后 resolve，适合 async/await 风格：
+
+```ts
+const forge = createRouteForge({ endpoint: '/_forge/routes' })
+await forge.ready
+// 路由数据已就绪，可安全调用 route() / hasRoute()
+```
+
+### `onLevelLoaded` 订阅
+
+订阅指定 level 加载完成事件：
+
+```ts
+const unsub = forge.onLevelLoaded('admin', () => {
+  console.log('admin level loaded')
+})
+// 取消订阅
+unsub()
+```
+
+### Auto-discovery 守卫
+
+`route()` / `hasRoute()` 在 auto-discovery 未完成且无 explicit levels 时抛出
+`ForgeError (RF_FE_010)`， 防止在路由数据未就绪时返回错误结果。`api()` 不受影响（内部自动 await
+discovery）。
+
 ## 文档
 
 - 仓库主页: https://github.com/xyj2156/route-forge
