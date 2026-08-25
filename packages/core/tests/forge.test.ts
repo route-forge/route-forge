@@ -1377,7 +1377,7 @@ describe('unassigned virtual tier', () => {
     // getRoutes('unassigned') 应返回摘要中的路由
     const routes = forge.getRoutes('unassigned');
     expect(routes['debug.info']).toBeDefined();
-    expect(routes['debug.info'].uri).toBe('_debug/info');
+    expect(routes['debug.info']!.uri).toBe('_debug/info');
 
     // route('unassigned', ...) 应正确生成 URL
     const url = forge.route('unassigned', 'debug.info');
