@@ -186,8 +186,10 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   });
 
   // 防止 autoDiscoveryPromise 未被 await 时产生 unhandled rejection
-  autoDiscoveryPromise.catch(() => {
-    /* 自动发现失败：在 load/api await 时会重新抛出 */
+  // 存储错误以便在 load/api 调用时重新抛出，保留原始错误信息
+  let autoDiscoveryError: unknown = null;
+  autoDiscoveryPromise.catch((e) => {
+    autoDiscoveryError = e;
   });
 
   const cacheTtl = cacheOpts.ttl ?? DEFAULT_CACHE_TTL;
@@ -240,6 +242,8 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   }
 
   const inflight = new Map<string, Promise<void>>();
+  // 每个层级的失效代数，用于检测 loadOne 期间是否发生了 invalidate
+  const invalidationGens = new Map<string, number>();
 
   function assertLevelDeclared(level: string): void {
     if (!effectiveLevels.includes(level)) {
@@ -285,6 +289,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   }
 
   async function loadOne(level: string): Promise<void> {
+    if (autoDiscoveryError) throw autoDiscoveryError;
     assertLevelDeclared(level);
 
     // 缓存命中直接返回
@@ -294,6 +299,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     const existing = inflight.get(level);
     if (existing) return existing;
 
+    const gen = invalidationGens.get(level) ?? 0;
     const p = (async () => {
       try {
         // 虚拟层级 unassigned：直接从摘要数据构建响应，不发 HTTP 请求（SPEC §3.1.6）
@@ -306,7 +312,10 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
           return;
         }
         const resp = await fetchLevel(level);
-        cache.set(resp);
+        // 仅在缓存未被 invalidate 清除时写入，防止旧数据回写
+        if ((invalidationGens.get(level) ?? 0) === gen) {
+          cache.set(resp);
+        }
       } finally {
         inflight.delete(level);
       }
@@ -360,7 +369,14 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       const optional = raw.endsWith('?');
       const name = optional ? raw.slice(0, -1) : raw;
       if (values[name] !== undefined) {
-        return encodeURIComponent(String(values[name]));
+        const val = values[name];
+        if (typeof val === 'object') {
+          throw new ForgeError(
+            `Path parameter "${name}" must be a primitive value (string, number, boolean), got ${typeof val}`,
+            { code: 'RF_FE_003', route: meta.name, context: { param: name, value: val } },
+          );
+        }
+        return encodeURIComponent(String(val));
       }
       // 值缺失：可选参数替换为空，未声明的占位符保持原样（不在 parameters 中）
       return optional ? '' : match;
@@ -368,7 +384,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     // 清理可选参数移除后残留的连续 / 或尾部 /
     uri = uri.replace(/\/+/g, '/').replace(/\/$/, '');
     // url_prefix 含协议（如 https://api.example.com）时直接作为完整基础 URL，跳过 baseURL
-    if (effectiveUrlPrefix.includes('://')) {
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(effectiveUrlPrefix)) {
       const prefix = effectiveUrlPrefix.endsWith('/') ? effectiveUrlPrefix.slice(0, -1) : effectiveUrlPrefix;
       return uri.startsWith('/') ? `${prefix}${uri}` : `${prefix}/${uri}`;
     }
@@ -492,10 +508,21 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   function invalidate(level?: string | string[]): void {
     if (level === undefined) {
       cache.clear();
+      // 清除所有进行中的加载，防止旧数据回写
+      inflight.clear();
+      for (const lvl of effectiveLevels) {
+        invalidationGens.set(lvl, (invalidationGens.get(lvl) ?? 0) + 1);
+      }
     } else if (Array.isArray(level)) {
-      for (const lvl of level) cache.del(lvl);
+      for (const lvl of level) {
+        cache.del(lvl);
+        inflight.delete(lvl);
+        invalidationGens.set(lvl, (invalidationGens.get(lvl) ?? 0) + 1);
+      }
     } else {
       cache.del(level);
+      inflight.delete(level);
+      invalidationGens.set(level, (invalidationGens.get(level) ?? 0) + 1);
     }
   }
 
@@ -517,7 +544,8 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       const routes = entry?.routes ?? {};
       const result: Record<string, RouteMeta> = {};
       for (const [k, v] of Object.entries(routes)) {
-        result[k] = { ...v };
+        // 深拷贝：避免嵌套对象（如 parameter_defaults）与内部缓存共享引用
+        result[k] = JSON.parse(JSON.stringify(v));
       }
       return result;
     }
@@ -527,7 +555,8 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       if (entry) {
         const levelRoutes: Record<string, RouteMeta> = {};
         for (const [k, v] of Object.entries(entry.routes)) {
-          levelRoutes[k] = { ...v };
+          // 深拷贝：避免嵌套对象（如 parameter_defaults）与内部缓存共享引用
+          levelRoutes[k] = JSON.parse(JSON.stringify(v));
         }
         result[lvl] = levelRoutes;
       }
