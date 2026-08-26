@@ -7,6 +7,7 @@ export { createRouteForge } from './forge.js';
 export { createInterceptorManager, InterceptorManagerImpl } from './interceptors.js';
 export { RouteCache } from './cache.js';
 export { LoadingTracker } from './loading.js';
+export { resolveRouteName, resolveRouteNameSync } from './resolveRouteName.js';
 
 export {
   ForgeError,
@@ -38,7 +39,17 @@ export type {
   ForgeRouteName,
   ForgeApiParams,
   ForgeApiResponse,
+  BoundForgeMethods,
+  BoundForgeTyped,
+  ForgeInstanceTyped,
+  UseForgeApiCall,
+  UseForgeApiBoundCall,
+  UseForgeApiReturn,
+  UseForgeApiBoundReturn,
+  UseForgeByPrefixReturn,
 } from './types.js';
+
+export type { RouteResolver } from './resolveRouteName.js';
 
 export type {
   LoadingChangeCallback,

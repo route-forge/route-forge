@@ -31,10 +31,11 @@ TypeScript 类型保护。
 | **类型安全**   | 后端 Artisan 命令生成 TS 类型声明，路由名 → 参数 → 响应全链路编译期校验        |
 | **未分配层级** | 后端未标记层级的路由自动归入 `unassigned` 虚拟层级，前端可直接消费             |
 | **零侵入**     | 后端通过 Laravel macro 和 ServiceProvider 扩展，不修改框架核心                 |
+| **浏览器可用** | core 包提供 IIFE 构建，`<script>` 标签直接引入，无需打包工具                   |
 
 ## 项目结构
 
-本仓库（[xyj2156/route-forge](https://github.com/xyj2156/route-forge)）包含 npm 侧的前端包：
+本仓库（[route-forge/route-forge](https://github.com/route-forge/route-forge)）包含 npm 侧的前端包：
 
 ```
 route-forge/
@@ -48,7 +49,7 @@ route-forge/
 └── ...
 ```
 
-后端包（Composer）位于独立仓库：[xyj2156/route-forge-laravel](https://github.com/xyj2156/route-forge-laravel)。
+后端包（Composer）位于独立仓库：[route-forge/route-forge-laravel](https://github.com/route-forge/route-forge-laravel)。
 
 两侧通过 HTTP manifest 契约交互，版本独立演进。
 
@@ -107,6 +108,20 @@ pnpm add @route-forge/react
 
 # axios 适配器（可选，不装则使用内置 fetch 实现）
 pnpm add axios
+```
+
+**不使用打包工具？** core 包提供浏览器直接引入的 IIFE 构建：
+
+```html
+<!-- 开发版（含 sourcemap，34 KB） -->
+<script src="https://unpkg.com/@route-forge/core/dist/route-forge.global.js"></script>
+<!-- 生产版（压缩，15 KB） -->
+<script src="https://unpkg.com/@route-forge/core/dist/route-forge.global.min.js"></script>
+
+<script>
+  const forge = RouteForge.createRouteForge({ endpoint: '/_forge/routes' })
+  forge.api('admin', 'users.show', { user: 123 }).then(console.log)
+</script>
 ```
 
 ### 3. 前端使用
@@ -255,22 +270,23 @@ pnpm clean
 ### 发布
 
 ```bash
-# 类型检查 → 测试 → 构建 → 发布 core 和 vue 包
+# 类型检查 → 测试 → 构建 → 发布 core、vue 和 react 包
 pnpm publish:build
 
 # 或单独发布某个包
 pnpm publish:core
 pnpm publish:vue
+pnpm publish:react
 ```
 
 ## 兼容性
 
-| 依赖    | 版本支持                                                                                  |
-|---------|-------------------------------------------------------------------------------------------|
-| Laravel | 9 / 10 / 11（详见 [route-forge-laravel](https://github.com/xyj2156/route-forge-laravel)） |
-| Vue     | 3.3+（不支持 Vue 2）                                                                      |
-| Node.js | LTS 版本（18 / 20 / 22）                                                                  |
-| 浏览器  | 现代浏览器（Chrome / Edge / Firefox / Safari 最近 2 个大版本），不支持 IE                 |
+| 依赖    | 版本支持                                                                                      |
+|---------|-----------------------------------------------------------------------------------------------|
+| Laravel | 9 / 10 / 11（详见 [route-forge-laravel](https://github.com/route-forge/route-forge-laravel)） |
+| Vue     | 3.3+（不支持 Vue 2）                                                                          |
+| Node.js | LTS 版本（18 / 20 / 22）                                                                      |
+| 浏览器  | 现代浏览器（Chrome / Edge / Firefox / Safari 最近 2 个大版本），不支持 IE                     |
 
 ## 文档
 

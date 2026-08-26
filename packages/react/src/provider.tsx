@@ -17,19 +17,15 @@
 import { createContext, type ReactNode, useContext, useMemo, useRef } from 'react';
 import {
   type ApiCallParams,
+  type BoundForgeTyped as CoreBoundForgeTyped,
   createRouteForge,
-  type ForgeApiParams,
-  type ForgeApiResponse,
-  type ForgeRouteName,
-  type InterceptorHandler,
-  type LoadingChangeCallback,
-  type RequestConfig,
-  type ResponseData,
+  type ForgeInstanceTyped,
+  resolveRouteName,
+  resolveRouteNameSync,
   type RouteForge,
   type RouteForgeOptions,
-  type RouteMeta,
 } from '@route-forge/core';
-import { resolveRouteName, resolveRouteNameSync } from './utils/resolveRouteName.js';
+import { defineImmutableProps } from '@route-forge/core/internal';
 
 // ─── Context ────────────────────────────────────────────────
 
@@ -99,85 +95,13 @@ function optionsEqual(a: RouteForgeOptions, b: RouteForgeOptions): boolean {
 /** React Context — 供高级用户直接 useContext(ForgeContext) 使用 */
 export { ForgeContext };
 
-// ─── 只读拦截器类型 ──────────────────────────────────────────
-
-/** 只读拦截器管理器：仅暴露查询方法，隐藏 use/eject/clear */
-interface ReadOnlyInterceptorManager<TIn, TOut = TIn> {
-  forEach(fn: (handler: InterceptorHandler<TIn, TOut>) => void): void;
-}
-
-// ─── 返回类型 ────────────────────────────────────────────────
-
-/**
- * 共享方法集（level 已绑定时的方法签名）
- * .api() / .route() / .url() — name 和 params 根据 ForgeRouteMap 自动推断
- * .load() / .invalidate() / .isLoaded() / .interceptors
- */
-export interface BoundForgeMethods<L extends string = string> {
-  interceptors: {
-    request: ReadOnlyInterceptorManager<RequestConfig, RequestConfig>;
-    response: ReadOnlyInterceptorManager<ResponseData, unknown>;
-  };
-
-  api(name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): Promise<ForgeApiResponse<L, ForgeRouteName<L>>>;
-
-  route(name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): string;
-
-  url(name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): string;
-
-  load(level: string | string[]): Promise<void>;
-
-  invalidate(level?: string | string[]): void;
-
-  isLoaded(level?: string): boolean;
-
-  hasRoute(level: string, name: string): boolean;
-
-  /** 查询加载中标识状态 */
-  isLoading(): boolean;
-
-  /** 订阅加载状态变更，返回取消订阅函数 */
-  onLoadingChange(cb: LoadingChangeCallback): () => void;
-
-  /** 获取指定层级下全部路由元信息（深拷贝，修改不影响内部缓存） */
-  getRoutes(level: string): Record<string, RouteMeta>;
-
-  /** 指定层级的路由元数据是否已加载完成 */
-  levelLoaded: boolean;
-}
+// ─── React 特化类型别名 ──────────────────────────────────────
 
 /** 已绑定 level — 可直接调用（= api 快捷方式），无需传 level */
-export interface BoundForgeTyped<L extends string> extends BoundForgeMethods<L> {
-  /** 直接调用 = forge.api() 快捷方式，自动带绑定的 level */
-  (name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): Promise<ForgeApiResponse<L, ForgeRouteName<L>>>;
-  /** 当前绑定的 level 值 */
-  readonly level: L;
-  /** 路由名前缀（仅在 useForge({ level, prefix }) 传入 prefix 时存在） */
-  readonly prefix?: string;
-}
+export type BoundForgeTyped<L extends string> = CoreBoundForgeTyped<L, boolean>;
 
 /** 未绑定 level — 直接调用需要传 level（不提供 route/url/hasRoute/getRoutes 等同步方法） */
-export interface ForgeInstanceTyped {
-  api(level: string, name: string, params?: ApiCallParams): Promise<unknown>;
-
-  interceptors: {
-    request: ReadOnlyInterceptorManager<RequestConfig, RequestConfig>;
-    response: ReadOnlyInterceptorManager<ResponseData, unknown>;
-  };
-  ready: Promise<void>;
-
-  load(level: string | string[]): Promise<void>;
-
-  invalidate(level?: string | string[]): void;
-
-  isLoaded(level?: string): boolean;
-
-  isLoading(): boolean;
-
-  onLoadingChange(cb: LoadingChangeCallback): () => void;
-
-  onLevelLoaded(level: string, cb: () => void): () => void;
-}
+export type { ForgeInstanceTyped } from '@route-forge/core';
 
 // ─── useForge hook ───────────────────────────────────────────
 
@@ -259,7 +183,6 @@ export function useForge(opts?: {
         isLoading: forge.isLoading.bind(forge),
         onLoadingChange: forge.onLoadingChange.bind(forge),
         getRoutes: forge.getRoutes.bind(forge),
-        interceptors: forge.interceptors,
         levelLoaded: forge.isLoaded(level),
       });
       return callable;
@@ -272,28 +195,9 @@ export function useForge(opts?: {
       isLoaded: forge.isLoaded.bind(forge),
       isLoading: forge.isLoading.bind(forge),
       onLoadingChange: forge.onLoadingChange.bind(forge),
-      interceptors: forge.interceptors,
       ready: forge.ready,
       onLevelLoaded: forge.onLevelLoaded.bind(forge),
     };
     return instance;
   }, [forge, level, prefix]);
-}
-
-/**
- * 以不可变、不可枚举、不可重配置的方式将属性挂载到目标对象上。
- * 与 Vue 包的 defineImmutableProps 行为一致。
- * 对象类型的值会浅冻结（Object.freeze），防止内部键被增删改。
- */
-function defineImmutableProps<T extends object>(target: T, props: Record<string, unknown>): T {
-  for (const key of Object.keys(props)) {
-    const val = props[key];
-    Object.defineProperty(target, key, {
-      value: val !== null && typeof val === 'object' ? Object.freeze(val) : val,
-      writable: false,
-      enumerable: false,
-      configurable: false,
-    });
-  }
-  return target;
 }

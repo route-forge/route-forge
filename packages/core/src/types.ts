@@ -364,3 +364,113 @@ export type ForgeApiResponse<L extends string, N extends string> =
         ? (ForgeRouteMap[L][N] extends { response: infer R } ? R : unknown)
         : unknown
       : unknown;
+
+// ─── 框架层共享类型（useForge / useForgeApi / useForgeByPrefix） ───
+
+/**
+ * 已绑定 level 时的共享方法集。
+ * @typeParam L - 层级名（string literal）
+ * @typeParam LevelLoaded - 框架层加载状态类型（Vue: Ref<boolean>, React: boolean）
+ */
+export interface BoundForgeMethods<L extends string = string, LevelLoaded = unknown> {
+  /** 指定层级的路由元数据是否已加载完成（类型由框架层决定） */
+  levelLoaded: LevelLoaded;
+
+  api(name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): Promise<ForgeApiResponse<L, ForgeRouteName<L>>>;
+
+  route(name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): string;
+
+  url(name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): string;
+
+  load(level: string | string[]): Promise<void>;
+
+  invalidate(level?: string | string[]): void;
+
+  isLoaded(level?: string): boolean;
+
+  hasRoute(level: string, name: string): boolean;
+
+  /** 查询加载中标识状态 */
+  isLoading(): boolean;
+
+  /** 订阅加载状态变更，返回取消订阅函数 */
+  onLoadingChange(cb: LoadingChangeCallback): () => void;
+
+  /** 获取指定层级下全部路由元信息（深拷贝，修改不影响内部缓存） */
+  getRoutes(level: string): Record<string, RouteMeta>;
+}
+
+/** 已绑定 level — 可直接调用（= api 快捷方式），无需传 level */
+export interface BoundForgeTyped<L extends string, LevelLoaded = unknown> extends BoundForgeMethods<L, LevelLoaded> {
+  /** 当前绑定的 level 值 */
+  readonly level: L;
+  /** 路由名前缀（仅在传入 prefix 时存在） */
+  readonly prefix?: string;
+
+  /** 直接调用 = forge.api() 快捷方式，自动带绑定的 level */
+  (name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): Promise<ForgeApiResponse<L, ForgeRouteName<L>>>;
+}
+
+/** 未绑定 level — 直接调用需要传 level（不提供 route/url/hasRoute/getRoutes 等同步方法） */
+export interface ForgeInstanceTyped {
+  ready: Promise<void>;
+
+  api(level: string, name: string, params?: ApiCallParams): Promise<unknown>;
+
+  load(level: string | string[]): Promise<void>;
+
+  invalidate(level?: string | string[]): void;
+
+  isLoaded(level?: string): boolean;
+
+  isLoading(): boolean;
+
+  onLoadingChange(cb: LoadingChangeCallback): () => void;
+
+  onLevelLoaded(level: string, cb: () => void): () => void;
+}
+
+/** call 函数签名 — 未绑定 level，需要显式传入 */
+export interface UseForgeApiCall {
+  (level: string, name: string, params?: ApiCallParams): Promise<{
+    data: unknown;
+    error: unknown;
+  }>;
+}
+
+/** call 函数签名 — 已绑定 level，无需再传 */
+export interface UseForgeApiBoundCall<L extends string> {
+  (name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): Promise<{
+    data: ForgeApiResponse<L, ForgeRouteName<L>>;
+    error: unknown;
+  }>;
+}
+
+/**
+ * useForgeApi 返回类型 — 未绑定 level
+ * @typeParam PendingType - 框架层 pending 状态类型（Vue: Ref<boolean>, React: boolean）
+ * @typeParam ErrorType - 框架层 error 状态类型（Vue: Ref<unknown>, React: unknown）
+ */
+export interface UseForgeApiReturn<PendingType = unknown, ErrorType = unknown> {
+  pending: PendingType;
+  error: ErrorType;
+  call: UseForgeApiCall;
+}
+
+/**
+ * useForgeApi 返回类型 — 已绑定 level
+ * @typeParam L - 层级名
+ * @typeParam PendingType - 框架层 pending 状态类型
+ * @typeParam ErrorType - 框架层 error 状态类型
+ */
+export interface UseForgeApiBoundReturn<L extends string, PendingType = unknown, ErrorType = unknown> {
+  pending: PendingType;
+  error: ErrorType;
+  call: UseForgeApiBoundCall<L>;
+}
+
+/** useForgeByPrefix 返回类型 */
+export interface UseForgeByPrefixReturn {
+  api: (suffix: string, params?: ApiCallParams) => Promise<unknown>;
+  route: (suffix: string, params?: Record<string, unknown>) => string;
+}

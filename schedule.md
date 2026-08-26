@@ -10,10 +10,11 @@
 #### 1. 工程脚手架（100%）
 - pnpm workspace + turborepo + tsconfig.base 多包管理
 - npm 侧两个包：`@route-forge/core`（TS）、`@route-forge/vue`（Vue 3）
-- Composer 侧已拆分至独立仓库：[`route-forge/laravel`](https://github.com/xyj2156/route-forge-laravel)
+- Composer 侧已拆分至独立仓库：[
+  `route-forge/laravel`](https://github.com/route-forge/route-forge-laravel)
 - MIT LICENSE 已加
 
-#### 2. 后端 Laravel 包（100%）→ 已拆分至 [route-forge-laravel](https://github.com/xyj2156/route-forge-laravel)
+#### 2. 后端 Laravel 包（100%）→ 已拆分至 [route-forge-laravel](https://github.com/route-forge/route-forge-laravel)
 
 - `ForgeServiceProvider.php`：注册 `->tier()` 宏、重绑 `router` 为 ForgeRouter、注册 RouteCache/TierResolver/RouteRepository 单例、注册元信息端点、发布 config
 - `ForgeRouter.php`：覆盖 `updateGroupStack` + `mergeGroupAttributesIntoRoute`，解决 Laravel 11 `array_merge_recursive` 把嵌套 group 的 string tier 合并成 array 的坑

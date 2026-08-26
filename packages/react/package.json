@@ -1,17 +1,17 @@
 {
   "name": "@route-forge/react",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Route Forge 的 React 集成：Provider + hooks（useForge/useForgeApi/useForgeLevel/useForgeRoute/useForgeByPrefix）",
   "license": "MIT",
   "author": "阿杰很厉害 <506907958@qq.com>",
-  "homepage": "https://github.com/xyj2156/route-forge",
+  "homepage": "https://github.com/route-forge/route-forge",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/xyj2156/route-forge.git",
+    "url": "git+https://github.com/route-forge/route-forge.git",
     "directory": "packages/react"
   },
   "bugs": {
-    "url": "https://github.com/xyj2156/route-forge/issues"
+    "url": "https://github.com/route-forge/route-forge/issues"
   },
   "type": "module",
   "sideEffects": false,

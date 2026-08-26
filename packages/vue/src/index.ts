@@ -4,11 +4,11 @@ export {
   FORGE_INJECTION_KEY,
 } from './plugin.js';
 export type {
-  RouteForgePluginOptions, BoundForgeTyped, ForgeInstanceTyped, BoundForgeMethods,
+  RouteForgePluginOptions, BoundForgeTyped, ForgeInstanceTyped,
 } from './plugin.js';
 export { useForgeApi } from './composables/useForgeApi.js';
 export type {
-  UseForgeApiReturn, UseForgeApiBoundReturn, UseForgeApiCall, UseForgeApiBoundCall,
+  UseForgeApiReturnVue, UseForgeApiBoundReturnVue, UseForgeApiCall, UseForgeApiBoundCall,
 } from './composables/useForgeApi.js';
 export { useForgeRoute } from './composables/useForgeRoute.js';
 export { useForgeByPrefix } from './composables/useForgeByPrefix.js';

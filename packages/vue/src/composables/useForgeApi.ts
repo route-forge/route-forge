@@ -12,50 +12,28 @@
  *   level / name / params 均自动推断，IDE 提供补全提示。
  */
 
+import type { Ref } from 'vue';
 import { ref } from 'vue';
 import { useForge } from '../plugin.js';
 import type {
-  ApiCallParams,
-  ForgeApiParams,
-  ForgeApiResponse,
-  ForgeRouteName,
+  UseForgeApiBoundCall,
+  UseForgeApiBoundReturn,
+  UseForgeApiCall,
+  UseForgeApiReturn,
 } from '@route-forge/core';
 
-/** call 函数签名 — 未绑定 level，需要显式传入 */
-export interface UseForgeApiCall {
-  (level: string, name: string, params?: ApiCallParams): Promise<{
-    data: unknown;
-    error: unknown;
-  }>;
-}
-
-/** call 函数签名 — 已绑定 level，无需再传 */
-export interface UseForgeApiBoundCall<L extends string> {
-  (name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): Promise<{
-    data: ForgeApiResponse<L, ForgeRouteName<L>>;
-    error: unknown;
-  }>;
-}
-
-export interface UseForgeApiReturn {
-  pending: ReturnType<typeof ref<boolean>>;
-  error: ReturnType<typeof ref<unknown>>;
-  call: UseForgeApiCall;
-}
-
-export interface UseForgeApiBoundReturn<L extends string> {
-  pending: ReturnType<typeof ref<boolean>>;
-  error: ReturnType<typeof ref<unknown>>;
-  call: UseForgeApiBoundCall<L>;
-}
+// Vue 特化类型：pending/error 为 Ref
+export type { UseForgeApiCall, UseForgeApiBoundCall };
+export type UseForgeApiReturnVue = UseForgeApiReturn<Ref<boolean>, Ref<unknown>>;
+export type UseForgeApiBoundReturnVue<L extends string> = UseForgeApiBoundReturn<L, Ref<boolean>, Ref<unknown>>;
 
 /** 不绑定层级 — call 需要传 level */
-export function useForgeApi(): UseForgeApiReturn;
+export function useForgeApi(): UseForgeApiReturnVue;
 /** 绑定层级 — call 无需传 level */
-export function useForgeApi<L extends string>(level: L): UseForgeApiBoundReturn<L>;
+export function useForgeApi<L extends string>(level: L): UseForgeApiBoundReturnVue<L>;
 /** 绑定层级 + 前缀 — call 无需传 level，路由名自动拼接 prefix */
-export function useForgeApi<L extends string>(level: L, prefix: string): UseForgeApiBoundReturn<L>;
-export function useForgeApi(level?: string, prefix?: string): UseForgeApiReturn | UseForgeApiBoundReturn<string> {
+export function useForgeApi<L extends string>(level: L, prefix: string): UseForgeApiBoundReturnVue<L>;
+export function useForgeApi(level?: string, prefix?: string): UseForgeApiReturnVue | UseForgeApiBoundReturnVue<string> {
   const forge = level !== undefined ? useForge(level, prefix as string) : useForge();
   const pending = ref(false);
   const error = ref<unknown>(null);

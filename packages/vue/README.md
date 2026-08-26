@@ -65,7 +65,6 @@ forge.route('show', { user: 1 })                   // → forge.route('admin', '
 forge.load('admin')                                // 加载层级
 forge.isLoaded('admin')                            // 检查缓存
 forge.invalidate('admin')                          // 失效缓存
-forge.interceptors.request.use(...)                // 拦截器管理
 ```
 
 > **注意**：`useForge()` 无 level 时 **不提供** `route`/`url`/`hasRoute`/`getRoutes` 同步方法，
@@ -129,9 +128,9 @@ const url = useForgeRoute('public', 'login.show')
 
 ## 文档
 
-- 仓库主页: https://github.com/xyj2156/route-forge
-- 设计文档: https://github.com/xyj2156/route-forge/blob/main/.docs/DESIGN.md
-- 规范: https://github.com/xyj2156/route-forge/blob/main/.docs/SPEC.md
+- 仓库主页: https://github.com/route-forge/route-forge
+- 设计文档: https://github.com/route-forge/route-forge/blob/main/.docs/DESIGN.md
+- 规范: https://github.com/route-forge/route-forge/blob/main/.docs/SPEC.md
 
 ## License
 

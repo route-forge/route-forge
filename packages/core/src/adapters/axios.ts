@@ -27,9 +27,11 @@ function toHeaders(raw: unknown): Headers {
 
 export async function wrapAxiosAdapter(): Promise<ResolvedAdapter | null> {
   // ESM 友好的动态探测：尝试 import('axios')，失败则查全局 window.axios
+  // 使用变量引用模块名，避免打包工具（rollup/esbuild）静态分析并打包 axios
   let axios: any;
+  const axiosModule = 'axios';
   try {
-    const mod = await import(/* @vite-ignore */ 'axios');
+    const mod = await import(/* @vite-ignore */ axiosModule);
     axios = mod.default ?? mod;
   } catch {
     if (typeof globalThis !== 'undefined' && (globalThis as any).axios) {

@@ -15,13 +15,14 @@
 
 import { inject } from 'vue';
 import { FORGE_INJECTION_KEY } from '../plugin.js';
-import { resolveRouteName, resolveRouteNameSync } from '../utils/resolveRouteName.js';
-import type { ApiCallParams, RouteForge } from '@route-forge/core';
+import {
+  resolveRouteName,
+  resolveRouteNameSync,
+  type RouteForge,
+  type UseForgeByPrefixReturn,
+} from '@route-forge/core';
 
-export interface UseForgeByPrefixReturn {
-  api: (suffix: string, params?: ApiCallParams) => Promise<unknown>;
-  route: (suffix: string, params?: Record<string, unknown>) => string;
-}
+export type { UseForgeByPrefixReturn };
 
 export function useForgeByPrefix(level: string, prefix: string, separator = '.'): UseForgeByPrefixReturn {
   const forge = inject(FORGE_INJECTION_KEY) as RouteForge;

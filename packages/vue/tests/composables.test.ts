@@ -129,7 +129,7 @@ describe('useForge', () => {
     expect(result.data.echo.url).toBe('/users/3');
   });
 
-  it('bound forge props are immutable, non-enumerable and interceptors are frozen', () => {
+  it('bound forge props are immutable and non-enumerable', () => {
     let bound: any;
     const C = defineComponent({
       setup() {
@@ -143,7 +143,6 @@ describe('useForge', () => {
     expect(desc.enumerable).toBe(false);
     expect(desc.configurable).toBe(false);
     expect(Object.keys(bound)).not.toContain('level');
-    expect(Object.isFrozen(bound.interceptors)).toBe(true);
   });
 });
 

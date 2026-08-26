@@ -15,53 +15,32 @@
 import { useCallback, useState } from 'react';
 import { useForge } from '../provider.js';
 import type {
-  ApiCallParams,
-  ForgeApiParams,
-  ForgeApiResponse,
-  ForgeRouteName,
+  UseForgeApiBoundCall,
+  UseForgeApiBoundReturn,
+  UseForgeApiCall,
+  UseForgeApiReturn,
 } from '@route-forge/core';
 
-/** call 函数签名 — 未绑定 level，需要显式传入 */
-export interface UseForgeApiCall {
-  (level: string, name: string, params?: ApiCallParams): Promise<{
-    data: unknown;
-    error: unknown;
-  }>;
-}
-
-/** call 函数签名 — 已绑定 level，无需再传 */
-export interface UseForgeApiBoundCall<L extends string> {
-  (name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): Promise<{
-    data: ForgeApiResponse<L, ForgeRouteName<L>>;
-    error: unknown;
-  }>;
-}
-
-export interface UseForgeApiReturn {
-  pending: boolean;
-  error: unknown;
-  call: UseForgeApiCall;
-}
-
-export interface UseForgeApiBoundReturn<L extends string> {
-  pending: boolean;
-  error: unknown;
-  call: UseForgeApiBoundCall<L>;
-}
+// React 特化类型：pending/error 为 plain boolean/unknown
+export type { UseForgeApiCall, UseForgeApiBoundCall };
+export type UseForgeApiReturnReact = UseForgeApiReturn<boolean, unknown>;
+export type UseForgeApiBoundReturnReact<L extends string> = UseForgeApiBoundReturn<L, boolean, unknown>;
 
 /** 不绑定层级 — call 需要传 level */
-export function useForgeApi(): UseForgeApiReturn;
+export function useForgeApi(): UseForgeApiReturnReact;
 /** 绑定层级 — call 无需传 level */
-export function useForgeApi<L extends string>(options: { level: L }): UseForgeApiBoundReturn<L>;
+export function useForgeApi<L extends string>(options: {
+  level: L
+}): UseForgeApiBoundReturnReact<L>;
 /** 绑定层级 + 前缀 — call 无需传 level，路由名自动拼接 prefix */
 export function useForgeApi<L extends string>(options: {
   level: L;
   prefix: string
-}): UseForgeApiBoundReturn<L>;
+}): UseForgeApiBoundReturnReact<L>;
 export function useForgeApi(opts?: {
   level?: string;
   prefix?: string
-}): UseForgeApiReturn | UseForgeApiBoundReturn<string> {
+}): UseForgeApiReturnReact | UseForgeApiBoundReturnReact<string> {
   const forge = opts?.level !== undefined
     ? useForge({ level: opts.level, prefix: opts.prefix as string })
     : useForge();

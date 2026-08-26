@@ -10,14 +10,14 @@
  * @see .docs/SPEC.md §4.1.7
  */
 
-import { UnknownRouteError } from '@route-forge/core';
+import { UnknownRouteError } from './errors.js';
 
 /**
  * 路由名解析所需的最小 forge 接口。
  * 仅依赖 load() 和 hasRoute()，不依赖拦截器等完整能力。
  * 兼容 RouteForge、BoundForgeTyped、ForgeInstanceTyped 等所有形态。
  */
-interface RouteResolver {
+export interface RouteResolver {
   load(level: string | string[]): Promise<void>;
 
   hasRoute(level: string, name: string): boolean;

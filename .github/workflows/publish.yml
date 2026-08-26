@@ -9,7 +9,7 @@ name: Release npm
 #
 # 前置条件（仅首次配置）：
 #   在 npmjs.com 每个包的 Settings → Trusted Publishers 添加：
-#     Owner: xyj2156 | Repo: route-forge | Workflow: publish.yml
+#     Organization: route-forge | Repo: route-forge | Workflow: publish.yml
 
 on:
   push:

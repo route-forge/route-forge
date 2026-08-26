@@ -9,18 +9,12 @@ export {
   useForge,
 } from './provider.js';
 export type {
-  RouteForgeProviderProps,
-  BoundForgeTyped,
-  ForgeInstanceTyped,
-  BoundForgeMethods,
+  RouteForgeProviderProps, BoundForgeTyped, ForgeInstanceTyped,
 } from './provider.js';
 
 export { useForgeApi } from './hooks/useForgeApi.js';
 export type {
-  UseForgeApiReturn,
-  UseForgeApiBoundReturn,
-  UseForgeApiCall,
-  UseForgeApiBoundCall,
+  UseForgeApiReturnReact, UseForgeApiBoundReturnReact, UseForgeApiCall, UseForgeApiBoundCall,
 } from './hooks/useForgeApi.js';
 
 export { useForgeRoute } from './hooks/useForgeRoute.js';

@@ -43,24 +43,25 @@ forge.api('admin', 'users.show', { user: 1 })
 forge.ready                                        // Promise<void>
 forge.onLevelLoaded('admin', () => { ... })        // 订阅 level 加载
 
-// 绑定层级 — 自动触发 load，提供同步方法 + levelLoaded 状态
+// 绑定层级 — 可直接调用，也可通过 api/route/url
 const forge = useForge({ level: 'admin' })
 forge.level                                        // → 'admin'
 forge.levelLoaded                                  // boolean，加载完成后为 true
+forge('users.show', { user: 1 })                   // 直接调用 = forge.api() 快捷方式
 forge.api('users.show', { user: 1 })
 forge.route('users.show', { user: 1 })
 forge.url('users.show', { user: 1 })               // route() 语义别名
 
 // 绑定层级 + 前缀 — 路由名自动拼接
 const forge = useForge({ level: 'admin', prefix: 'users' })
-forge.api('show', { user: 1 })                     // → forge.api('admin', 'users.show', ...)
+forge('show', { user: 1 })                         // → forge.api('admin', 'users.show', ...)
+forge.api('show', { user: 1 })                     // 同上
 forge.route('show', { user: 1 })                   // → forge.route('admin', 'users.show', ...)
 
 // 通用方法（无论是否绑定 level 均可用）
 forge.load('admin')                                // 加载层级
 forge.isLoaded('admin')                            // 检查缓存
 forge.invalidate('admin')                          // 失效缓存
-forge.interceptors.request.use(...)                // 拦截器管理
 ```
 
 > **注意**：`useForge()` 无 level 时 **不提供** `route`/`url`/`hasRoute`/`getRoutes` 同步方法，
@@ -107,9 +108,9 @@ await api('show', { user: 1 })   // = forge.api('admin', 'users.show', { user: 1
 
 ## 文档
 
-- 仓库主页: https://github.com/xyj2156/route-forge
-- 设计文档: https://github.com/xyj2156/route-forge/blob/main/.docs/DESIGN.md
-- 规范: https://github.com/xyj2156/route-forge/blob/main/.docs/SPEC.md
+- 仓库主页: https://github.com/route-forge/route-forge
+- 设计文档: https://github.com/route-forge/route-forge/blob/main/.docs/DESIGN.md
+- 规范: https://github.com/route-forge/route-forge/blob/main/.docs/SPEC.md
 
 ## License
 

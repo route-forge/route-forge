@@ -15,16 +15,18 @@
 
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ForgeContext } from '../provider.js';
-import { resolveRouteName, resolveRouteNameSync } from '../utils/resolveRouteName.js';
-import type { ApiCallParams } from '@route-forge/core';
+import {
+  type ApiCallParams,
+  resolveRouteName,
+  resolveRouteNameSync,
+  type RouteForge,
+  type UseForgeByPrefixReturn,
+} from '@route-forge/core';
 
-export interface UseForgeByPrefixReturn {
-  api: (suffix: string, params?: ApiCallParams) => Promise<unknown>;
-  route: (suffix: string, params?: Record<string, unknown>) => string;
-}
+export type { UseForgeByPrefixReturn };
 
 export function useForgeByPrefix(level: string, prefix: string, separator = '.'): UseForgeByPrefixReturn {
-  const forge = useContext(ForgeContext);
+  const forge = useContext(ForgeContext) as RouteForge;
   if (!forge) {
     throw new Error(
       '[route-forge/react] useForgeByPrefix() must be used within a <RouteForgeProvider>',

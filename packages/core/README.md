@@ -240,9 +240,9 @@ discovery）。
 
 ## 文档
 
-- 仓库主页: https://github.com/xyj2156/route-forge
-- 设计文档: https://github.com/xyj2156/route-forge/blob/main/.docs/DESIGN.md
-- 规范: https://github.com/xyj2156/route-forge/blob/main/.docs/SPEC.md
+- 仓库主页: https://github.com/route-forge/route-forge
+- 设计文档: https://github.com/route-forge/route-forge/blob/main/.docs/DESIGN.md
+- 规范: https://github.com/route-forge/route-forge/blob/main/.docs/SPEC.md
 
 ## License
 

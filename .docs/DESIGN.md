@@ -115,8 +115,10 @@ Laravel 路由定义里天然包含 HTTP 方法（GET/POST/PUT/DELETE），没�
 
 早期采用 monorepo（pnpm workspace + turborepo）统一管理 Laravel 包、TS core、Vue 插件三个包。随着项目演进，决定拆分为两个独立仓库：
 
-- **[xyj2156/route-forge](https://github.com/xyj2156/route-forge)**（本仓库）：npm 侧，包含 `@route-forge/core` 与 `@route-forge/vue`；
-- **[xyj2156/route-forge-laravel](https://github.com/xyj2156/route-forge-laravel)**：Composer 侧，包含 `route-forge/laravel`。
+- **[route-forge/route-forge](https://github.com/route-forge/route-forge)**（本仓库）：npm 侧，包含
+  `@route-forge/core` 与 `@route-forge/vue`；
+- **[route-forge/route-forge-laravel](https://github.com/route-forge/route-forge-laravel)**：Composer
+  侧，包含 `route-forge/laravel`。
 
 拆分理由：
 
