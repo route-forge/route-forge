@@ -27,6 +27,7 @@ export type {
   RequestConfig,
   ResponseData,
   ApiCallParams,
+  ForgeRequest,
   CacheStorage,
   AdapterOption,
   Fetcher,

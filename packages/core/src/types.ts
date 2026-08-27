@@ -101,6 +101,16 @@ export interface ResponseData {
 }
 
 /**
+ * forge.api() 返回的可取消请求对象。
+ * 继承 Promise，附加 abort() 方法用于取消请求。
+ * 内部自动创建 AbortController，用户无需手动管理。
+ */
+export interface ForgeRequest<T = unknown> extends Promise<T> {
+  /** 取消请求。调用后请求将被中止，Promise reject 为 RequestAbortedError */
+  abort(): void;
+}
+
+/**
  * forge.api(level, name, params) 调用参数
  *
  * 参数解析规则（智能消解）：
@@ -137,14 +147,6 @@ export interface ApiCallParams {
    * 单次请求超时覆盖（毫秒）；不传时使用 createRouteForge({ timeout }) 全局值
    */
   timeout?: number;
-  /**
-   * 请求取消信号（AbortSignal）；调用 AbortController.abort() 即可取消请求
-   * @example
-   * const controller = new AbortController();
-   * forge.api('admin', 'users.index', { signal: controller.signal });
-   * controller.abort(); // 取消请求
-   */
-  signal?: AbortSignal;
 }
 
 /**
@@ -202,7 +204,7 @@ export interface InterceptorHandler<TIn, TOut = TIn> {
  */
 export interface RouteForge {
   /** 通过层级 + 路由名调用 API；level 用于确定加载哪个层级的路由元信息 */
-  api(level: string, name: string, params?: ApiCallParams): Promise<unknown>;
+  api(level: string, name: string, params?: ApiCallParams): ForgeRequest;
   /** 拉取一个或多个层级（自动并发去重） */
   load(level: string | string[]): Promise<void>;
 
@@ -377,7 +379,7 @@ export type ForgeApiResponse<L extends string, N extends string> =
  */
 export interface BoundForge<LL = Promise<void>> {
   /** 直接调用 = api 快捷方式，自动带绑定的 level */
-  (name: string, params?: ApiCallParams): Promise<unknown>;
+  (name: string, params?: ApiCallParams): ForgeRequest;
 
   /** 当前绑定的 level */
   readonly level: string;
@@ -387,7 +389,7 @@ export interface BoundForge<LL = Promise<void>> {
   levelLoaded: LL;
 
   // ─── 路由方法（level 已绑定，无需传） ───
-  api(name: string, params?: ApiCallParams): Promise<unknown>;
+  api(name: string, params?: ApiCallParams): ForgeRequest;
   route(name: string, params?: Record<string, unknown>): string;
   url(name: string, params?: Record<string, unknown>): string;
   hasRoute(name: string): boolean;

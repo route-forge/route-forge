@@ -35,6 +35,7 @@ import {
 import type {
   ApiCallParams,
   BoundForge,
+  ForgeRequest,
   InterceptorManager,
   LevelRoutesResponse,
   RequestConfig,
@@ -423,25 +424,44 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     return undefined;
   }
 
-  async function api(level: string, name: string, params: ApiCallParams = {}): Promise<unknown> {
-    await autoDiscoveryPromise;
-    // 确保指定层级的路由元信息已加载
-    await load(level);
-    const meta = findRouteMeta(level, name);
-    if (!meta) {
-      throw new UnknownRouteError(name, level);
-    }
-    return doApiCall(meta, params);
+  function api(level: string, name: string, params: ApiCallParams = {}): ForgeRequest {
+    // 内部创建 AbortController，用户通过返回值的 abort() 方法取消请求
+    let ctrl: AbortController | undefined;
+    let abortedBeforeInit = false;
+    let abortReason: unknown;
+
+    const work = (async (): Promise<unknown> => {
+      ctrl = new AbortController();
+      if (abortedBeforeInit) {
+        ctrl.abort(abortReason);
+      }
+      await autoDiscoveryPromise;
+      await load(level);
+      const meta = findRouteMeta(level, name);
+      if (!meta) {
+        throw new UnknownRouteError(name, level);
+      }
+      return doApiCall(meta, params, ctrl.signal);
+    })();
+
+    const request = work as ForgeRequest;
+    request.abort = (): void => {
+      if (ctrl) {
+        ctrl.abort();
+      } else {
+        abortedBeforeInit = true;
+      }
+    };
+    return request;
   }
 
-  async function doApiCall(meta: RouteMeta, params: ApiCallParams): Promise<unknown> {
+  async function doApiCall(meta: RouteMeta, params: ApiCallParams, signal?: AbortSignal): Promise<unknown> {
     const {
       pathParams,
       query,
       body,
       headers,
       timeout: perCallTimeout,
-      signal,
     } = resolveApiParams(params);
 
     // 请求前检查：signal 已 abort 则直接抛错，不发请求
@@ -503,7 +523,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
           // 已经是 ForgeError（如拦截器内重新抛的）→ 原样抛
           if (err instanceof ForgeError) throw err;
           // 请求被取消 → 转 RequestAbortedError
-          if (isAbortError(err, finalConfig.signal)) {
+          if (isAbortError(err, signal)) {
             throw new RequestAbortedError(meta.name, meta.level, err);
           }
           throw new NetworkError(
@@ -773,7 +793,6 @@ function resolveApiParams(input: ApiCallParams): {
   body?: unknown;
   headers?: Record<string, string>;
   timeout?: number;
-  signal?: AbortSignal;
 } {
   const {
     params: explicitParams,
@@ -781,7 +800,6 @@ function resolveApiParams(input: ApiCallParams): {
     body: rawBody,
     headers: rawHeaders,
     timeout: perCallTimeout,
-    signal,
     ...flatRest
   } = input;
 
@@ -829,7 +847,7 @@ function resolveApiParams(input: ApiCallParams): {
     }
   }
 
-  return { pathParams, query, body, headers, timeout: perCallTimeout, signal };
+  return { pathParams, query, body, headers, timeout: perCallTimeout };
 }
 
 /**

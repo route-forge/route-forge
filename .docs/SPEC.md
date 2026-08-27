@@ -618,22 +618,20 @@ forge.api('admin', 'items.show', {
 })
 ```
 
-##### 请求取消（AbortSignal）
+##### 请求取消（ForgeRequest.abort）
 
-`forge.api()` 支持通过 `signal` 参数取消请求，适用于组件卸载时清理未完成的请求、避免竞态条件等场景：
+`forge.api()` 返回 `ForgeRequest`（继承 Promise），内置 `abort()` 方法用于取消请求。内部自动创建 `AbortController`，用户无需手动管理：
 
 ```ts
-const controller = new AbortController();
-
-// 发起请求，传入 signal
-const promise = forge.api('admin', 'users.index', { signal: controller.signal });
+// 发起请求
+const request = forge.api('admin', 'users.index');
 
 // 取消请求
-controller.abort();
+request.abort();
 
-// promise 将 reject 为 RequestAbortedError (code: RF_FE_009)
+// request 将 reject 为 RequestAbortedError (code: RF_FE_009)
 try {
-  await promise;
+  await request;
 } catch (e) {
   if (e instanceof RequestAbortedError) {
     console.log('请求已取消');
@@ -643,10 +641,9 @@ try {
 
 取消行为说明：
 
-- 若 `signal` 在调用 `forge.api()` 前已 abort，直接抛出 `RequestAbortedError`，不发请求
-- 若请求已发出后 abort，底层 fetch/axios 取消请求，抛出 `AbortError`/`CanceledError`，上层转换为
-  `RequestAbortedError`
-- `signal` 与 `timeout` 同时存在时，任一触发均取消请求（builtin adapter 内部合并两个 signal）
+- 调用 `abort()` 后，底层 fetch/axios 取消请求，抛出 `AbortError`/`CanceledError`，上层转换为 `RequestAbortedError`
+- 若在内部 `AbortController` 创建前调用 `abort()`（如异步加载阶段），请求仍会被正确取消
+- `timeout` 触发时同样取消请求（builtin adapter 内部使用 `AbortSignal.timeout`）
 - 拦截器可通过修改 `config.signal` 替换或移除取消信号
 
 调用流程：
@@ -714,7 +711,7 @@ type RequestConfig = {
     params: Record<string, unknown>;  // 已填入路径的参数
     meta: RouteMeta;          // 路由元信息（uri/methods/parameters 等）
   timeout?: number;         // 单次请求超时覆盖（毫秒）
-  signal?: AbortSignal;     // 请求取消信号
+  signal?: AbortSignal;     // 请求取消信号（内部自动创建，拦截器可修改）
 };
 
 // 响应拦截器接收的数据对象（首段 onFulfilled 接收完整 ResponseData，后续段接收上一段返回值）

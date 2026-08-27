@@ -1253,7 +1253,7 @@ describe('api() smart param resolution', () => {
   });
 });
 
-describe('AbortSignal request cancellation', () => {
+describe('ForgeRequest abort', () => {
   let originalFetch: typeof globalThis.fetch;
   beforeEach(() => {
     originalFetch = globalThis.fetch;
@@ -1267,7 +1267,7 @@ describe('AbortSignal request cancellation', () => {
     config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
   });
 
-  it('signal is passed to fetch init', async () => {
+  it('api() returns ForgeRequest with internal AbortSignal passed to fetch', async () => {
     const calls = mockFull(summary, {
       public: {
         level: 'public',
@@ -1288,17 +1288,18 @@ describe('AbortSignal request cancellation', () => {
     });
     await forge.load('public');
 
-    const controller = new AbortController();
-    void forge.api('public', 'user.show', { user: 1, signal: controller.signal }).catch(() => {
-    });
+    const request = forge.api('public', 'user.show', { user: 1 });
+    void request.catch(() => {});
     await new Promise((r) => setTimeout(r, 10));
 
     const apiCall = calls.find((c) => c.url.includes('/users/1'));
     expect(apiCall).toBeDefined();
+    // 内部自动创建 AbortSignal 并传给 fetch
     expect(apiCall!.init?.signal).toBeDefined();
+    expect(apiCall!.init?.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it('pre-aborted signal throws RequestAbortedError without calling fetch', async () => {
+  it('abort() cancels request and rejects with RequestAbortedError', async () => {
     mockFull(summary, {
       public: {
         level: 'public',
@@ -1319,12 +1320,38 @@ describe('AbortSignal request cancellation', () => {
     });
     await forge.load('public');
 
-    const controller = new AbortController();
-    controller.abort();
+    const request = forge.api('public', 'user.show', { user: 1 });
+    // 立即取消请求
+    request.abort();
 
-    await expect(
-      forge.api('public', 'user.show', { user: 1, signal: controller.signal }),
-    ).rejects.toThrow(RequestAbortedError);
+    await expect(request).rejects.toThrow(RequestAbortedError);
+  });
+
+  it('abort() before async setup completes still cancels request', async () => {
+    mockFull(summary, {
+      public: {
+        level: 'public',
+        routes: {
+          'user.show': {
+            name: 'user.show',
+            uri: 'users/{user}',
+            methods: ['GET'],
+            parameters: ['user'],
+          },
+        },
+      },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    // 不 await load，让 api() 内部异步加载
+    const request = forge.api('public', 'user.show', { user: 1 });
+    // 在异步 setup 完成前立即 abort
+    request.abort();
+
+    await expect(request).rejects.toThrow(RequestAbortedError);
   });
 });
 
