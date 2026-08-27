@@ -31,9 +31,9 @@
     "publish:build": "turbo run typecheck test build && pnpm run publish:only"
   },
   "devDependencies": {
-    "@types/node": "^20.11.0",
-    "rimraf": "^5.0.5",
-    "turbo": "^1.13.0",
-    "typescript": "^5.4.0"
+    "@types/node": "^20.19.43",
+    "rimraf": "^5.0.10",
+    "turbo": "^1.13.4",
+    "typescript": "^5.9.3"
   }
 }

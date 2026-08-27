@@ -1,9 +1,12 @@
 name: Release npm
+
 # 通过 npm Trusted Publishing (OIDC) 发布 @route-forge/{core,react,vue} 到 npm registry
 # 无需 NPM_TOKEN，包带 Provenance 签名。
+
 ## 触发方式：
 #   tag push：1.0.0 → 全量 | core-1.0.0 / react-1.0.0 / vue-1.0.0 → 仅对应包
 #   workflow_dispatch：手动勾选发布哪些包（支持 dry-run）
+
 ## 前置条件（仅首次配置）：
 #   在 npmjs.com 每个包的 Settings → Trusted Publishers 添加：
 #     Organization: route-forge | Repo: route-forge | Workflow: publish.yml
@@ -56,17 +59,14 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 11
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
           registry-url: https://registry.npmjs.org
-
-      - name: Upgrade npm
-        run: npm install -g npm@latest
 
       - name: Resolve release targets
         id: targets
