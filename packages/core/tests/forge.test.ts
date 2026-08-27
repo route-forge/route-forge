@@ -1607,11 +1607,11 @@ describe('auto-discovery guard & callbacks', () => {
         readyCalled = true;
       },
     });
-    await forge.ready;
+    await forge.ready();
     expect(readyCalled).toBe(true);
   });
 
-  it('forge.ready resolves after discovery + eager load completes', async () => {
+  it('forge.ready() resolves after discovery + eager load completes', async () => {
     const summary = makeSummary();
     mockFull(summary, {
       admin: {
@@ -1631,12 +1631,12 @@ describe('auto-discovery guard & callbacks', () => {
       levels: ['admin'],
       adapter: 'builtin',
     });
-    await forge.ready;
+    await forge.ready();
     // eager load 完成后 route() 应该可用
     expect(forge.route('admin', 'dashboard')).toBe('/dashboard');
   });
 
-  it('onLevelLoaded callback fires after level load', async () => {
+  it('BoundForge.onLevelLoaded() resolves after level load', async () => {
     const summary = makeSummary();
     mockFull(summary, {
       public: {
@@ -1655,17 +1655,19 @@ describe('auto-discovery guard & callbacks', () => {
       endpoint: '/_forge/routes',
       adapter: 'builtin',
     });
+    const bound = forge.use('public');
+    // onLevelLoaded() 无参返回 Promise<BoundForge>
+    const loaded = await bound.onLevelLoaded();
+    expect(loaded).toBe(bound);
+    expect(loaded.route('users.index')).toBe('/users');
+    // onLevelLoaded() 有参回调
     let callbackFired = false;
-    const unsub = forge.onLevelLoaded('public', () => {
-      callbackFired = true;
-    });
-    await forge.load('public');
-    expect(callbackFired).toBe(true);
-    // unsubscribe should work
-    callbackFired = false;
-    unsub();
     forge.invalidate('public');
-    await forge.load('public');
-    expect(callbackFired).toBe(false);
+    const bound2 = forge.use('public');
+    await bound2.onLevelLoaded((b) => {
+      callbackFired = true;
+      expect(b).toBe(bound2);
+    });
+    expect(callbackFired).toBe(true);
   });
 });

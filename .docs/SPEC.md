@@ -809,6 +809,81 @@ await forge.load(['client', 'manage', 'admin']);  // 并发去重 + 并发请求
 > 设计意图（DESIGN.md §5 原则 2）：前后端统一默认 `false`，降低新用户接入门槛；需要严格校验的项目可通过配置开启。后端
 > `strict_mode` 始终为权威值，防止前端误配导致安全漏洞（如后端要求严格模式但前端关闭了校验）。
 
+#### 4.1.6 就绪等待与层级绑定（`ready()` / `use()`）
+
+##### `forge.ready()` 方法
+
+`forge.ready()` 在 auto-discovery + eager load 全部完成后 resolve，始终返回 `Promise<RouteForge>`（resolve 值为 forge 实例自身），支持两种调用模式：
+
+```ts
+// 无参模式：返回 Promise，适合 async/await
+const forge = createRouteForge({ /* ... */ });
+await forge.ready();
+// 此时 route() / hasRoute() 可安全使用
+
+// 回调模式：onFulfilled / onRejected 内部走 then/catch，仍返回 Promise
+forge.ready(
+  (f) => { console.log('ready!', f); },
+  (err) => { console.error('forge init failed', err); }
+);
+```
+
+##### `forge.use(level?, prefix?)` 方法
+
+`forge.use()` 是 core 层唯一的 level 绑定入口，Vue/React/IIFE 三端共享同一套 API 表面：
+
+```ts
+// 不传 level：返回 RouteForge 自身（等价于无操作）
+const f = forge.use();
+
+// 传 level：返回 BoundForge，自动触发 load
+const bound = forge.use('admin');
+bound('users.show', { user: 1 });   // 可直接调用（= bound.api()）
+bound.route('users.show');           // URL 生成
+
+// 传 level + prefix：返回 BoundForge，路由名自动拼接前缀
+const bound = forge.use('admin', 'users');
+bound('show', { user: 1 });           // → forge.api('admin', 'users.show', ...)
+```
+
+##### `BoundForge` 接口
+
+`forge.use(level, prefix?)` 返回的 `BoundForge` 提供绑定后的快捷方法：
+
+```ts
+interface BoundForge<LL = Promise<void>> {
+  // 可直接调用（= api() 快捷方式）
+  (name: string, params?: ApiCallParams): Promise<unknown>;
+
+  // 绑定属性
+  readonly level: string;
+  readonly prefix?: string;
+  levelLoaded: LL;                    // core: Promise<void>
+
+  // 绑定后无需传 level 的方法
+  api(name: string, params?: ApiCallParams): Promise<unknown>;
+  route(name: string, params?: Record<string, unknown>): string;
+  url(name: string, params?: Record<string, unknown>): string;
+  hasRoute(name: string): boolean;
+  getRoutes(): Record<string, RouteMeta>;
+  load(): Promise<void>;
+  invalidate(): void;
+  isLoaded(): boolean;
+  isLoading(): boolean;
+  onLoadingChange(cb: LoadingChangeCallback): () => void;
+
+  // BoundForge 独有方法
+  onLevelLoaded(): Promise<BoundForge<LL>>;
+  onLevelLoaded(onFulfilled: (bound: BoundForge<LL>) => void, onRejected?: (error: unknown) => void): Promise<BoundForge<LL>>;
+  useRoutePrefix(prefix: string): BoundForge<LL>;
+}
+```
+
+- `onLevelLoaded()`：等待当前 level 加载完成后 resolve，resolve 值为 BoundForge 自身。与 `ready()` 相同的异步模式（无参返回 Promise，有参走回调）。
+- `useRoutePrefix(prefix)`：在已绑定 level 基础上追加路由名前缀，返回新的 BoundForge。level 一旦绑定不可更换。
+
+> 设计意图：`forge.use()` 作为唯一绑定入口，统一了 Vue `useForge(level)`、React `useForge({ level })` 和 IIFE 场景的底层实现。用户无论在哪种环境，API 表面完全一致。
+
 #### 4.1.8 加载中标识
 
 核心提供加载状态跟踪能力，通过引用计数器跟踪并发 API 请求数。不内置任何 UI
@@ -871,28 +946,33 @@ app.use(plugin);
 
 ##### useForge — 核心 composable
 
-`useForge()` 返回一个 forge 实例。`useForge()` 无 level 时仅提供异步 API + 工具方法（不含 `route`/
-`url`/`hasRoute`/`getRoutes` 同步方法）； 传入 `level` 时自动触发 load，提供同步方法 + `levelLoaded`
+`useForge()` 返回 forge 实例。无 level 时返回完整 `RouteForge` 实例；传入 `level` 时内部调用 `forge.use(level, prefix?)`，自动触发 load，提供绑定方法 + `levelLoaded`
 响应式状态：
 
 ```ts
 import {useForge} from '@route-forge/vue';
 
-// 不绑定层级 — 仅提供异步 API + 工具方法
+// 不绑定层级 — 返回完整 RouteForge 实例
 const forge = useForge();
-forge('admin', 'users.show', {user: 1});      // 直接调用 = forge.api() 快捷方式
-forge.api('admin', 'users.show', {user: 1});   // 显式调用
-forge.ready;                                    // Promise<void>
-forge.onLevelLoaded('admin', () => { ... });   // 订阅 level 加载
+forge.api('admin', 'users.show', {user: 1});   // 通过层级 + 路由名调用
+forge.ready().then(f => f.use('admin'));        // 等待就绪后绑定层级
+forge.use('admin');                              // 绑定层级，返回 BoundForge
 
 // 绑定层级 — 自动触发 load，提供同步方法 + levelLoaded 状态
 const forge = useForge('admin');
 forge.level;                                    // → 'admin'
 forge.levelLoaded;                              // Ref<boolean>
-forge('users.show', {user: 1});                // 自动带 admin
+forge('users.show', {user: 1});                // 可直接调用（= forge.api() 快捷方式）
 forge.api('users.show');                        // 同上
 forge.route('users.show');                      // 生成 URL
 forge.url('users.show');                        // route() 语义别名
+forge.onLevelLoaded();                          // 等待 level 加载完成
+forge.useRoutePrefix('users');                  // 追加路由名前缀
+
+// 绑定层级 + 前缀
+const forge = useForge('admin', 'users');
+forge('show', {user: 1});                      // → forge.api('admin', 'users.show', ...)
+forge.route('show');                            // → forge.route('admin', 'users.show', ...)
 
 // 通用方法（无论是否绑定 level 均可用）
 forge.load('admin');                            // 加载层级
@@ -904,46 +984,35 @@ forge.interceptors.request.use(...);            // 拦截器管理
 类型定义：
 
 ```ts
-// 未绑定 level — 不提供 route/url/hasRoute/getRoutes 同步方法
-interface ForgeInstanceTyped {
-  (level: string, name: string, params?: ApiCallParams): Promise<unknown>;
-  api(level: string, name: string, params?: ApiCallParams): Promise<unknown>;
-  load(level: string | string[]): Promise<void>;
-  invalidate(level?: string | string[]): void;
-  isLoaded(level?: string): boolean;
-  isLoading(): boolean;
-  onLoadingChange(cb: LoadingChangeCallback): () => void;
-  interceptors: { request: ReadOnlyInterceptorManager<...>; response: ReadOnlyInterceptorManager<...> };
-  ready: Promise<void>;
-  onLevelLoaded(level: string, cb: () => void): () => void;
-}
-
-// 已绑定 level — 提供同步方法 + levelLoaded
-interface BoundForgeMethods {
-  api(name: string, params?: ApiCallParams): Promise<unknown>;
-  route(name: string, params?: Record<string, unknown>): string;
-  url(name: string, params?: Record<string, unknown>): string;
-  load(level: string | string[]): Promise<void>;
-  invalidate(level?: string | string[]): void;
-  isLoaded(level?: string): boolean;
-  hasRoute(level: string, name: string): boolean;
-  isLoading(): boolean;
-  onLoadingChange(cb: LoadingChangeCallback): () => void;
-  getRoutes(level: string): Record<string, RouteMeta>;
-  interceptors: { request: ReadOnlyInterceptorManager<...>; response: ReadOnlyInterceptorManager<...> };
-  levelLoaded: Ref<boolean>;
-}
-
-interface BoundForgeTyped extends BoundForgeMethods {
+// BoundForge 泛型接口：LL 参数适配不同框架的 levelLoaded 类型
+// Vue: BoundForge<Ref<boolean>>, React: BoundForge<boolean>, Core: BoundForge<Promise<void>>
+interface BoundForge<LL = Promise<void>> {
   (name: string, params?: ApiCallParams): Promise<unknown>;
   readonly level: string;
   readonly prefix?: string;
+  levelLoaded: LL;
+  api(name: string, params?: ApiCallParams): Promise<unknown>;
+  route(name: string, params?: Record<string, unknown>): string;
+  url(name: string, params?: Record<string, unknown>): string;
+  hasRoute(name: string): boolean;
+  getRoutes(): Record<string, RouteMeta>;
+  load(): Promise<void>;
+  invalidate(): void;
+  isLoaded(): boolean;
+  isLoading(): boolean;
+  onLoadingChange(cb: LoadingChangeCallback): () => void;
+  onLevelLoaded(): Promise<BoundForge<LL>>;
+  onLevelLoaded(onFulfilled: (bound: BoundForge<LL>) => void, onRejected?: (error: unknown) => void): Promise<BoundForge<LL>>;
+  useRoutePrefix(prefix: string): BoundForge<LL>;
 }
 
+// Vue 特化类型
+type VueBoundForge = BoundForge<Ref<boolean>>;
+
 // useForge 重载签名
-declare function useForge(level: string, prefix: string): BoundForgeTyped;
-declare function useForge(level: string): BoundForgeTyped;
-declare function useForge(): ForgeInstanceTyped;
+declare function useForge(level: string, prefix: string): VueBoundForge;
+declare function useForge(level: string): VueBoundForge;
+declare function useForge(): RouteForge;
 ```
 
 ##### 其他 composable
@@ -968,8 +1037,7 @@ await api('show', {user: 1});   // = forge.api('admin', 'users.show', {user: 1})
 
 插件提供的完整能力清单：
 
-- `useForge(level?)`：获取 forge 实例。不传 level 时仅提供异步 API + 工具方法（`ready`/
-  `onLevelLoaded`）； 传 level 时自动触发 load，提供同步方法 + `levelLoaded` 响应式状态。
+- `useForge(level?, prefix?)`：获取 forge 实例。不传 level 返回完整 `RouteForge` 实例；传 level 时内部调用 `forge.use(level, prefix?)`，自动触发 load，提供同步方法 + `levelLoaded` 响应式状态 + `onLevelLoaded()` / `useRoutePrefix()` 等 BoundForge 方法。
 - `useForgeApi()`：包装 `forge.api()`，自动管理 loading/error 状态。
 - `useForgeByPrefix(level, prefix)`：带指定层级和名字前缀的封装，`route` 方法在 level 未加载时返回
   `''`。
@@ -1014,40 +1082,56 @@ const forge = createRouteForge({
 如果不使用 `onSummaryReady`，应用可能在路由数据就绪前渲染，此时 `route()` / `hasRoute()` 会触发
 auto-discovery 守卫错误（见下方）。
 
-##### `forge.ready` Promise
+##### `forge.ready()` 方法
 
-`forge.ready: Promise<void>` 在 auto-discovery + eager load 全部完成后 resolve。适合在 async
-初始化流程中使用：
+`forge.ready()` 方法在 auto-discovery + eager load 全部完成后 resolve，始终返回 `Promise<RouteForge>`（resolve 值为 forge 实例自身），支持链式调用：
 
 ```ts
 const forge = createRouteForge({ /* ... */ });
-await forge.ready;  // 等待 discovery + eager load 完成
+
+// 无参模式：直接 await
+await forge.ready();
 // 此时 route() / hasRoute() 可安全使用
+
+// 回调模式：onFulfilled / onRejected 内部走 then/catch
+forge.ready(
+  (f) => { f.use('admin'); },
+  (err) => { console.error(err); }
+);
+
+// 链式调用：ready 返回 forge 自身
+const bound = await forge.ready().then(f => f.use('admin'));
 ```
 
-> `onSummaryReady` 在 discovery 完成后即触发（eager load 可能尚未完成）；`forge.ready` 等待 discovery +
+> `onSummaryReady` 在 discovery 完成后即触发（eager load 可能尚未完成）；`forge.ready()` 等待 discovery +
 > eager load 全部完成。
 > 如果只需要确保 `route()` / `hasRoute()` 可用，`onSummaryReady` 即可；如果需要 eager 层级也已加载，使用
-> `forge.ready`。
+> `forge.ready()`。
 
-##### `onLevelLoaded` 订阅
+##### `BoundForge.onLevelLoaded()` 方法
 
-`forge.onLevelLoaded(level, cb)` 允许订阅指定 level 的加载完成事件，返回取消订阅函数。框架层
-composable（`useForge(level)`、`useForgeRoute` 等）内部使用此机制驱动响应式更新：
+`forge.use(level)` 返回的 `BoundForge` 对象上提供 `onLevelLoaded()` 方法，采用与 `ready()` 相同的异步模式。等待当前 level 加载完成后 resolve，resolve 值为 BoundForge 自身：
 
 ```ts
-const unsub = forge.onLevelLoaded('admin', () => {
-  console.log('admin level routes loaded');
-});
-// 取消订阅
-unsub();
+const bound = forge.use('admin');
+
+// 无参模式：直接 await
+await bound.onLevelLoaded();
+// 此时 level 已加载，route() / hasRoute() 可安全使用
+
+// 回调模式
+bound.onLevelLoaded(
+  (b) => { console.log(b.level, 'loaded'); },
+  (err) => { console.error(err); }
+);
 ```
+
+> `onLevelLoaded()` 仅存在于 `BoundForge` 上（即 `forge.use(level)` 返回的对象），不能在 forge 顶层直接调用。
 
 ##### Auto-discovery 守卫
 
 当 auto-discovery 尚未完成 **且** 未通过 `levels` 显式声明层级时，`route()` 和 `hasRoute()` 会抛出
-`ForgeError (RF_FE_010)`，提示用户使用 `onSummaryReady` 回调挂载应用或等待 `forge.ready` /
-`forge.load(level)` 完成。
+`ForgeError (RF_FE_010)`，提示用户使用 `forge.ready()` 等待或 `forge.use(level)` 完成。
 
 以下方法 **不受** 守卫影响：
 
@@ -1063,7 +1147,8 @@ auto-discovery 即可知道层级存在。
 | 场景                              | 推荐方式                                         |
 |-----------------------------------|--------------------------------------------------|
 | 传统 SPA（document 加载后 mount） | `onSummaryReady` 回调中 mount 应用               |
-| 异步初始化（如 SSR hydration）    | `await forge.ready` 后 mount                     |
+| 异步初始化（如 SSR hydration）    | `await forge.ready()` 后 mount                    |
+| IIFE 浏览器场景                    | `forge.ready().then(f => f.use('admin'))` 链式调用 |
 | 组件级懒加载                      | `useForge(level)` / `useForgeRoute` 内部自动处理 |
 
 ### 4.2 类型生成（可选）
@@ -1361,10 +1446,9 @@ class ForgeError extends Error {
 - ✅ 后端：层级分配（3 种方式）、五级优先级、元信息端点、摘要端点、`middleware_match`（any/all/DNF）、缓存、`php artisan route:forge:list`、`php artisan route:forge:types` Artisan 命令
 - ✅ 前端：懒加载、隔离缓存、并发去重、拦截器、严格模式、摘要端点自动发现
 - ✅ Adapter：auto 检测、内置 builtin、axios 复用、自定义 Fetcher
-- ✅ Vue 插件：`useForge(level?)`（可直接调用的 forge 实例 + 层级绑定）/`useForgeApi`/`useForgeLevel`/
-  `useForgeRoute`/`useForgeByPrefix`
-- ✅ React 集成：`RouteForgeProvider` / `useForge({ level? })` / `useForgeApi` / `useForgeLevel` /
-  `useForgeRoute` / `useForgeByPrefix`
+- ✅ Vue 插件：`useForge(level?, prefix?)`（内部委托 `forge.use()`，层级绑定 + `levelLoaded` Ref）/`useForgeApi`/`useForgeRoute`/`useForgeByPrefix`
+- ✅ React 集成：`RouteForgeProvider` / `useForge({ level?, prefix? })`（内部委托 `forge.use()`，`levelLoaded` boolean） / `useForgeApi` / `useForgeRoute` / `useForgeByPrefix`
+- ✅ Core API：`forge.ready()` 方法（返回 `Promise<RouteForge>`）/ `forge.use(level?, prefix?)` 统一绑定入口 / `BoundForge` 接口（`onLevelLoaded()` / `useRoutePrefix()`）
 
 ### 8.2 v1.x 路线图
 

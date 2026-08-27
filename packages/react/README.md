@@ -32,16 +32,16 @@ createRoot(document.getElementById('root')!).render(
 
 ## useForge — 核心 hook
 
-`useForge()` 返回一个 forge 实例对象。支持可选传入 `{ level }` 绑定层级：
+`useForge()` 返回 forge 实例对象。无 level 时返回完整 `RouteForge` 实例；传入 `{ level }` 时内部调用 `forge.use(level, prefix?)`，自动触发 load：
 
 ```tsx
 import { useForge } from '@route-forge/react'
 
-// 不绑定层级 — 仅提供异步 API + 工具方法
+// 不绑定层级 — 返回完整 RouteForge 实例
 const forge = useForge()
 forge.api('admin', 'users.show', { user: 1 })
-forge.ready                                        // Promise<void>
-forge.onLevelLoaded('admin', () => { ... })        // 订阅 level 加载
+forge.ready().then(f => f.use('admin'))           // 等待就绪后绑定层级
+forge.use('admin')                                 // 绑定层级，返回 BoundForge
 
 // 绑定层级 — 可直接调用，也可通过 api/route/url
 const forge = useForge({ level: 'admin' })
@@ -51,6 +51,8 @@ forge('users.show', { user: 1 })                   // 直接调用 = forge.api()
 forge.api('users.show', { user: 1 })
 forge.route('users.show', { user: 1 })
 forge.url('users.show', { user: 1 })               // route() 语义别名
+forge.onLevelLoaded()                              // 等待 level 加载完成
+forge.useRoutePrefix('users')                      // 追加路由名前缀
 
 // 绑定层级 + 前缀 — 路由名自动拼接
 const forge = useForge({ level: 'admin', prefix: 'users' })
@@ -64,8 +66,8 @@ forge.isLoaded('admin')                            // 检查缓存
 forge.invalidate('admin')                          // 失效缓存
 ```
 
-> **注意**：`useForge()` 无 level 时 **不提供** `route`/`url`/`hasRoute`/`getRoutes` 同步方法，
-> 因为 auto-discovery 可能未完成。请使用 `useForgeRoute` 或 `await forge.ready` 后再调用。
+> **注意**：`useForge()` 无 level 时返回完整 `RouteForge` 实例，包含所有方法（`route`/`url`/`hasRoute`/`getRoutes` 等）。
+> 但 auto-discovery 可能未完成，同步方法可能抛守卫错误。建议使用 `await forge.ready()` 或 `useForgeRoute`。
 
 ### 参数智能解析
 

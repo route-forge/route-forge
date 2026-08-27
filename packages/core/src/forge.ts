@@ -18,6 +18,8 @@ import {
   runResponseInterceptors,
 } from './interceptors.js';
 import { resolveAdapter } from './adapters/index.js';
+import { resolveRouteName, resolveRouteNameSync } from './resolveRouteName.js';
+import { defineImmutableProps } from './defineImmutableProps.js';
 import type { LoadingChangeCallback } from './loading.js';
 import { LoadingTracker } from './loading.js';
 import {
@@ -32,6 +34,7 @@ import {
 } from './errors.js';
 import type {
   ApiCallParams,
+  BoundForge,
   InterceptorManager,
   LevelRoutesResponse,
   RequestConfig,
@@ -192,13 +195,12 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     autoDiscoveryError = e;
   });
 
-  // --- Auto-discovery 完成状态 + ready Promise + level 加载订阅 ---
+  // --- Auto-discovery 完成状态 + ready Promise ---
   let autoDiscoveryCompleted = false;
-  let resolveReady!: () => void;
-  const readyPromise = new Promise<void>((resolve) => {
+  let resolveReady!: (value: RouteForge) => void;
+  const readyPromise = new Promise<RouteForge>((resolve) => {
     resolveReady = resolve;
   });
-  const levelLoadedListeners = new Map<string, Set<() => void>>();
 
   const cacheTtl = cacheOpts.ttl ?? DEFAULT_CACHE_TTL;
   const cacheStorage = cacheOpts.storage ?? 'memory';
@@ -263,7 +265,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     if (!autoDiscoveryCompleted && !explicitLevels?.length) {
       throw new ForgeError(
         'Route data not available. Auto-discovery has not completed. ' +
-        'Use onSummaryReady callback to mount app, or await forge.ready / forge.load(level) first.',
+        'Use forge.ready() or forge.use(level) first.',
         { code: 'RF_FE_010' },
       );
     }
@@ -327,18 +329,12 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
             routes[r.name] = { ...r, level: UNASSIGNED_LEVEL };
           }
           cache.set({ level: UNASSIGNED_LEVEL, routes, cache: null });
-          // 通知 level 加载完成订阅者
-          const listeners = levelLoadedListeners.get(level);
-          if (listeners) listeners.forEach((cb) => cb());
           return;
         }
         const resp = await fetchLevel(level);
         // 仅在缓存未被 invalidate 清除时写入，防止旧数据回写
         if ((invalidationGens.get(level) ?? 0) === gen) {
           cache.set(resp);
-          // 通知 level 加载完成订阅者
-          const listeners = levelLoadedListeners.get(level);
-          if (listeners) listeners.forEach((cb) => cb());
         }
       } finally {
         inflight.delete(level);
@@ -594,7 +590,9 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   // 不阻塞 createRouteForge 返回；在自动发现完成后触发
   void autoDiscoveryPromise
     .then(() => {
-      // 摘要处理完成，触发 onSummaryReady（eager load 之前）
+      // 摘要处理完成 → auto-discovery 已完成（eager load 之前设置，确保 level 加载后 route() 可用）
+      autoDiscoveryCompleted = true;
+      // 触发 onSummaryReady（eager load 之前）
       options.onSummaryReady?.();
       // eager load
       if (effectiveEager.length > 0) {
@@ -604,14 +602,120 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       }
     })
     .then(() => {
-      autoDiscoveryCompleted = true;
-      resolveReady();
+      resolveReady(forgeInstance);
     })
     .catch(() => {
       /* 自动发现失败时不触发 eager / ready */
     });
 
-  return {
+  // --- ready() 方法：始终返回 Promise<this> ---
+  function ready(): Promise<RouteForge>;
+  function ready(onFulfilled: (forge: RouteForge) => void, onRejected?: (error: unknown) => void): Promise<RouteForge>;
+  function ready(
+    onFulfilled?: (forge: RouteForge) => void,
+    onRejected?: (error: unknown) => void,
+  ): Promise<RouteForge> {
+    if (onFulfilled) {
+      const p = readyPromise.then(onFulfilled, onRejected);
+      // 回调模式下也返回 Promise，resolve 值为 forge 自身
+      return p.then(() => forgeInstance);
+    }
+    return readyPromise;
+  }
+
+  // RouteResolver 接口实现（供 resolveRouteName/resolveRouteNameSync 使用）
+  const forgeResolver = { load, hasRoute };
+
+  // --- createBoundForge：构造绑定 level 的 BoundForge ---
+  function createBoundForge(level: string, prefix?: string): BoundForge {
+    // 自动触发 level 加载
+    const levelLoadedPromise = load(level).catch(() => {
+      /* 加载失败时 levelLoaded 保持 pending */
+    });
+
+    const apiFn = prefix
+      ? (name: string, params?: ApiCallParams) =>
+        resolveRouteName(forgeResolver, level, prefix, name).then(
+          (resolved) => api(level, resolved, params),
+        )
+      : (name: string, params?: ApiCallParams) =>
+        api(level, name, params);
+
+    const callable = apiFn as unknown as BoundForge;
+    defineImmutableProps(callable, {
+      level,
+      ...(prefix !== undefined ? { prefix } : {}),
+      api: apiFn,
+      route: prefix
+        ? (name: string, params?: Record<string, unknown>) =>
+          route(level, resolveRouteNameSync(forgeResolver, level, prefix, name), params)
+        : (name: string, params?: Record<string, unknown>) =>
+          route(level, name, params),
+      url: prefix
+        ? (name: string, params?: Record<string, unknown>) =>
+          route(level, resolveRouteNameSync(forgeResolver, level, prefix, name), params)
+        : (name: string, params?: Record<string, unknown>) =>
+          route(level, name, params),
+      hasRoute: (name: string) => hasRoute(level, name),
+      getRoutes: () => getRoutes(level),
+      load: () => load(level),
+      invalidate: () => invalidate(level),
+      isLoaded: () => isLoaded(level),
+      isLoading: () => loadingTracker.isLoading(),
+      onLoadingChange: (cb: LoadingChangeCallback) => loadingTracker.subscribe(cb),
+    });
+    // levelLoaded 单独挂载为 configurable: true，允许框架适配层（Vue/React）覆盖
+    Object.defineProperty(callable, 'levelLoaded', {
+      value: levelLoadedPromise,
+      writable: false,
+      enumerable: true,
+      configurable: true,
+    });
+    return callable;
+  }
+
+  // BoundForge.onLevelLoaded() 实现
+  function boundOnLevelLoaded(
+    bound: BoundForge,
+    levelLoadedPromise: Promise<void>,
+    onFulfilled?: (bound: BoundForge) => void,
+    onRejected?: (error: unknown) => void,
+  ): Promise<BoundForge> {
+    const p = levelLoadedPromise.then(() => bound);
+    if (onFulfilled) {
+      return p.then(onFulfilled, onRejected).then(() => bound);
+    }
+    return p;
+  }
+
+  // 为 BoundForge 挂载 onLevelLoaded 和 useRoutePrefix
+  // （这两个方法需要闭包引用，不能通过 defineImmutableProps 冻结对象值）
+  function attachBoundMethods(bound: BoundForge, levelLoadedPromise: Promise<void>, level: string): void {
+    Object.defineProperty(bound, 'onLevelLoaded', {
+      value: (
+        onFulfilled?: (bound: BoundForge) => void,
+        onRejected?: (error: unknown) => void,
+      ) => boundOnLevelLoaded(bound, levelLoadedPromise, onFulfilled, onRejected),
+      writable: false,
+      enumerable: false,
+      configurable: false,
+    });
+    Object.defineProperty(bound, 'useRoutePrefix', {
+      value: (prefix: string) => createBoundForgeWithMethods(level, prefix),
+      writable: false,
+      enumerable: false,
+      configurable: false,
+    });
+  }
+
+  function createBoundForgeWithMethods(level: string, prefix?: string): BoundForge {
+    const bound = createBoundForge(level, prefix);
+    const levelLoadedPromise = bound.levelLoaded as Promise<void>;
+    attachBoundMethods(bound, levelLoadedPromise, level);
+    return bound;
+  }
+
+  const forgeInstance = {
     api,
     load,
     route,
@@ -626,15 +730,14 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       request: requestInterceptors,
       response: responseInterceptors,
     },
-    ready: readyPromise,
-    onLevelLoaded(level: string, cb: () => void): () => void {
-      if (!levelLoadedListeners.has(level)) {
-        levelLoadedListeners.set(level, new Set());
-      }
-      levelLoadedListeners.get(level)!.add(cb);
-      return () => levelLoadedListeners.get(level)?.delete(cb);
+    ready,
+    use(level?: string, prefix?: string) {
+      if (level === undefined) return forgeInstance as RouteForge;
+      return createBoundForgeWithMethods(level, prefix);
     },
-  };
+  } as RouteForge;
+
+  return forgeInstance;
 }
 
 function pickMethod(meta: RouteMeta): string {

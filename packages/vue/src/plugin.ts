@@ -19,32 +19,26 @@ import type { App, InjectionKey, Plugin, Ref } from 'vue';
 import { inject, ref } from 'vue';
 import {
   type ApiCallParams,
+  type BoundForge,
   createRouteForge,
-  type ForgeInstanceTyped,
-  resolveRouteName,
-  resolveRouteNameSync,
   type RouteForge,
   type RouteForgeOptions,
 } from '@route-forge/core';
-import { defineImmutableProps } from '@route-forge/core/internal';
 
 export const FORGE_INJECTION_KEY: InjectionKey<RouteForge> = Symbol('route-forge');
 
 export interface RouteForgePluginOptions extends RouteForgeOptions {}
 
-/** 已绑定 level — 直接调用无需 level，api/route/url 的 name 自动限定到该层级 */
-export type BoundForgeTyped<L extends string> = import('@route-forge/core').BoundForgeTyped<L, Ref<boolean>>;
-
-/** 未绑定 level — 直接调用需要传 level（不提供 route/url/hasRoute/getRoutes 等同步方法） */
-export type { ForgeInstanceTyped } from '@route-forge/core';
+/** Vue 特化类型：levelLoaded 为 Ref<boolean> */
+export type VueBoundForge = BoundForge<Ref<boolean>>;
 
 export function createRouteForgePlugin(options: RouteForgePluginOptions): Plugin<[]> & {
-  ready: Promise<void>
+  ready: RouteForge['ready']
 } {
   const forge = createRouteForge(options);
 
   return {
-    ready: forge.ready,
+    ready: forge.ready.bind(forge),
     install(app: App) {
       app.provide(FORGE_INJECTION_KEY, forge);
       app.config.globalProperties.$forge = {
@@ -56,7 +50,7 @@ export function createRouteForgePlugin(options: RouteForgePluginOptions): Plugin
 }
 
 /**
- * 获取 forge 实例。
+ * 获取 forge 实例。内部委托 core 的 forge.use()，仅将 levelLoaded 替换为 Vue 响应式 Ref。
  *
  * @example
  * // 不绑定层级
@@ -68,22 +62,20 @@ export function createRouteForgePlugin(options: RouteForgePluginOptions): Plugin
  * // 绑定层级 — 直接调用和 api/route/url 均无需传 level
  * const forge = useForge('admin')
  * forge.level                    // → 'admin'
+ * forge.levelLoaded              // Ref<boolean>
  * forge('users.show', { user: 1 })
- * forge.api('users.show')
+ * forge.route('users.show', { user: 1 })
  *
  * @example
  * // 绑定层级 + 前缀 — 路由名自动拼接
  * const forge = useForge('admin', 'users')
- * forge.level                    // → 'admin'
- * forge.prefix                   // → 'users'
  * forge('show', { user: 1 })           // → forge.api('admin', 'users.show', ...)
- * forge.api('index')                   // → forge.api('admin', 'users.index')
  * forge.route('show', { user: 1 })     // → forge.route('admin', 'users.show', ...)
  */
-export function useForge<L extends string>(level: L, prefix: string): BoundForgeTyped<L>;
-export function useForge<L extends string>(level: L): BoundForgeTyped<L>;
-export function useForge(): ForgeInstanceTyped;
-export function useForge(level?: string, prefix?: string): ForgeInstanceTyped | BoundForgeTyped<string> {
+export function useForge<L extends string>(level: L, prefix: string): VueBoundForge;
+export function useForge<L extends string>(level: L): VueBoundForge;
+export function useForge(): RouteForge;
+export function useForge(level?: string, prefix?: string): RouteForge | VueBoundForge {
   const forge = inject(FORGE_INJECTION_KEY);
   if (!forge) {
     throw new Error(
@@ -91,71 +83,25 @@ export function useForge(level?: string, prefix?: string): ForgeInstanceTyped | 
     );
   }
 
-  if (level !== undefined) {
-    // 自动触发 level 加载 + 响应式 levelLoaded 状态
-    const levelLoaded = ref(forge.isLoaded(level));
-    forge.load(level).then(() => {
-      levelLoaded.value = true;
-    }).catch(() => { /* 加载失败时 levelLoaded 保持 false */
-    });
-    // 订阅 level 加载完成事件（兜底：如果 load() 在 ref 赋值后才完成）
-    const unsub = forge.onLevelLoaded(level, () => {
-      levelLoaded.value = true;
-      unsub();
-    });
-
-    const callable = prefix
-      ? async (name: string, params?: ApiCallParams) =>
-        forge.api(level, await resolveRouteName(forge, level, prefix, name), params)
-      : (name: string, params?: ApiCallParams) =>
-        forge.api(level, name, params);
-    defineImmutableProps(callable, {
-      level,
-      // 未传 prefix 时不定义该属性，与 React 包行为保持一致（'prefix' in forge === false）
-      ...(prefix !== undefined ? { prefix } : {}),
-      api: prefix
-        ? async (name: string, params?: ApiCallParams) =>
-          forge.api(level, await resolveRouteName(forge, level, prefix, name), params)
-        : (name: string, params?: ApiCallParams) => forge.api(level, name, params),
-      route: prefix
-        ? (name: string, params?: Record<string, unknown>) =>
-          forge.route(level, resolveRouteNameSync(forge, level, prefix, name), params)
-        : (name: string, params?: Record<string, unknown>) => forge.route(level, name, params),
-      url: prefix
-        ? (name: string, params?: Record<string, unknown>) =>
-          forge.route(level, resolveRouteNameSync(forge, level, prefix, name), params)
-        : (name: string, params?: Record<string, unknown>) => forge.route(level, name, params),
-      load: forge.load.bind(forge),
-      invalidate: forge.invalidate.bind(forge),
-      isLoaded: forge.isLoaded.bind(forge),
-      hasRoute: forge.hasRoute.bind(forge),
-      isLoading: forge.isLoading.bind(forge),
-      onLoadingChange: forge.onLoadingChange.bind(forge),
-      getRoutes: forge.getRoutes.bind(forge),
-    });
-    // levelLoaded 需要保持响应式，不能通过 defineImmutableProps（会 Object.freeze）
-    Object.defineProperty(callable, 'levelLoaded', {
-      value: levelLoaded,
-      writable: false,
-      enumerable: true,
-      configurable: false,
-    });
-    return callable as unknown as BoundForgeTyped<string>;
+  if (level === undefined) {
+    return forge;
   }
 
-  const callable = (lvl: string, name: string, params?: ApiCallParams) =>
-    forge.api(lvl, name, params);
-  defineImmutableProps(callable, {
-    api: forge.api.bind(forge),
-    load: forge.load.bind(forge),
-    invalidate: forge.invalidate.bind(forge),
-    isLoaded: forge.isLoaded.bind(forge),
-    isLoading: forge.isLoading.bind(forge),
-    onLoadingChange: forge.onLoadingChange.bind(forge),
-    ready: forge.ready,
-    onLevelLoaded: forge.onLevelLoaded.bind(forge),
+  // 委托 core 的 use()，获取 BoundForge（levelLoaded 为 Promise<void>）
+  const bound = forge.use(level, prefix);
+
+  // 将 levelLoaded 从 Promise<void> 替换为 Ref<boolean>
+  const levelLoadedRef = ref(false);
+  bound.levelLoaded.then(() => {
+    levelLoadedRef.value = true;
+  }).catch(() => { /* 加载失败时 levelLoaded 保持 false */ });
+
+  Object.defineProperty(bound, 'levelLoaded', {
+    value: levelLoadedRef,
+    writable: false,
+    enumerable: true,
+    configurable: false,
   });
-  return callable as unknown as ForgeInstanceTyped;
+
+  return bound as unknown as VueBoundForge;
 }
-
-

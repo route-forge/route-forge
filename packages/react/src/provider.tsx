@@ -14,18 +14,13 @@
  *   level / name / params 均自动推断，IDE 提供补全提示。
  */
 
-import { createContext, type ReactNode, useContext, useMemo, useRef } from 'react';
+import { createContext, type ReactNode, useContext, useMemo, useRef, useState, useEffect } from 'react';
 import {
-  type ApiCallParams,
-  type BoundForgeTyped as CoreBoundForgeTyped,
+  type BoundForge,
   createRouteForge,
-  type ForgeInstanceTyped,
-  resolveRouteName,
-  resolveRouteNameSync,
   type RouteForge,
   type RouteForgeOptions,
 } from '@route-forge/core';
-import { defineImmutableProps } from '@route-forge/core/internal';
 
 // ─── Context ────────────────────────────────────────────────
 
@@ -97,16 +92,13 @@ export { ForgeContext };
 
 // ─── React 特化类型别名 ──────────────────────────────────────
 
-/** 已绑定 level — 可直接调用（= api 快捷方式），无需传 level */
-export type BoundForgeTyped<L extends string> = CoreBoundForgeTyped<L, boolean>;
-
-/** 未绑定 level — 直接调用需要传 level（不提供 route/url/hasRoute/getRoutes 等同步方法） */
-export type { ForgeInstanceTyped } from '@route-forge/core';
+/** React 特化：levelLoaded 为 boolean（通过 useState 驱动重渲染） */
+export type ReactBoundForge = BoundForge<boolean>;
 
 // ─── useForge hook ───────────────────────────────────────────
 
 /**
- * 获取 forge 实例。
+ * 获取 forge 实例。内部委托 core 的 forge.use()，将 levelLoaded 替换为 React boolean 状态。
  *
  * @example
  * ```ts
@@ -117,28 +109,26 @@ export type { ForgeInstanceTyped } from '@route-forge/core';
  * // 绑定层级 — 可直接调用，也可通过 api/route/url
  * const forge = useForge({ level: 'admin' })
  * forge.level                    // → 'admin'
- * forge('users.show', { user: 1 })         // 直接调用 = forge.api() 快捷方式
- * forge.api('users.show', { user: 1 })
+ * forge.levelLoaded              // boolean
+ * forge('users.show', { user: 1 })
  * forge.route('users.show', { user: 1 })
  *
  * // 绑定层级 + 前缀 — 路由名自动拼接
  * const forge = useForge({ level: 'admin', prefix: 'users' })
- * forge.level                    // → 'admin'
- * forge.prefix                   // → 'users'
- * forge.api('show', { user: 1 })           // → forge.api('admin', 'users.show', ...)
- * forge.route('show', { user: 1 })         // → forge.route('admin', 'users.show', ...)
+ * forge('show', { user: 1 })
+ * forge.route('show', { user: 1 })
  * ```
  */
-export function useForge<L extends string>(options: {
-  level: L;
+export function useForge(options: {
+  level: string;
   prefix: string
-}): BoundForgeTyped<L>;
-export function useForge<L extends string>(options: { level: L }): BoundForgeTyped<L>;
-export function useForge(): ForgeInstanceTyped;
+}): ReactBoundForge;
+export function useForge(options: { level: string }): ReactBoundForge;
+export function useForge(): RouteForge;
 export function useForge(opts?: {
   level?: string;
   prefix?: string
-}): ForgeInstanceTyped | BoundForgeTyped<string> {
+}): RouteForge | ReactBoundForge {
   const forge = useContext(ForgeContext);
   if (!forge) {
     throw new Error(
@@ -150,54 +140,31 @@ export function useForge(opts?: {
   const prefix = opts?.prefix;
 
   return useMemo(() => {
-    if (level !== undefined) {
-      // 自动触发 level 加载（在 useMemo 内发起，确保仅执行一次）
-      forge.load(level).catch(() => { /* 加载失败时 levelLoaded 保持 false */
-      });
-
-      const apiFn = prefix
-        ? (name: string, params?: ApiCallParams) =>
-          resolveRouteName(forge, level, prefix, name).then(
-            (resolved) => forge.api(level, resolved, params),
-          )
-        : (name: string, params?: ApiCallParams) => forge.api(level, name, params);
-
-      // 返回 callable 函数（与 Vue useForge 对齐）：直接调用 = api 快捷方式
-      const callable = apiFn as unknown as BoundForgeTyped<string>;
-      defineImmutableProps(callable, {
-        level,
-        ...(prefix !== undefined ? { prefix } : {}),
-        api: apiFn,
-        route: prefix
-          ? (name: string, params?: Record<string, unknown>) =>
-            forge.route(level, resolveRouteNameSync(forge, level, prefix, name), params)
-          : (name: string, params?: Record<string, unknown>) => forge.route(level, name, params),
-        url: prefix
-          ? (name: string, params?: Record<string, unknown>) =>
-            forge.route(level, resolveRouteNameSync(forge, level, prefix, name), params)
-          : (name: string, params?: Record<string, unknown>) => forge.route(level, name, params),
-        load: forge.load.bind(forge),
-        invalidate: forge.invalidate.bind(forge),
-        isLoaded: forge.isLoaded.bind(forge),
-        hasRoute: forge.hasRoute.bind(forge),
-        isLoading: forge.isLoading.bind(forge),
-        onLoadingChange: forge.onLoadingChange.bind(forge),
-        getRoutes: forge.getRoutes.bind(forge),
-        levelLoaded: forge.isLoaded(level),
-      });
-      return callable;
+    if (level === undefined) {
+      return forge;
     }
 
-    const instance: ForgeInstanceTyped = {
-      api: forge.api.bind(forge),
-      load: forge.load.bind(forge),
-      invalidate: forge.invalidate.bind(forge),
-      isLoaded: forge.isLoaded.bind(forge),
-      isLoading: forge.isLoading.bind(forge),
-      onLoadingChange: forge.onLoadingChange.bind(forge),
-      ready: forge.ready,
-      onLevelLoaded: forge.onLevelLoaded.bind(forge),
-    };
-    return instance;
+    // 委托 core 的 use()
+    const bound = forge.use(level, prefix);
+
+    // React 特化：将 levelLoaded 从 Promise 替换为 boolean（通过闭包 + getter/setter 驱动）
+    // 先保存原始 Promise 以便异步更新
+    const originalPromise = bound.levelLoaded as Promise<void>;
+    let loadedValue = forge.isLoaded(level);
+    const boundWithBoolean = bound as unknown as ReactBoundForge;
+
+    Object.defineProperty(boundWithBoolean, 'levelLoaded', {
+      get() { return loadedValue; },
+      set(v: boolean) { loadedValue = v; },
+      enumerable: true,
+      configurable: true,
+    });
+
+    // 异步更新：level 加载完成后更新 boolean 值
+    originalPromise.then(() => {
+      loadedValue = true;
+    }).catch(() => { /* 加载失败保持 false */ });
+
+    return boundWithBoolean;
   }, [forge, level, prefix]);
 }

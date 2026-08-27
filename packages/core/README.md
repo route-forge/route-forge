@@ -210,26 +210,69 @@ const forge = createRouteForge({
 })
 ```
 
-### `forge.ready` Promise
+### `forge.ready()` 方法
 
-auto-discovery + eager load 完成后 resolve，适合 async/await 风格：
+auto-discovery + eager load 完成后 resolve，返回 `Promise<RouteForge>`（resolve 值为 forge 自身），适合 async/await 风格：
 
 ```ts
 const forge = createRouteForge({ endpoint: '/_forge/routes' })
-await forge.ready
+
+// 无参模式：直接 await
+await forge.ready()
 // 路由数据已就绪，可安全调用 route() / hasRoute()
+
+// 回调模式：onFulfilled / onRejected
+forge.ready(
+  (f) => { console.log('ready!', f) },
+  (err) => { console.error(err) }
+)
+
+// 链式调用：ready 返回 forge 自身
+const bound = await forge.ready().then(f => f.use('admin'))
 ```
 
-### `onLevelLoaded` 订阅
+### `forge.use(level?, prefix?)` 层级绑定
 
-订阅指定 level 加载完成事件：
+`forge.use()` 是 core 层唯一的 level 绑定入口，返回 `BoundForge` 对象：
 
 ```ts
-const unsub = forge.onLevelLoaded('admin', () => {
-  console.log('admin level loaded')
-})
-// 取消订阅
-unsub()
+// 绑定层级 — 自动触发 load，提供快捷方法
+const bound = forge.use('admin')
+bound('users.show', { user: 1 })   // 可直接调用（= bound.api()）
+bound.route('users.show')           // URL 生成
+bound.level                         // → 'admin'
+bound.levelLoaded                   // Promise<void>
+
+// 绑定层级 + 前缀 — 路由名自动拼接
+const bound = forge.use('admin', 'users')
+bound('show', { user: 1 })           // → forge.api('admin', 'users.show', ...)
+
+// BoundForge 独有方法
+await bound.onLevelLoaded()          // 等待 level 加载完成
+const prefixed = bound.useRoutePrefix('posts')  // 追加前缀
+```
+
+### IIFE 浏览器用法
+
+通过 `<script>` 标签引入后，`RouteForge` 全局可用：
+
+```html
+<script src="https://unpkg.com/@route-forge/core"></script>
+<script>
+  const forge = RouteForge.createRouteForge({
+    endpoint: '/_forge/routes',
+  })
+
+  // 等待就绪后绑定层级
+  forge.ready().then(function(f) {
+    const admin = f.use('admin')
+    return admin.onLevelLoaded()
+  }).then(function(bound) {
+    return bound('users.show', { user: 1 })
+  }).then(function(data) {
+    console.log(data)
+  })
+</script>
 ```
 
 ### Auto-discovery 守卫

@@ -4,7 +4,7 @@ export {
   FORGE_INJECTION_KEY,
 } from './plugin.js';
 export type {
-  RouteForgePluginOptions, BoundForgeTyped, ForgeInstanceTyped,
+  RouteForgePluginOptions, VueBoundForge,
 } from './plugin.js';
 export { useForgeApi } from './composables/useForgeApi.js';
 export type {

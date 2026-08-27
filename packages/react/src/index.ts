@@ -9,7 +9,7 @@ export {
   useForge,
 } from './provider.js';
 export type {
-  RouteForgeProviderProps, BoundForgeTyped, ForgeInstanceTyped,
+  RouteForgeProviderProps, ReactBoundForge,
 } from './provider.js';
 
 export { useForgeApi } from './hooks/useForgeApi.js';

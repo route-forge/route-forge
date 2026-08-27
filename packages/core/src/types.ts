@@ -226,15 +226,10 @@ export interface RouteForge {
   /** 检查指定层级下某路由是否存在（需该层级缓存已加载） */
   hasRoute(level: string, name: string): boolean;
 
-  /**
-   * 查询加载中标识状态
-   */
+  /** 查询加载中标识状态 */
   isLoading(): boolean;
 
-  /**
-   * 订阅加载状态变更
-   * @returns 取消订阅函数
-   */
+  /** 订阅加载状态变更，返回取消订阅函数 */
   onLoadingChange(cb: LoadingChangeCallback): () => void;
 
   /**
@@ -243,7 +238,6 @@ export interface RouteForge {
    * - getRoutes()：返回全部层级的路由（按 level 分组）
    */
   getRoutes(level: string): Record<string, RouteMeta>;
-
   getRoutes(): Record<string, Record<string, RouteMeta>>;
 
   /** 拦截器入口（请求 / 响应） */
@@ -253,17 +247,25 @@ export interface RouteForge {
   };
 
   /**
-   * Promise，auto-discovery + eager load 完成后 resolve。
-   * 推荐用法：await forge.ready 后再调用 route() / hasRoute() 等同步方法。
+   * auto-discovery + eager load 完成后 resolve。
+   * 始终返回 Promise<this>，resolve 值为 forge 实例自身，支持链式调用。
+   *
+   * - 无参：返回 Promise，适合 async/await
+   * - 有参：回调内部走 then/catch，仍返回 Promise
    */
-  ready: Promise<void>;
+  ready(): Promise<RouteForge>;
+  ready(onFulfilled: (forge: RouteForge) => void, onRejected?: (error: unknown) => void): Promise<RouteForge>;
 
   /**
-   * 订阅指定层级路由元数据加载完成事件。
-   * 框架层（Vue/React）用于驱动响应式状态更新。
-   * @returns 取消订阅函数
+   * 绑定 level（+ 可选 prefix），返回 BoundForge。
+   * 唯一入口 — Vue/React/IIFE 共享同一套 API 表面。
+   *
+   * - use()：不绑定，返回 RouteForge 自身
+   * - use(level)：绑定 level
+   * - use(level, prefix)：绑定 level + prefix
    */
-  onLevelLoaded(level: string, cb: () => void): () => void;
+  use(): RouteForge;
+  use<L extends string>(level: L, prefix?: string): BoundForge;
 }
 
 /**
@@ -365,69 +367,47 @@ export type ForgeApiResponse<L extends string, N extends string> =
         : unknown
       : unknown;
 
-// ─── 框架层共享类型（useForge / useForgeApi / useForgeByPrefix） ───
+// ─── 框架层共享类型 ───
 
 /**
- * 已绑定 level 时的共享方法集。
- * @typeParam L - 层级名（string literal）
- * @typeParam LevelLoaded - 框架层加载状态类型（Vue: Ref<boolean>, React: boolean）
+ * 已绑定 level 的 forge 对象。
+ * 由 `forge.use(level, prefix?)` 返回，Vue/React/IIFE 共享同一 API 表面。
+ *
+ * @typeParam LL - levelLoaded 的类型：core 默认 Promise<void>，Vue 替换为 Ref<boolean>
  */
-export interface BoundForgeMethods<L extends string = string, LevelLoaded = unknown> {
-  /** 指定层级的路由元数据是否已加载完成（类型由框架层决定） */
-  levelLoaded: LevelLoaded;
+export interface BoundForge<LL = Promise<void>> {
+  /** 直接调用 = api 快捷方式，自动带绑定的 level */
+  (name: string, params?: ApiCallParams): Promise<unknown>;
 
-  api(name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): Promise<ForgeApiResponse<L, ForgeRouteName<L>>>;
-
-  route(name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): string;
-
-  url(name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): string;
-
-  load(level: string | string[]): Promise<void>;
-
-  invalidate(level?: string | string[]): void;
-
-  isLoaded(level?: string): boolean;
-
-  hasRoute(level: string, name: string): boolean;
-
-  /** 查询加载中标识状态 */
-  isLoading(): boolean;
-
-  /** 订阅加载状态变更，返回取消订阅函数 */
-  onLoadingChange(cb: LoadingChangeCallback): () => void;
-
-  /** 获取指定层级下全部路由元信息（深拷贝，修改不影响内部缓存） */
-  getRoutes(level: string): Record<string, RouteMeta>;
-}
-
-/** 已绑定 level — 可直接调用（= api 快捷方式），无需传 level */
-export interface BoundForgeTyped<L extends string, LevelLoaded = unknown> extends BoundForgeMethods<L, LevelLoaded> {
-  /** 当前绑定的 level 值 */
-  readonly level: L;
-  /** 路由名前缀（仅在传入 prefix 时存在） */
+  /** 当前绑定的 level */
+  readonly level: string;
+  /** 绑定的路由名前缀（仅传入 prefix 时存在） */
   readonly prefix?: string;
+  /** level 加载状态（core: Promise<void>，Vue: Ref<boolean>） */
+  levelLoaded: LL;
 
-  /** 直接调用 = forge.api() 快捷方式，自动带绑定的 level */
-  (name: ForgeRouteName<L>, params?: ForgeApiParams<L, ForgeRouteName<L>>): Promise<ForgeApiResponse<L, ForgeRouteName<L>>>;
-}
+  // ─── 路由方法（level 已绑定，无需传） ───
+  api(name: string, params?: ApiCallParams): Promise<unknown>;
+  route(name: string, params?: Record<string, unknown>): string;
+  url(name: string, params?: Record<string, unknown>): string;
+  hasRoute(name: string): boolean;
+  getRoutes(): Record<string, RouteMeta>;
 
-/** 未绑定 level — 直接调用需要传 level（不提供 route/url/hasRoute/getRoutes 等同步方法） */
-export interface ForgeInstanceTyped {
-  ready: Promise<void>;
-
-  api(level: string, name: string, params?: ApiCallParams): Promise<unknown>;
-
-  load(level: string | string[]): Promise<void>;
-
-  invalidate(level?: string | string[]): void;
-
-  isLoaded(level?: string): boolean;
-
+  // ─── 通用方法 ───
+  load(): Promise<void>;
+  invalidate(): void;
+  isLoaded(): boolean;
   isLoading(): boolean;
-
   onLoadingChange(cb: LoadingChangeCallback): () => void;
 
-  onLevelLoaded(level: string, cb: () => void): () => void;
+  // ─── 等待 level 加载完成 ───
+  /** 等待绑定的 level 加载完成，resolve 值为自身（BoundForge），保证可安全调用 */
+  onLevelLoaded(): Promise<BoundForge<LL>>;
+  onLevelLoaded(onFulfilled: (bound: BoundForge<LL>) => void, onRejected?: (error: unknown) => void): Promise<BoundForge<LL>>;
+
+  // ─── 追加路由前缀（level 不可换） ───
+  /** 在已绑定 level 基础上追加/替换 prefix，返回新的 BoundForge */
+  useRoutePrefix(prefix: string): BoundForge<LL>;
 }
 
 /** call 函数签名 — 未绑定 level，需要显式传入 */

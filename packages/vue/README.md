@@ -33,26 +33,27 @@ app.use(plugin)
 
 ## useForge — 核心 composable
 
-`useForge()` 返回一个 forge 实例。支持可选传入 `level` 绑定层级：
+`useForge()` 返回 forge 实例。无 level 时返回完整 `RouteForge` 实例；传入 `level` 时内部调用 `forge.use(level, prefix?)`，自动触发 load：
 
 ```ts
 import { useForge } from '@route-forge/vue'
 
-// 不绑定层级 — 仅提供异步 API + 工具方法
+// 不绑定层级 — 返回完整 RouteForge 实例
 const forge = useForge()
-forge('admin', 'users.show', { user: 1 })        // = forge.api('admin', 'users.show', ...)
-forge.api('admin', 'users.show', { user: 1 })     // 显式调用
-forge.ready                                        // Promise<void>
-forge.onLevelLoaded('admin', () => { ... })        // 订阅 level 加载
+forge.api('admin', 'users.show', { user: 1 })     // 通过层级 + 路由名调用
+forge.ready().then(f => f.use('admin'))           // 等待就绪后绑定层级
+forge.use('admin')                                 // 绑定层级，返回 BoundForge
 
 // 绑定层级 — 自动触发 load，提供同步方法 + levelLoaded 状态
 const forge = useForge('admin')
 forge.level                                        // → 'admin'
 forge.levelLoaded                                  // Ref<boolean>，加载完成后变为 true
-forge('users.show', { user: 1 })                  // 自动带 admin
+forge('users.show', { user: 1 })                  // 可直接调用（= forge.api() 快捷方式）
 forge.api('users.show', { user: 1 })              // 同上
-forge.route('users.show', { user: 1 })            // 生成 URL，自动带 admin
+forge.route('users.show', { user: 1 })            // 生成 URL
 forge.url('users.show', { user: 1 })              // route() 语义别名
+forge.onLevelLoaded()                              // 等待 level 加载完成
+forge.useRoutePrefix('users')                      // 追加路由名前缀
 
 // 绑定层级 + 前缀 — 路由名自动拼接
 const forge = useForge('admin', 'users')
@@ -67,8 +68,8 @@ forge.isLoaded('admin')                            // 检查缓存
 forge.invalidate('admin')                          // 失效缓存
 ```
 
-> **注意**：`useForge()` 无 level 时 **不提供** `route`/`url`/`hasRoute`/`getRoutes` 同步方法，
-> 因为 auto-discovery 可能未完成。请使用 `useForgeRoute` 或 `await forge.ready` 后再调用。
+> **注意**：`useForge()` 无 level 时返回完整 `RouteForge` 实例，包含所有方法（`route`/`url`/`hasRoute`/`getRoutes` 等）。
+> 但 auto-discovery 可能未完成，同步方法可能抛守卫错误。建议使用 `await forge.ready()` 或 `useForgeRoute`。
 
 ### 参数智能解析
 

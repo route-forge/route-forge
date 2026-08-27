@@ -82,7 +82,7 @@ describe('useForge', () => {
     expect(() => mount(C)).toThrow('[route-forge/vue] useForge() must be used inside an app with createRouteForgePlugin() installed');
   });
 
-  it('callable form: forge(level, name, params) invokes api', async () => {
+  it('callable form: forge.api(level, name, params) invokes api', async () => {
     let forge: any;
     const C = defineComponent({
       setup() {
@@ -92,7 +92,7 @@ describe('useForge', () => {
     });
     mount(C, { global: { plugins: [makePlugin()] } });
     await flushPromises();
-    const result: any = await forge('public', 'users.index');
+    const result: any = await forge.api('public', 'users.index');
     expect(result.data.success).toBe(true);
     expect(result.data.echo.url).toBe('/users');
   });
@@ -260,7 +260,7 @@ describe('useForgeRoute', () => {
 // ─── API trimming & levelLoaded ─────────────────────────────
 
 describe('useForge API trimming', () => {
-  it('useForge() without level does not expose route/url/hasRoute/getRoutes', () => {
+  it('useForge() without level returns full RouteForge instance', () => {
     let forge: any;
     const C = defineComponent({
       setup() {
@@ -269,16 +269,18 @@ describe('useForge API trimming', () => {
       },
     });
     mount(C, { global: { plugins: [makePlugin()] } });
+    // useForge() returns the full RouteForge instance with all top-level methods
     expect(typeof forge.api).toBe('function');
     expect(typeof forge.load).toBe('function');
+    expect(typeof forge.route).toBe('function');
+    expect(typeof forge.url).toBe('function');
+    expect(typeof forge.hasRoute).toBe('function');
+    expect(typeof forge.getRoutes).toBe('function');
     expect(typeof forge.isLoaded).toBe('function');
-    expect(typeof forge.ready).not.toBe('undefined');
-    expect(typeof forge.onLevelLoaded).toBe('function');
-    // removed sync methods
-    expect(forge.route).toBeUndefined();
-    expect(forge.url).toBeUndefined();
-    expect(forge.hasRoute).toBeUndefined();
-    expect(forge.getRoutes).toBeUndefined();
+    expect(typeof forge.ready).toBe('function');
+    expect(typeof forge.use).toBe('function');
+    // onLevelLoaded only exists on BoundForge (after use(level)), not on top-level RouteForge
+    expect(forge.onLevelLoaded).toBeUndefined();
   });
 
   it('useForge(level) returns levelLoaded ref and auto-triggers load', async () => {
@@ -298,9 +300,12 @@ describe('useForge API trimming', () => {
     expect(bound.isLoaded('public')).toBe(true);
   });
 
-  it('createRouteForgePlugin returns ready promise', () => {
+  it('createRouteForgePlugin returns ready method that returns promise', async () => {
     const plugin = makePlugin();
     expect(plugin.ready).toBeDefined();
-    expect(typeof plugin.ready.then).toBe('function');
+    expect(typeof plugin.ready).toBe('function');
+    const p = plugin.ready();
+    expect(typeof p.then).toBe('function');
+    await p;
   });
 });
