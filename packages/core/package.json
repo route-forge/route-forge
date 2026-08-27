@@ -1,6 +1,6 @@
 {
   "name": "@route-forge/core",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "description": "框架无关的命名路由客户端核心：分级懒加载、隔离缓存、并发去重、拦截器",
   "license": "MIT",
   "author": "阿杰很厉害 <506907958@qq.com>",
