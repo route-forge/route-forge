@@ -1,13 +1,10 @@
 name: Release npm
-
 # 通过 npm Trusted Publishing (OIDC) 发布 @route-forge/{core,react,vue} 到 npm registry
 # 无需 NPM_TOKEN，包带 Provenance 签名。
-#
-# 触发方式：
+## 触发方式：
 #   tag push：1.0.0 → 全量 | core-1.0.0 / react-1.0.0 / vue-1.0.0 → 仅对应包
 #   workflow_dispatch：手动勾选发布哪些包（支持 dry-run）
-#
-# 前置条件（仅首次配置）：
+## 前置条件（仅首次配置）：
 #   在 npmjs.com 每个包的 Settings → Trusted Publishers 添加：
 #     Organization: route-forge | Repo: route-forge | Workflow: publish.yml
 
@@ -49,6 +46,7 @@ jobs:
   publish:
     name: Publish npm packages
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -74,15 +72,16 @@ jobs:
         id: targets
         run: |
           set -euo pipefail
-          CORE=false REACT=false VUE=false REASON=""
-
+          CORE=false REACT=false VUE=false DRY_RUN=false REASON=""
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             [ "${{ inputs.publish_core }}"  = "true" ] && CORE=true
             [ "${{ inputs.publish_react }}" = "true" ] && REACT=true
             [ "${{ inputs.publish_vue }}"   = "true" ] && VUE=true
+            DRY_RUN=${{ inputs.dry_run }}
             REASON="workflow_dispatch"
           else
             TAG="${GITHUB_REF_NAME}"
+            DRY_RUN=false
             if [[ "$TAG" =~ ^[0-9] ]]; then
               CORE=true REACT=true VUE=true
               REASON="all (semver tag)"
@@ -96,14 +95,14 @@ jobs:
               REASON="no matching target"
             fi
           fi
-
           {
             echo "publish_core=$CORE"
             echo "publish_react=$REACT"
             echo "publish_vue=$VUE"
+            echo "dry_run=$DRY_RUN"
             echo "reason=$REASON"
           } >> "$GITHUB_OUTPUT"
-          echo "::notice::Targets: core=$CORE react=$REACT vue=$VUE ($REASON)"
+          echo "::notice::Targets: core=$CORE react=$REACT vue=$VUE dry_run=$DRY_RUN ($REASON)"
 
       - name: Install dependencies
         if: steps.targets.outputs.publish_core == 'true' || steps.targets.outputs.publish_react == 'true' || steps.targets.outputs.publish_vue == 'true'
@@ -118,8 +117,17 @@ jobs:
       - name: Verify dist artifacts
         if: steps.targets.outputs.publish_core == 'true' || steps.targets.outputs.publish_react == 'true' || steps.targets.outputs.publish_vue == 'true'
         run: |
+          set -euo pipefail
+          CORE=${{ steps.targets.outputs.publish_core }}
+          REACT=${{ steps.targets.outputs.publish_react }}
+          VUE=${{ steps.targets.outputs.publish_vue }}
           for pkg in core react vue; do
-            if [ "$(eval echo \$\{steps.targets.outputs.publish_$pkg\})" = "true" ]; then
+            case "$pkg" in
+              core) val="$CORE" ;;
+              react) val="$REACT" ;;
+              vue) val="$VUE" ;;
+            esac
+            if [[ "$val" == "true" ]]; then
               test -f "packages/$pkg/dist/index.js"
               test -f "packages/$pkg/dist/index.cjs"
               test -f "packages/$pkg/dist/index.d.ts"
@@ -130,7 +138,7 @@ jobs:
       - name: Publish @route-forge/core
         if: steps.targets.outputs.publish_core == 'true'
         run: |
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
+          if [ "${{ steps.targets.outputs.dry_run }}" = "true" ]; then
             pnpm publish --filter "@route-forge/core" --no-git-checks --access public --dry-run
           else
             pnpm publish --filter "@route-forge/core" --no-git-checks --access public --provenance
@@ -140,7 +148,7 @@ jobs:
       - name: Publish @route-forge/react
         if: steps.targets.outputs.publish_react == 'true'
         run: |
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
+          if [ "${{ steps.targets.outputs.dry_run }}" = "true" ]; then
             pnpm publish --filter "@route-forge/react" --no-git-checks --access public --dry-run
           else
             pnpm publish --filter "@route-forge/react" --no-git-checks --access public --provenance
@@ -149,7 +157,7 @@ jobs:
       - name: Publish @route-forge/vue
         if: steps.targets.outputs.publish_vue == 'true'
         run: |
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
+          if [ "${{ steps.targets.outputs.dry_run }}" = "true" ]; then
             pnpm publish --filter "@route-forge/vue" --no-git-checks --access public --dry-run
           else
             pnpm publish --filter "@route-forge/vue" --no-git-checks --access public --provenance
@@ -166,9 +174,10 @@ jobs:
             echo "| trigger | \`${{ github.event_name }}\` |"
             echo "| tag | \`${{ github.ref_name }}\` |"
             echo "| reason | ${{ steps.targets.outputs.reason }} |"
-            echo "| dry-run | ${{ inputs.dry_run == true }} |"
+            echo "| dry-run | ${{ steps.targets.outputs.dry_run == 'true' }} |"
             echo "| auth | OIDC Trusted Publishing |"
             echo "| core | ${{ steps.targets.outputs.publish_core == 'true' && '✅ publish' || '⏭️ skip' }} |"
             echo "| react | ${{ steps.targets.outputs.publish_react == 'true' && '✅ publish' || '⏭️ skip' }} |"
             echo "| vue | ${{ steps.targets.outputs.publish_vue == 'true' && '✅ publish' || '⏭️ skip' }} |"
           } >> "$GITHUB_STEP_SUMMARY"
+
