@@ -549,7 +549,7 @@ await forge.load(['client', 'manage']);
 - `forge.isLoaded(level?)` 检查缓存状态：传参检查指定层级是否已加载，不传检查全部已声明层级。
 - `storage: 'localStorage'` 时，跨会话保留路由表；`sessionStorage` 仅当前标签页有效；`memory` 重载即丢。
 - 虚拟层级 `unassigned`：路由数据直接来自摘要端点（不发独立 HTTP 请求），缓存条目在
-  `forge.load('unassigned')` 时从已获取的摘要数据构建，TTL 遵循摘要端点响应的 `cache` 字段。
+  `forge.load('unassigned')` 时从已获取的摘要数据构建，TTL 使用前端 `cache.ttl` 兜底（摘要契约未为 unassigned 单独下发 `cache` 字段）。
 
 #### 4.1.3 通过层级 + 路由名调用 API（核心 API）
 
@@ -653,7 +653,7 @@ try {
 1. 按层级 + 路由名查本地缓存；若该层级尚未加载，自动 `forge.load(level)` 等待完成（隐式懒加载）。
 2. 路由校验（始终执行，独立于拦截链，不受拦截器影响）：
   + 路由名不存在 → `UnknownRouteError`（始终抛出，不受 strict 模式影响）
-    + 路由所在层级未声明 → `UnknownLevelError`（strict=true）或静默忽略（strict=false）
+    + 路由所在层级未声明 → `UnknownLevelError`（始终抛出，不受 strict 模式影响）
    + 必填路径参数缺失时，先检查后端下发的 `parameter_defaults`：有默认值则用默认值填充，无默认值 →
      `MissingRouteParamError`（始终执行，不受 strict 模式影响）；可选参数（`{param?}`
      ）未填充时替换为空字符串并清理残留 `/`
@@ -793,18 +793,20 @@ await forge.load(['client', 'manage', 'admin']);  // 并发去重 + 并发请求
 
 #### 4.1.5 严格模式
 
-前端 `strict` 默认 `false`（与后端 `strict_mode` 默认值一致，减少心智负担），可通过 `createRouteForge({ strict: true })`
-开启。后端 `strict_mode` 为权威值，前端不能覆盖后端设定（见 §5.3 分级覆盖策略）：
+**前端校验始终开启，不存在 strict 开关。** 前端的 `strict` 配置项已废弃（v1.3.2 起不再消费），
+校验行为与 strict 无关：
 
-| 场景                         | strict=true                 | strict=false                       |
-|------------------------------|-----------------------------|------------------------------------|
-| 必填路径参数缺失（无默认值） | 抛 `MissingRouteParamError` | 同左（始终校验，不受 strict 影响） |
-| 必填路径参数缺失（有默认值） | 用默认值填充，不抛错        | 同左（始终填充，不受 strict 影响） |
-| 路由名不存在                 | 抛 `UnknownRouteError`      | 同左（始终抛出，不受 strict 影响） |
-| 路由所在层级未声明           | 抛 `UnknownLevelError`      | 静默忽略                           |
+| 场景                         | 行为                                        |
+|------------------------------|---------------------------------------------|
+| 必填路径参数缺失（无默认值） | 抛 `MissingRouteParamError`（始终校验）     |
+| 必填路径参数缺失（有默认值） | 用默认值填充，不抛错（始终填充）            |
+| 路由名不存在                 | 抛 `UnknownRouteError`（始终抛出）          |
+| 路由所在层级未声明           | 抛 `UnknownLevelError`（始终抛出）          |
 
-> 设计意图（DESIGN.md §5 原则 2）：前后端统一默认 `false`，降低新用户接入门槛；需要严格校验的项目可通过配置开启。后端
-> `strict_mode` 始终为权威值，防止前端误配导致安全漏洞（如后端要求严格模式但前端关闭了校验）。
+> 设计意图：静默忽略未声明层级会掩盖层级名拼写错误，调用方不知道哪里出错、难以排查，因此前端校验永远开启。
+> `strict_mode` 是**后端语义**：决定后端在生成 manifest 时，未命中层级的路由是抛异常（`strict_mode=true`）
+> 还是归入 fallback/unassigned（`strict_mode=false`，见 §3.1）。前端拿到的 manifest 已经是后端 strict_mode
+> 处理后的结果，无需（也无法）在前端放宽或收紧。
 
 #### 4.1.6 就绪等待与层级绑定（`ready()` / `use()`）
 
@@ -1303,7 +1305,7 @@ const forge = createRouteForge({
 | `cache.storage`         | `'memory'\|'sessionStorage'\|'localStorage'` | `'memory'`         | 缓存存储介质                                                          |
 | `interceptors.request`  | `Array<Fn \| [onFulfilled?, onRejected?]>`   | `[]`               | 声明式请求拦截器列表，支持单函数或元组两种形式（见 §4.1.1）           |
 | `interceptors.response` | `Array<Fn \| [onFulfilled?, onRejected?]>`   | `[]`               | 声明式响应拦截器列表，支持单函数或元组两种形式                        |
-| `strict`                | `boolean`                                    | `false`            | 前端严格模式，默认与后端一致；受后端 `strict_mode` 约束（见 §5.3）    |
+| `strict`                | `boolean`                                    | `false`            | @deprecated 前端校验始终开启，此选项不被消费（见 §4.1.5）             |
 | `timeout`               | `number`                                     | `30000`            | 默认请求超时（毫秒）                                                  |
 | `baseURL`               | `string`                                     | `''`               | 前端 baseURL；为空时使用相对路径                                      |
 | `onSummaryReady`        | `() => void`                                 | `undefined`        | Auto-discovery 完成后回调；推荐在此回调中挂载应用（见 §4.1.9）        |
@@ -1324,7 +1326,7 @@ const forge = createRouteForge({
 
 | 配置项                         | 后端摘要端点             | 前端配置                     | 覆盖规则                                                                                                                                         |
 |--------------------------------|--------------------------|------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
-| `strict_mode` / `strict`       | `config.strict_mode`     | `strict`                     | **安全相关**：后端为权威值。前端不能放宽（后端 false 前端不能 true）也不能收紧（后端 true 前端不能 false）。后端未下发时前端默认 `false`         |
+| `strict_mode`                  | `config.strict_mode`     | `strict`（已废弃）           | **安全相关**：后端为权威值。strict_mode 决定后端生成 manifest 时未命中路由的处理方式（抛异常 vs 归入 fallback/unassigned）。前端校验始终开启，不受此开关影响（见 §4.1.5）         |
 | `cache`                        | `levels[name].cache`     | `cache.ttl`                  | **性能相关**：后端为上限。前端可缩短（如后端 3600 前端设 1800）但不能延长。后端 `null`（不缓存）时前端也不缓存                                   |
 | `endpoint_prefix` / `endpoint` | `config.endpoint_prefix` | `endpoint`                   | **连接相关**：前端 `endpoint` 默认值与后端 `endpoint_prefix` 对齐（默认 `'/_forge/routes'`），用户可覆盖                                         |
 | `url_prefix`                   | `config.url_prefix`      | —                            | **URL 构建相关**：后端为权威值。支持路径前缀（拼接在 `baseURL` 后）和完整 URL（含协议+域名，此时忽略 `baseURL`）。后端未下发或为空字符串时不拼接 |
@@ -1374,7 +1376,7 @@ const forge = createRouteForge({
 |---------------------------------|-------------|--------------------------------------------|
 | `UnknownRouteError`             | `RF_FE_001` | 路由名不存在于已加载层级中                 |
 | `UnknownLevelError`             | `RF_FE_002` | 路由所在层级未在 `levels` 声明             |
-| `MissingRouteParamError`        | `RF_FE_003` | 路径参数缺失（strict=true 时）             |
+| `MissingRouteParamError`        | `RF_FE_003` | 必填路径参数缺失（无默认值时，始终校验）    |
 | `AdapterNotFoundError`          | `RF_FE_005` | `adapter: 'axios'` 但未检测到 axios        |
 | `InvalidInterceptorReturnError` | `RF_FE_006` | 请求拦截器返回非 `RequestConfig`           |
 | `NetworkError`                  | `RF_FE_007` | adapter 抛出的网络错误（DNS、连接超时等）  |

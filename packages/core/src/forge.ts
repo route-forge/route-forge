@@ -72,13 +72,11 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   // --- 自动发现（SPEC §4.1.1 + §5.3）---
   const explicitLevels = options.levels;
   const explicitEager = options.eager;
-  const explicitStrict = options.strict ?? false;
   const explicitEndpoint = options.endpoint;
 
   // effective* 状态：在摘要端点响应到达后被填充
   let effectiveLevels: string[] = explicitLevels ?? [];
   let effectiveEager: string[] = explicitEager ?? [];
-  let effectiveStrict = explicitStrict;
   let effectiveEndpoint = explicitEndpoint;
   let effectiveUrlPrefix = '';  // 后端下发的 URL 前缀，默认为空
 
@@ -88,7 +86,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   // 后端是否将 unassigned 作为真实层级注册（在 levels 中）；若是则走正常 HTTP 拉取，不走虚拟层级
   let backendHasUnassignedLevel = false;
 
-  // 拉取摘要端点（用于 strict_mode / endpoint / levels / eager 自动发现）
+  // 拉取摘要端点（用于 endpoint / levels / eager 自动发现）
   const summaryPromise = (async (): Promise<SummaryResponse | null> => {
     try {
       const summaryUrl = explicitEndpoint; // GET {endpoint} = 摘要端点
@@ -141,15 +139,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
         : summary.config.url_prefix;
     }
 
-    // 2. strict_mode 后端权威：不能放宽，可收紧
-    if (summary.config.strict_mode && !explicitStrict) {
-      console.warn(
-        '[route-forge] backend strict_mode=true overrides frontend strict=false; forcing strict=true',
-      );
-      effectiveStrict = true;
-    }
-
-    // 3. levels 取交集或自动发现
+    // 2. levels 取交集或自动发现
     const backendLevels = Object.keys(summary.levels);
 
     // 3a. 捕获摘要端点的 unassigned 字段，作为虚拟层级 "unassigned" 消费（SPEC §3.1.6）

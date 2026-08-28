@@ -307,6 +307,13 @@ export interface RouteForgeOptions {
       | [((r: ResponseData) => unknown | Promise<unknown>) | undefined, ((e: unknown) => unknown | Promise<unknown>) | undefined]
     >;
   };
+  /**
+   * @deprecated 前端校验始终开启，此选项不再被消费。
+   * 前端在层级未声明时始终抛 `UnknownLevelError`、路由名不存在始终抛 `UnknownRouteError`、
+   * 必填路径参数缺失始终抛 `MissingRouteParamError` —— 校验行为与 strict 无关，静默忽略会掩盖拼写错误、难以排查。
+   * 后端 `strict_mode` 的宽松/严格语义（未命中层级路由是否归入 unassigned/fallback）由后端在生成 manifest 时决定。
+   * 字段保留仅为向后兼容，传入不会有任何效果。
+   */
   strict?: boolean;
   timeout?: number;
   baseURL?: string;

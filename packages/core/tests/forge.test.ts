@@ -537,27 +537,28 @@ describe('createRouteForge auto-discovery', () => {
     warn.mockRestore();
   });
 
-  it('strict_mode backend authoritative cannot relax', async () => {
+  it('strict option deprecated: not consumed regardless of backend strict_mode', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     mockSummary(makeSummary({ config: { strict_mode: true, endpoint_prefix: '/_forge/routes' } }));
-    const forge = createRouteForge({
+    createRouteForge({
       endpoint: '/_forge/routes',
       strict: false,
       adapter: 'builtin',
     });
     await new Promise((r) => setTimeout(r, 10));
-    // 告警 strict 被强制为 true
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('strict_mode=true'));
+    // strict 选项已废弃（前端校验始终开启）：后端 strict_mode=true 不再触发前端告警/行为变化
+    const strictWarns = warn.mock.calls.filter((c) => String(c[0]).includes('strict'));
+    expect(strictWarns.length).toBe(0);
     warn.mockRestore();
   });
 
-  it('strict_mode frontend can tighten', async () => {
+  it('strict option deprecated: frontend strict=true also has no effect', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     mockSummary(makeSummary({ config: { strict_mode: false, endpoint_prefix: '/_forge/routes' } }));
     createRouteForge({ endpoint: '/_forge/routes', strict: true, adapter: 'builtin' });
     await new Promise((r) => setTimeout(r, 10));
-    // 后端 false 前端 true：合法收紧，不告警
-    const strictWarns = warn.mock.calls.filter((c) => c[0].includes('strict'));
+    // 前端 strict=true：无任何 strict 相关告警或行为变化
+    const strictWarns = warn.mock.calls.filter((c) => String(c[0]).includes('strict'));
     expect(strictWarns.length).toBe(0);
     warn.mockRestore();
   });

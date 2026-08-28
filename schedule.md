@@ -1,67 +1,59 @@
+# Route Forge 进度快照
 
-全部测试通过：**core 13 + vue 1 + laravel 13 = 27 tests / 49 assertions 全绿**。
+> 更新于 2026-08-28（v1.3.1 之后）。本文件是进度追踪文档，以代码实际状态为准。
+
+**全部测试通过：core 181 + vue 26 + react 25 = 232 tests 全绿；typecheck / lint / build 全绿。**
 
 ---
 
-## 项目总进度：~70%（v1.0 MVP 核心 P0 完成）
+## 项目总进度：~90%（npm 侧 v1.0 MVP 基本完成）
 
-### 已完成（v1.0 MVP 核心 P0）
+后端 Laravel 包在独立仓库 [route-forge-laravel](https://github.com/route-forge/route-forge-laravel)，
+其进度（含 Laravel 9/10/11 兼容矩阵）在那边单独追踪。
+
+### 已完成
 
 #### 1. 工程脚手架（100%）
 - pnpm workspace + turborepo + tsconfig.base 多包管理
-- npm 侧两个包：`@route-forge/core`（TS）、`@route-forge/vue`（Vue 3）
-- Composer 侧已拆分至独立仓库：[
-  `route-forge/laravel`](https://github.com/route-forge/route-forge-laravel)
-- MIT LICENSE 已加
+- 三个 npm 包：`@route-forge/core` / `@route-forge/vue` / `@route-forge/react`
+- tsup 构建：ESM + CJS + IIFE（含 min 生产版）、d.ts、codegen bin 入口
+- CI 发布流水线（.github/workflows/publish.yml）、`pnpm publish:build` 一键发布
 
-#### 2. 后端 Laravel 包（100%）→ 已拆分至 [route-forge-laravel](https://github.com/route-forge/route-forge-laravel)
+#### 2. 前端 Core 包（100%，v1.3.1）
+- `forge.ts`：懒加载、隔离缓存、并发去重（inflight + 失效代数防旧数据回写）、
+  摘要端点自动发现（levels / eager / endpoint / url_prefix 后端权威）、
+  `api()` 内置 AbortController 可取消请求、`ready()` / `use()` / `BoundForge` 统一 API 表面、
+  unassigned 虚拟层级、schemaVersion 向前兼容、批量 invalidate
+- `interceptors.ts`：请求 LIFO / 响应 FIFO（对齐 axios），声明式 + 运行时两种注册
+- `cache.ts`：memory / sessionStorage / localStorage，TTL = min(后端, 前端兜底)，storage 失败回退内存
+- `adapters/`：auto 检测（动态 import 防静态打包）/ axios 包装 / builtin-http（零依赖 fetch，< 3KB）/ 自定义 Fetcher
+- `codegen/`：CLI 完整实现（argv 解析、摘要自动发现、unassigned、写文件）
+- `errors.ts`：RF_FE_001~010 错误体系
+- 测试 181 个：forge 55 / url-building 23 / http-semantics 16 / cache 14 / builtin 12 / chain 12 / loading 12 / codegen 19 / errors 10 / axios 7 / interceptors 1
 
-- `ForgeServiceProvider.php`：注册 `->tier()` 宏、重绑 `router` 为 ForgeRouter、注册 RouteCache/TierResolver/RouteRepository 单例、注册元信息端点、发布 config
-- `ForgeRouter.php`：覆盖 `updateGroupStack` + `mergeGroupAttributesIntoRoute`，解决 Laravel 11 `array_merge_recursive` 把嵌套 group 的 string tier 合并成 array 的坑
-- `TierResolver.php`：5 级优先级（显式 tier → group 透传 → classifier → config match → fallback）
-- `RouteRepository.php`：扫描 RouteCollection 按层级分组、隔离缓存
-- `RouteMetadataController.php`：`GET /_forge/routes/{level}` + `ForgeExceptionContract` try/catch + HTTP 状态码映射
-- 异常体系 4 个：RF_BE_001~004，全部实现 `ForgeExceptionContract`
-- 后端测试 **13 tests 全绿**：GroupTier 5（tier 宏/group 透传/嵌套覆盖/优先级）+ Exceptions 2 + Endpoint 6（200 结构/level 隔离/未命名路由/404/500 strict/缓存命中）
+#### 3. Vue 3 插件（100%）
+- `createRouteForgePlugin`（provide + `$forge.route` + ready）
+- `useForge(level?, prefix?)`（levelLoaded → Ref<boolean>）
+- `useForgeApi` / `useForgeRoute`（未加载返回 ''）/ `useForgeByPrefix`（智能前缀消解）
+- 测试 26 个全绿
 
-#### 3. 前端 Core 包（~85%）
+#### 4. React 集成（100%）
+- `RouteForgeProvider`（options 浅比较保证实例稳定）
+- `useForge({ level?, prefix? })`（levelLoaded → boolean）
+- `useForgeApi` / `useForgeRoute` / `useForgeByPrefix`
+- 测试 25 个全绿
 
-- [forge.ts](file:///f:/web/route-forge/packages/core/src/forge.ts)：`createRouteForge`
-  主入口，含懒加载、隔离缓存、 **并发去重**（已实测验证无 bug）、strict 模式、`api(name, params)` 调用
-- [interceptors.ts](file:///f:/web/route-forge/packages/core/src/interceptors.ts)：基于标准 Promise 链语义，API 完全匹配 axios（use/eject/clear），注册正序执行
-- [cache.ts](file:///f:/web/route-forge/packages/core/src/cache.ts)：memory/sessionStorage/localStorage 三种 storage，TTL 后端 > 前端兜底
-- [adapters/](file:///f:/web/route-forge/packages/core/src/adapters)：auto 检测 / builtin-http（fetch）/ axios 包装 / 自定义 Fetcher
-- [errors.ts](file:///f:/web/route-forge/packages/core/src/errors.ts)：前端错误 RF_FE_001~008
-- core 测试 **13 tests 全绿**：chain 12（拦截器串联）+ interceptors 1
-
-#### 4. Vue 插件（~40%，仅脚手架）
-- [plugin.ts](file:///f:/web/route-forge/packages/vue/src/plugin.ts)：`createRouteForgePlugin` + `useForge()` inject
-- 4 个 composables 占位：`useForgeApi`/`useForgeLevel`/`useForgeRoute`/`useForgeByPrefix`
-- 测试 1 个 smoke test
-
----
-
-### 待完成（v1.0 剩余 30%）
-
-| 优先级 | 项目                                                       | 状态                                                                                      |
-|--------|------------------------------------------------------------|-------------------------------------------------------------------------------------------|
-| P1     | core 包 forge.ts 完整单测（懒加载/缓存/调用/strict）       | 缺失                                                                                      |
-| P1     | Vue composables 完整实现 + 单测                            | 仅占位                                                                                    |
-| P1     | codegen CLI 实现（argv 解析 + fetch + merge + 写文件）     | [codegen/index.ts](file:///f:/web/route-forge/packages/core/src/codegen/index.ts) 仅 stub |
-| P2     | Adapter 完整单测（auto/builtin/axios/自定义）              | 缺失                                                                                      |
-| P2     | 三版本兼容矩阵实测（Laravel 11/12/13 + Testbench 9/10/11） | 仅 13.x 验证过                                                                            |
-| P3     | 端到端示例项目（Laravel + Vue）                            | 缺失                                                                                      |
+#### 5. 2026-08-28 本轮修正
+- 移除 `effectiveStrict` 死代码：前端校验始终开启（层级未声明必抛 `UnknownLevelError`），
+  `strict` 选项标记 @deprecated（SPEC §4.1.5 / §5.2 / §5.3 / §6.2 已同步修订）
+- SPEC §4.1.2：unassigned 虚拟层级 TTL 描述对齐实现（前端 `cache.ttl` 兜底，摘要契约无独立 cache 字段）
 
 ---
 
-## 本轮提交的核心实现逻辑
+### 待办
 
-**本次会话累计实现的逻辑（最近这一段是 EndpointTest + inflight bug 验证）：**
-
-1. **依赖注入**：`ForgeServiceProvider::registerBindings()` 绑定 RouteCache（按 `forge.cache_driver` 选 store）、TierResolver（levels+classifier+strict+fallback）、RouteRepository（router+tierResolver+cache+levelsConfig）三个单例
-
-2. **端点异常映射**：`RouteMetadataController::show()` 加 `try/catch ForgeExceptionContract`，异常返 `{error:{code,message,level}}` + `e->httpStatus()`
-
-3. **6 个端点测试**：200+结构 / level 隔离 / 未命名路由 / 404 (RF_BE_002) / 500 strict (RF_BE_001) / 缓存命中
-
-4. **并发去重验证**：用户报告 inflight 缓存设置 bug → 写测试实测 → **bug 不存在**（inflight 已保存含 `cache.set` 的完整 Promise，p resolve 时 cache 已写）→ 未改代码
+| 优先级 | 项目 | 说明 |
+|--------|------|------|
+| P3 | 端到端示例项目（Laravel + Vue） | SPEC §7.3 定义的最小示例；README 已有较完整 quick start，示例项目暂缓 |
+| P3 | v1.x 路线图 | 可视化面板（v1.1）/ OpenAPI 桥接（v1.2）/ Vite 插件（v1.3）—— 均未启动，按需排期 |
+| — | 后端侧待办 | Laravel 9/10/11 兼容矩阵实测（仅 13.x 验证过），见独立仓库 |
