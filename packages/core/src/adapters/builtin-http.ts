@@ -72,51 +72,54 @@ export function createBuiltinHttp(forgeInterceptors?: {
   const requestMgr = forgeInterceptors?.request ?? createInterceptorManager<RequestConfig>();
   const responseMgr = forgeInterceptors?.response ?? createInterceptorManager<ResponseData>();
 
-  async function request(config: RequestConfig): Promise<ResponseData> {
-    // 1. 执行请求拦截器（LIFO，对齐 axios）
-    const finalConfig = await runRequestInterceptors(requestMgr, config);
-
-    // 2. 超时控制：timeout > 0 时用 AbortSignal.timeout
-    //    若同时有用户 signal，合并两者（任一 abort 即取消请求）
+  /**
+   * 原始请求：不经过请求/响应拦截链。
+   * 供层级元信息拉取使用（forge.ts fetchLevel）——元信息解析不能被
+   * 业务拦截器（如解包 resp.data 的响应拦截器）干扰，与 axios 路径
+   * 「元信息不走 forge 拦截链」的行为保持一致。
+   */
+  async function requestRaw(config: RequestConfig): Promise<ResponseData> {
+    // 超时控制：timeout > 0 时用 AbortSignal.timeout
+    // 若同时有用户 signal，合并两者（任一 abort 即取消请求）
     const signal = combineSignals(
-      finalConfig.signal,
-      finalConfig.timeout && finalConfig.timeout > 0
-        ? AbortSignal.timeout(finalConfig.timeout)
+      config.signal,
+      config.timeout && config.timeout > 0
+        ? AbortSignal.timeout(config.timeout)
         : undefined,
     );
 
-    // 3. paramsSerializer：自定义 query 序列化
-    let url = finalConfig.url;
-    if (finalConfig.paramsSerializer && finalConfig.params) {
-      const qs = finalConfig.paramsSerializer(finalConfig.params);
+    // paramsSerializer：自定义 query 序列化
+    let url = config.url;
+    if (config.paramsSerializer && config.params) {
+      const qs = config.paramsSerializer(config.params);
       if (qs) {
         url = url.includes('?') ? `${url}&${qs}` : `${url}?${qs}`;
       }
     }
 
-    // 4. 构建 fetchInit（body 序列化 + JSON Content-Type 自动补齐）
-    const headers = new Headers(finalConfig.headers);
+    // 构建 fetchInit（body 序列化 + JSON Content-Type 自动补齐）
+    const headers = new Headers(config.headers);
     const fetchInit: RequestInit = {
-      method: finalConfig.method,
+      method: config.method,
       headers,
     };
     if (signal) fetchInit.signal = signal;
     if (
-      finalConfig.body !== undefined &&
-      !['GET', 'HEAD'].includes(finalConfig.method.toUpperCase())
+      config.body !== undefined &&
+      !['GET', 'HEAD'].includes(config.method.toUpperCase())
     ) {
-      if (typeof finalConfig.body === 'string' || isPassthroughBody(finalConfig.body)) {
-        fetchInit.body = finalConfig.body as BodyInit;
+      if (typeof config.body === 'string' || isPassthroughBody(config.body)) {
+        fetchInit.body = config.body as BodyInit;
       } else {
-        fetchInit.body = JSON.stringify(finalConfig.body);
+        fetchInit.body = JSON.stringify(config.body);
         if (!headers.has('Content-Type')) {
           headers.set('Content-Type', 'application/json');
         }
       }
     }
 
-    // 5. 调用 fetch（网络层错误转 NetworkError，便于独立使用 adapter 时错误语义一致）
-    //    请求取消（AbortError）不包装，保留原始错误以便上层转换为 RequestAbortedError
+    // 调用 fetch（网络层错误转 NetworkError，便于独立使用 adapter 时错误语义一致）
+    // 请求取消（AbortError）不包装，保留原始错误以便上层转换为 RequestAbortedError
     let res: Response;
     try {
       res = await fetch(url, fetchInit);
@@ -124,8 +127,8 @@ export function createBuiltinHttp(forgeInterceptors?: {
       if (isAbortError(e)) throw e;
       throw new NetworkError(
         e instanceof Error ? e.message : String(e),
-        finalConfig.route,
-        finalConfig.level,
+        config.route,
+        config.level,
         e,
       );
     }
@@ -140,35 +143,43 @@ export function createBuiltinHttp(forgeInterceptors?: {
       }
     }
 
-    // 6. 构建 ResponseData
+    // 构建 ResponseData
     const responseData: ResponseData = {
-      route: finalConfig.route,
-      level: finalConfig.level,
-      method: finalConfig.method,
+      route: config.route,
+      level: config.level,
+      method: config.method,
       url,
       status: res.status,
       headers: res.headers,
       data,
-      config: finalConfig,
+      config,
     };
 
-    // 7. 执行响应拦截器（FIFO，对齐 axios）；末段返回值即 request() 的 resolve 值
-    // HTTP 非 2xx → 转 HTTPError 后进入响应拦截器 onRejected 链（SPEC §4.1.3a 步骤 9）
-    const source: Promise<ResponseData> =
-      res.status >= 200 && res.status < 300
-        ? Promise.resolve(responseData)
-        : Promise.reject(
-          new HTTPError(
-            `HTTP ${res.status} for route "${finalConfig.route}" (${finalConfig.method} ${url})`,
-            {
-              route: finalConfig.route,
-              level: finalConfig.level,
-              status: res.status,
-              url,
-              method: finalConfig.method,
-            },
-          ),
-        );
+    // HTTP 非 2xx → 抛 HTTPError（由调用方决定拦截/恢复）
+    if (res.status >= 200 && res.status < 300) {
+      return responseData;
+    }
+    throw new HTTPError(
+      `HTTP ${res.status} for route "${config.route}" (${config.method} ${url})`,
+      {
+        route: config.route,
+        level: config.level,
+        status: res.status,
+        url,
+        method: config.method,
+      },
+    );
+  }
+
+  async function request(config: RequestConfig): Promise<ResponseData> {
+    // 1. 执行请求拦截器（LIFO，对齐 axios）
+    const finalConfig = await runRequestInterceptors(requestMgr, config);
+
+    // 2. 原始请求（超时/序列化/fetch/解析/非 2xx 转 HTTPError）
+    const source: Promise<ResponseData> = Promise.resolve(finalConfig).then(requestRaw);
+
+    // 3. 执行响应拦截器（FIFO，对齐 axios）；末段返回值即 request() 的 resolve 值
+    // HTTP 非 2xx → HTTPError 进入响应拦截器 onRejected 链（SPEC §4.1.3a 步骤 9）
     return runResponseInterceptors(
       responseMgr,
       source,
@@ -189,6 +200,7 @@ export function createBuiltinHttp(forgeInterceptors?: {
 
   return {
     request,
+    requestRaw,
     interceptors: {
       request: requestMgr,
       response: responseMgr,

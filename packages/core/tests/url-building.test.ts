@@ -460,4 +460,26 @@ describe('getRoutes snapshot isolation', () => {
     const { forge } = await createLoadedForge({});
     expect(forge.getRoutes('public')).toEqual({});
   });
+
+  it('getRoutes() no-arg overload deep-copies nested structures (L5)', async () => {
+    // 审计项 L5：嵌套对象（parameter_defaults）不能与内部缓存共享引用
+    const { forge } = await createLoadedForge({
+      'user.show': {
+        name: 'user.show',
+        uri: 'users/{user}',
+        methods: ['GET'],
+        parameters: ['user'],
+        parameter_defaults: { user: 1 },
+      },
+    });
+    const all = forge.getRoutes();
+    const meta = all['public']!['user.show']!;
+    // 篡改返回值（含嵌套对象）
+    meta.uri = 'HACKED';
+    meta.parameter_defaults!.user = 999;
+    // 内部缓存不受影响
+    const fresh = forge.getRoutes('public');
+    expect(fresh['user.show']!.uri).toBe('users/{user}');
+    expect(fresh['user.show']!.parameter_defaults).toEqual({ user: 1 });
+  });
 });

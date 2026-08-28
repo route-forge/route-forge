@@ -369,3 +369,41 @@ describe('useForge API trimming', () => {
     second.unmount();
   });
 });
+
+describe('useForgeRoute reactivity (M3)', () => {
+  it('recomputes url when params change after level loaded', async () => {
+    const urls: string[] = [];
+    function C({ uid }: { uid: number }) {
+      const url = useForgeRoute('public', 'users.show', { user: uid });
+      urls.push(url);
+      return <div>{url || 'loading'}</div>;
+    }
+    const { rerender } = render(
+      <RouteForgeProvider options={makeOptions()}>
+        <C uid={42} />
+      </RouteForgeProvider>,
+    );
+    await waitFor(() => expect(urls).toContain('/users/42'));
+    // 参数变化：level 已加载，URL 应重新计算
+    rerender(
+      <RouteForgeProvider options={makeOptions()}>
+        <C uid={99} />
+      </RouteForgeProvider>,
+    );
+    await waitFor(() => expect(urls).toContain('/users/99'));
+  });
+});
+
+describe('onSummaryReady via provider options (M5)', () => {
+  it('fires after auto-discovery completes', async () => {
+    const cb = vi.fn();
+    render(
+      <RouteForgeProvider
+        options={{ endpoint: '/_forge/routes', levels: ['public'], adapter: 'builtin', onSummaryReady: cb }}
+      >
+        <div />
+      </RouteForgeProvider>,
+    );
+    await waitFor(() => expect(cb).toHaveBeenCalledTimes(1));
+  });
+});

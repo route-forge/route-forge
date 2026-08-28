@@ -1,0 +1,479 @@
+/**
+ * 生命周期与时序测试：自动发现 / ready / onSummaryReady / BoundForge / invalidate 竞态
+ *
+ * 覆盖审计项：
+ *   - H3：invalidate() 失效代数——加载期间被 invalidate 后，在途响应不回写缓存
+ *   - H4：后端将 unassigned 注册为真实层级时走 HTTP 拉取（不走虚拟层级）
+ *   - H5：BoundForge.useRoutePrefix() 返回绑定新前缀的 BoundForge
+ *   - H6：ready() 回调重载；auto-discovery 失败时 ready 永不 resolve
+ *   - H7：onSummaryReady 在 eager load 之前触发
+ *   - M4：schemaVersion > 1 告警
+ *   - M7：请求前已 abort → 不发出业务请求
+ *   - M8：ready() resolve 值为 forge 实例自身
+ *   - M9：显式 eager 与后端 load:'eager' 取并集
+ *   - L1：forge.use() 不传 level 返回自身引用
+ *   - L2：BoundForge.isLoading / onLoadingChange
+ *   - L3：onLevelLoaded 的 onRejected 分支（加载失败时）
+ *   - L8：discovery 守卫豁免——load/isLoaded/invalidate 不受 RF_FE_010 影响
+ *   - L10：unassigned 虚拟层级缓存使用前端 cache.ttl 兜底
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  createRouteForge,
+  ForgeError,
+  RequestAbortedError,
+} from '../src/index.js';
+import type { LevelRoutesResponse, SummaryResponse } from '../src/types.js';
+
+function makeSummary(overrides: Partial<SummaryResponse> = {}): SummaryResponse {
+  return {
+    levels: {
+      public: { description: 'public', load: 'lazy', cache: 300, route_count: 2 },
+      admin: { description: 'admin', load: 'eager', cache: 60, route_count: 1 },
+    },
+    config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
+    unassigned: [],
+    ...overrides,
+  };
+}
+
+const publicRoutes: LevelRoutesResponse = {
+  level: 'public',
+  routes: {
+    'users.index': { name: 'users.index', uri: 'users', methods: ['GET'], parameters: [] },
+    'users.show': {
+      name: 'users.show',
+      uri: 'users/{user}',
+      methods: ['GET'],
+      parameters: ['user'],
+    },
+  },
+};
+
+const adminRoutes: LevelRoutesResponse = {
+  level: 'admin',
+  routes: {
+    'settings.index': { name: 'settings.index', uri: 'settings', methods: ['GET'], parameters: [] },
+  },
+};
+
+/** 全功能 fetch mock：摘要 + 层级 + 业务请求（回显），可选层级延迟 */
+function mockBackend(
+  summary: SummaryResponse,
+  levelRoutes: Record<string, LevelRoutesResponse>,
+  opts: { levelGate?: Promise<void> } = {},
+) {
+  const calls: string[] = [];
+  (globalThis as any).fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    calls.push(url);
+    const ep = summary.config.endpoint_prefix;
+    if (url === ep) {
+      return jsonResponse(summary);
+    }
+    if (url.startsWith(ep + '/')) {
+      if (opts.levelGate) await opts.levelGate;
+      const level = decodeURIComponent(url.slice(ep.length + 1).split('/')[0]!);
+      const lr = levelRoutes[level];
+      if (!lr) return jsonResponse({ message: 'not found' }, 404);
+      return jsonResponse(lr);
+    }
+    // 业务请求回显
+    return jsonResponse({ biz: true, url, method: init?.method ?? 'GET' });
+  });
+  return calls;
+}
+
+function jsonResponse(data: unknown, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => data,
+    text: async () => JSON.stringify(data),
+    headers: new Headers({ 'content-type': 'application/json' }),
+  } as any;
+}
+
+// ─── 内存版 Storage 替身（node 环境无浏览器 storage，约定同 cache.test.ts） ───
+
+class FakeStorage implements Storage {
+  private map = new Map<string, string>();
+  get length(): number { return this.map.size; }
+  clear(): void { this.map.clear(); }
+  getItem(key: string): string | null { return this.map.has(key) ? this.map.get(key)! : null; }
+  key(index: number): string | null { return [...this.map.keys()][index] ?? null; }
+  removeItem(key: string): void { this.map.delete(key); }
+  setItem(key: string, value: string): void { this.map.set(key, value); }
+}
+
+let originalFetch: typeof globalThis.fetch;
+beforeEach(() => {
+  originalFetch = globalThis.fetch;
+  (globalThis as any).localStorage = new FakeStorage();
+});
+afterEach(() => {
+  (globalThis as any).fetch = originalFetch;
+  delete (globalThis as any).localStorage;
+  vi.restoreAllMocks();
+});
+
+// ─── H3：invalidate 失效代数 ────────────────────────────────
+
+describe('invalidate invalidation generation (H3)', () => {
+  it('in-flight level response does not write back after invalidate during load', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const summary = makeSummary();
+    const calls = mockBackend(summary, { public: publicRoutes }, { levelGate: gate });
+
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    const loading = forge.load('public');
+    // 等待层级请求真正发出（在途）
+    await vi.waitFor(() => expect(calls).toContain('/_forge/routes/public'));
+    // 在途期间失效
+    forge.invalidate('public');
+    release();
+    await loading;
+    // 旧响应不回写：仍未加载
+    expect(forge.isLoaded('public')).toBe(false);
+
+    // 再次加载：重新发起请求且成功
+    await forge.load('public');
+    expect(forge.isLoaded('public')).toBe(true);
+    expect(calls.filter((u) => u === '/_forge/routes/public').length).toBe(2);
+  });
+});
+
+// ─── H4：后端注册 unassigned 为真实层级 ─────────────────────
+
+describe('unassigned as real backend level (H4)', () => {
+  it('goes through HTTP fetch instead of virtual summary build', async () => {
+    const summary = makeSummary({
+      levels: {
+        public: { description: 'public', load: 'lazy', cache: 300, route_count: 1 },
+        unassigned: { description: 'unassigned', load: 'lazy', cache: null, route_count: 1 },
+      },
+      // 摘要里即使带 unassigned 数组，真实层级优先
+      unassigned: [
+        { name: 'should.not.use', uri: 'x', methods: ['GET'], parameters: [] },
+      ],
+    });
+    const unassignedRoutes: LevelRoutesResponse = {
+      level: 'unassigned',
+      routes: {
+        'legacy.page': { name: 'legacy.page', uri: 'legacy', methods: ['GET'], parameters: [] },
+      },
+    };
+    const calls = mockBackend(summary, { public: publicRoutes, unassigned: unassignedRoutes });
+
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public', 'unassigned'],
+      adapter: 'builtin',
+    });
+    await forge.load('unassigned');
+
+    // 走了 HTTP 拉取（不是虚拟构建）
+    expect(calls).toContain('/_forge/routes/unassigned');
+    expect(forge.hasRoute('unassigned', 'legacy.page')).toBe(true);
+    // 摘要里的未分配数组未被使用
+    expect(forge.hasRoute('unassigned', 'should.not.use')).toBe(false);
+  });
+});
+
+// ─── H5：useRoutePrefix ─────────────────────────────────────
+
+describe('BoundForge.useRoutePrefix (H5)', () => {
+  it('returns a new BoundForge bound to the same level with the given prefix', async () => {
+    mockBackend(makeSummary(), { public: publicRoutes });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    const base = forge.use('public');
+    const prefixed = base.useRoutePrefix('users');
+
+    expect(prefixed.level).toBe('public');
+    expect(prefixed.prefix).toBe('users');
+    expect(prefixed).not.toBe(base);
+
+    // 直接调用：后缀自动拼接前缀
+    const result = (await prefixed('show', { user: 9 })) as any;
+    expect(result.data.url).toBe('/users/9');
+    // route() 同样生效
+    await prefixed.load();
+    expect(prefixed.route('index')).toBe('/users');
+  });
+
+  it('replaces an existing prefix rather than stacking', async () => {
+    mockBackend(makeSummary(), { public: publicRoutes });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    const once = forge.use('public', 'users');
+    const twice = once.useRoutePrefix('users');
+    expect(twice.prefix).toBe('users');
+    const result = (await twice('show', { user: 1 })) as any;
+    expect(result.data.url).toBe('/users/1');
+  });
+});
+
+// ─── H6 / M8：ready() 语义 ──────────────────────────────────
+
+describe('ready() semantics (H6 / M8)', () => {
+  it('resolves with the forge instance itself (chainable)', async () => {
+    mockBackend(makeSummary(), { public: publicRoutes, admin: adminRoutes });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public', 'admin'],
+      adapter: 'builtin',
+    });
+    const resolved = await forge.ready();
+    expect(resolved).toBe(forge);
+  });
+
+  it('callback overloads fire with forge and still return Promise<forge>', async () => {
+    mockBackend(makeSummary(), { public: publicRoutes, admin: adminRoutes });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public', 'admin'],
+      adapter: 'builtin',
+    });
+    const seen: unknown[] = [];
+    const p = forge.ready((f) => { seen.push(f); });
+    const result = await p;
+    expect(seen).toEqual([forge]);
+    expect(result).toBe(forge);
+  });
+
+  it('never resolves when auto-discovery fails without explicit levels', async () => {
+    // fetch 直接网络错误且未传 levels → summaryPromise 抛 UnknownLevelError
+    (globalThis as any).fetch = vi.fn(async () => {
+      throw new Error('network down');
+    });
+    const onFulfilled = vi.fn();
+    const onRejected = vi.fn();
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      adapter: 'builtin',
+    });
+    void forge.ready(onFulfilled, onRejected);
+    // 等待足够时间：ready 既不 resolve 也不触发回调
+    await new Promise((r) => setTimeout(r, 50));
+    expect(onFulfilled).not.toHaveBeenCalled();
+    expect(onRejected).not.toHaveBeenCalled();
+    const settled = await Promise.race([
+      forge.ready().then(() => 'resolved'),
+      new Promise((r) => setTimeout(() => r('pending'), 30)),
+    ]);
+    expect(settled).toBe('pending');
+    // 错误在 load 调用时重新抛出（不丢失）
+    await expect(forge.load('public')).rejects.toThrow();
+  });
+});
+
+// ─── H7：onSummaryReady 时序 ────────────────────────────────
+
+describe('onSummaryReady timing (H7)', () => {
+  it('fires after discovery but before eager load', async () => {
+    mockBackend(makeSummary(), { public: publicRoutes, admin: adminRoutes });
+    let loadedAtCallback: boolean | undefined;
+    let callbackFired = false;
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public', 'admin'],
+      adapter: 'builtin',
+      onSummaryReady: () => {
+        callbackFired = true;
+        // admin 是后端 eager 层级：回调时不应已加载
+        loadedAtCallback = forge.isLoaded('admin');
+      },
+    });
+    await forge.ready();
+    expect(callbackFired).toBe(true);
+    expect(loadedAtCallback).toBe(false);
+    // ready 之后 eager 层级已完成加载
+    expect(forge.isLoaded('admin')).toBe(true);
+  });
+});
+
+// ─── M4 / M9：schemaVersion 告警与 eager 并集 ───────────────
+
+describe('summary edge behaviors (M4 / M9)', () => {
+  it('schemaVersion > 1 warns about forward compatibility', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockBackend(makeSummary({ schemaVersion: 2 }), { public: publicRoutes, admin: adminRoutes });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public', 'admin'],
+      adapter: 'builtin',
+    });
+    await forge.ready();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('schemaVersion=2'));
+    warn.mockRestore();
+  });
+
+  it('explicit eager merges with backend load:eager levels (union)', async () => {
+    mockBackend(makeSummary(), { public: publicRoutes, admin: adminRoutes });
+    // 后端 eager: admin；前端显式追加 public
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public', 'admin'],
+      eager: ['public'],
+      adapter: 'builtin',
+    });
+    await forge.ready();
+    expect(forge.isLoaded('admin')).toBe(true);
+    expect(forge.isLoaded('public')).toBe(true);
+  });
+});
+
+// ─── M7：abort 短路 ─────────────────────────────────────────
+
+describe('abort short-circuit (M7)', () => {
+  it('abort() before dispatch prevents the business request entirely', async () => {
+    const summary = makeSummary();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const calls = mockBackend(summary, { public: publicRoutes }, { levelGate: gate });
+
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    const req = forge.api('public', 'users.show', { user: 5 });
+    // 层级加载仍在途时取消
+    req.abort();
+    // 放行层级加载：恢复后 api 应在发业务请求前检查 signal 并短路
+    release();
+    await expect(req).rejects.toBeInstanceOf(RequestAbortedError);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls).not.toContain('/users/5');
+  });
+});
+
+// ─── L1 / L2：use() 自身返回与 BoundForge loading ───────────
+
+describe('BoundForge misc (L1 / L2)', () => {
+  it('forge.use() without level returns the forge instance itself', () => {
+    mockBackend(makeSummary(), { public: publicRoutes });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    expect(forge.use()).toBe(forge);
+  });
+
+  it('bound isLoading / onLoadingChange track business requests', async () => {
+    mockBackend(makeSummary(), { public: publicRoutes });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    const bound = forge.use('public');
+    expect(bound.isLoading()).toBe(false);
+    const events: boolean[] = [];
+    const unsub = bound.onLoadingChange((e) => events.push(e.loading));
+    await bound('users.index');
+    expect(events).toEqual([true, false]);
+    expect(bound.isLoading()).toBe(false);
+    unsub();
+  });
+});
+
+// ─── L3：onLevelLoaded onRejected ───────────────────────────
+
+describe('onLevelLoaded failure branch (L3)', () => {
+  it('onRejected fires when level load fails; callback form still resolves with bound', async () => {
+    // 层级拉取 500 → load reject
+    const summary = makeSummary();
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      const ep = summary.config.endpoint_prefix;
+      if (url === ep) return jsonResponse(summary);
+      return jsonResponse({ message: 'boom' }, 500);
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    const bound = forge.use('public');
+    const onRejected = vi.fn();
+    const result = await bound.onLevelLoaded(() => {}, onRejected);
+    expect(onRejected).toHaveBeenCalledTimes(1);
+    expect(result).toBe(bound);
+    // Promise 形式：reject 可被捕获
+    const bound2 = forge.use('public');
+    await expect(bound2.onLevelLoaded()).rejects.toThrow();
+  });
+});
+
+// ─── L8：discovery 守卫豁免 ─────────────────────────────────
+
+describe('discovery guard exemptions (L8)', () => {
+  it('load/isLoaded/invalidate never throw RF_FE_010; route() still guards', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url === '/_forge/routes') {
+        await gate;
+        return jsonResponse(makeSummary());
+      }
+      if (url === '/_forge/routes/public') return jsonResponse(publicRoutes);
+      return jsonResponse({ biz: true }, 200);
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      adapter: 'builtin',
+    });
+    // discovery 未完成：这些方法不抛守卫错误
+    expect(() => forge.isLoaded('public')).not.toThrow();
+    expect(() => forge.invalidate()).not.toThrow();
+    const loadPromise = forge.load('public'); // 等待 discovery 后加载
+    // route() 同步守卫仍然生效
+    try {
+      forge.route('public', 'users.index');
+      expect.fail('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ForgeError);
+      expect((e as ForgeError).code).toBe('RF_FE_010');
+    }
+    release();
+    await loadPromise;
+    expect(forge.route('public', 'users.index')).toBe('/users');
+  });
+});
+
+// ─── L10：unassigned 虚拟层级 TTL ───────────────────────────
+
+describe('unassigned virtual level cache (L10)', () => {
+  it('virtual unassigned cache entry uses frontend cache.ttl fallback', async () => {
+    const summary = makeSummary({
+      unassigned: [
+        { name: 'misc.page', uri: 'misc', methods: ['GET'], parameters: [] },
+      ],
+    });
+    mockBackend(summary, { public: publicRoutes });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public', 'unassigned'],
+      adapter: 'builtin',
+      cache: { storage: 'localStorage', ttl: 1234 },
+    });
+    await forge.load('unassigned');
+    expect(forge.hasRoute('unassigned', 'misc.page')).toBe(true);
+    // 摘要契约无独立 cache 字段 → 使用前端兜底 TTL
+    const raw = JSON.parse(localStorage.getItem('route-forge:unassigned')!);
+    expect(raw.ttl).toBe(1234);
+    expect(raw.routes['misc.page']).toBeDefined();
+  });
+});

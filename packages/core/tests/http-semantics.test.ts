@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRouteForge, HTTPError, NetworkError } from '../src/index.js';
+import { createRouteForge, HTTPError, NetworkError, RequestAbortedError } from '../src/index.js';
 import type { LevelRoutesResponse, ResponseData, SummaryResponse } from '../src/types.js';
 
 // ─── mock helpers ───────────────────────────────────────────
@@ -327,5 +327,102 @@ describe('request body serialization (builtin adapter)', () => {
     await forge.api('public', 'users.upload');
     const bizCall = calls.find((c) => c.url.startsWith('/users/upload'));
     expect(bizCall!.init!.body).toBe('raw-text-payload');
+  });
+});
+
+// ─── 拦截器对 config.signal 的操作（审计项 L4） ─────────────
+
+describe('interceptor signal manipulation (L4)', () => {
+  it('aborted signal replacement short-circuits before adapter dispatch', async () => {
+    // 用自定义 Fetcher 精确观测分发边界：
+    // forge 在拦截链之后、adapter 调用之前检查 signal，业务请求不应到达 fetcher
+    const seen: string[] = [];
+    const fetcher = {
+      async request(config: any) {
+        seen.push(config.url);
+        if (config.url.includes('/_forge/routes/public')) {
+          return {
+            route: config.route, level: config.level, method: 'GET', url: config.url,
+            status: 200, headers: new Headers(),
+            data: {
+              level: 'public',
+              routes: {
+                'users.index': { name: 'users.index', uri: 'users', methods: ['GET'], parameters: [] },
+              },
+            },
+            config,
+          };
+        }
+        return {
+          route: config.route, level: config.level, method: config.method, url: config.url,
+          status: 200, headers: new Headers(), data: { ok: true }, config,
+        };
+      },
+    };
+    mockBackend(); // 摘要端点仍走 fetch
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: fetcher,
+    });
+    const ctrl = new AbortController();
+    ctrl.abort();
+    forge.interceptors.request.use((c) => ({ ...c, signal: ctrl.signal }));
+    await expect(forge.api('public', 'users.index')).rejects.toBeInstanceOf(RequestAbortedError);
+    // fetcher 只见过层级拉取，未见过业务请求（链后短路生效）
+    expect(seen).toEqual(['/_forge/routes/public']);
+  });
+
+  it('request interceptor can remove config.signal without breaking the request', async () => {
+    const { forge } = await createLoadedForge();
+    forge.interceptors.request.use((c) => ({ ...c, signal: undefined }));
+    const result = (await forge.api('public', 'users.index')) as any;
+    expect(result.status).toBe(200);
+  });
+});
+
+// ─── 声明式 + 运行时拦截器统一排序（审计项 L7） ─────────────
+
+describe('declarative + runtime interceptor unified order (L7)', () => {
+  it('request chain is LIFO across declarative and runtime registrations', async () => {
+    mockBackend();
+    const order: string[] = [];
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+      interceptors: {
+        request: [
+          (c) => { order.push('decl-1'); return c; },
+          (c) => { order.push('decl-2'); return c; },
+        ],
+      },
+    });
+    // 运行时追加：后注册
+    forge.interceptors.request.use((c) => { order.push('runtime-3'); return c; });
+    await forge.load('public');
+    await forge.api('public', 'users.index');
+    // LIFO（对齐 axios）：runtime-3 → decl-2 → decl-1
+    expect(order).toEqual(['runtime-3', 'decl-2', 'decl-1']);
+  });
+
+  it('response chain is FIFO across declarative and runtime registrations', async () => {
+    mockBackend();
+    const order: string[] = [];
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+      interceptors: {
+        response: [
+          (r) => { order.push('decl-1'); return r; },
+        ],
+      },
+    });
+    forge.interceptors.response.use((r) => { order.push('runtime-2'); return r; });
+    await forge.load('public');
+    await forge.api('public', 'users.index');
+    // FIFO（对齐 axios）：decl-1 → runtime-2
+    expect(order).toEqual(['decl-1', 'runtime-2']);
   });
 });

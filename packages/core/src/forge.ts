@@ -234,8 +234,12 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     if (!adapterResolved) {
       adapterObj = await adapterPromise.catch((e) => {
         if (e instanceof AdapterNotFoundError) throw e;
-        // 其他错误降级到 builtin（避免初始化失败）
-        return resolveAdapter({ adapter: 'builtin' });
+        // 其他错误降级到 builtin（避免初始化失败）；
+        // 传入 forge 拦截器管理器，确保降级后拦截链语义不变
+        return resolveAdapter({
+          adapter: 'builtin',
+          forgeInterceptors: { request: requestInterceptors, response: responseInterceptors },
+        });
       });
       adapterResolved = true;
     }
@@ -286,8 +290,10 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
         level,
       },
     };
-    // 拉取元信息直接走 adapter（不走 forge.interceptors 链，避免与业务调用混淆）
-    const resp = await adp.request(config);
+    // 拉取元信息直接走 adapter 的原始通道（不走 forge.interceptors 链，避免与业务调用混淆）：
+    // builtin 提供 requestRaw（跳过拦截链）；axios/自定义 Fetcher 未提供时回退 request()
+    const doRawRequest = adp.requestRaw ?? adp.request;
+    const resp = await doRawRequest(config);
     if (!resp || resp.status < 200 || resp.status >= 300) {
       throw new HTTPError(
         `Failed to load level "${level}": HTTP ${resp?.status}`,
@@ -638,10 +644,11 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
 
   // --- createBoundForge：构造绑定 level 的 BoundForge ---
   function createBoundForge(level: string, prefix?: string): BoundForge {
-    // 自动触发 level 加载
-    const levelLoadedPromise = load(level).catch(() => {
-      /* 加载失败时 levelLoaded 保持 pending */
-    });
+    // 自动触发 level 加载；失败时 levelLoaded 保持 reject 语义
+    //（onLevelLoaded 的 onRejected 依赖它；框架层各自在 catch 中保持未加载状态）
+    const levelLoadedPromise = load(level);
+    // 附加空 catch 防止无人订阅时的 unhandled rejection（不改变原 Promise 的 reject 状态）
+    levelLoadedPromise.catch(() => {});
 
     const apiFn = prefix
       ? (name: string, params?: ApiCallParams) =>

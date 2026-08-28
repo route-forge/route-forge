@@ -309,3 +309,19 @@ describe('useForge API trimming', () => {
     await p;
   });
 });
+
+describe('onSummaryReady via plugin options (M5)', () => {
+  it('fires after auto-discovery completes, before ready() resolves', async () => {
+    const order: string[] = [];
+    const plugin = createRouteForgePlugin({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+      onSummaryReady: () => order.push('summary'),
+    });
+    await plugin.ready();
+    order.push('ready');
+    // 回调在 ready 之前触发且只触发一次（推荐在此挂载应用）
+    expect(order).toEqual(['summary', 'ready']);
+  });
+});

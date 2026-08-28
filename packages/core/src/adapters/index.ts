@@ -16,6 +16,12 @@ import { wrapAxiosAdapter } from './axios.js';
 
 export type ResolvedAdapter = {
   request: (config: RequestConfig) => Promise<ResponseData>;
+  /**
+   * 原始请求（跳过拦截链），可选。
+   * 供层级元信息拉取使用：元信息解析不应被业务拦截器干扰。
+   * 未提供时 forge.fetchLevel 回退到 request()。
+   */
+  requestRaw?: (config: RequestConfig) => Promise<ResponseData>;
   interceptors?: Fetcher['interceptors'];
   runsInterceptors?: boolean;
   /**

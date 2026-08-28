@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRouteForge, HTTPError, NetworkError } from '../src/index.js';
+import {
+  createRouteForge,
+  HTTPError,
+  NetworkError,
+  RequestAbortedError,
+} from '../src/index.js';
 import type { LevelRoutesResponse, SummaryResponse } from '../src/types.js';
 
 // ─── axios mock（vi.hoisted 保证工厂提升前即可引用 mock 函数） ───
@@ -198,5 +203,67 @@ describe('axios adapter — error semantics', () => {
     });
     const forge = createForge();
     await expect(forge.load('public')).rejects.toThrow(HTTPError);
+  });
+});
+
+describe('axios adapter — request cancellation', () => {
+  it('config.signal is passed through to axios request', async () => {
+    setupAxios();
+    const forge = createForge();
+    await forge.load('public');
+    await forge.api('public', 'users.index');
+    const bizCall = requestMock.mock.calls
+      .map((c) => c[0])
+      .find((cfg: any) => cfg.url === '/users');
+    // forge 内部创建的 AbortSignal 透传给宿主 axios
+    expect(bizCall.signal).toBeInstanceOf(AbortSignal);
+    expect(bizCall.signal.aborted).toBe(false);
+  });
+
+  it('axios CanceledError (ERR_CANCELED) converts to RequestAbortedError', async () => {
+    requestMock.mockImplementation(async (cfg: { url: string }) => {
+      if (cfg.url.includes('/_forge/routes/public')) {
+        return { status: 200, data: levelRoutes, headers: {} };
+      }
+      // axios 取消时抛 CanceledError（name=CanceledError, code=ERR_CANCELED，无 response）
+      throw Object.assign(new Error('canceled'), {
+        name: 'CanceledError',
+        code: 'ERR_CANCELED',
+      });
+    });
+    const forge = createForge();
+    await forge.load('public');
+    try {
+      await forge.api('public', 'users.index');
+      expect.fail('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(RequestAbortedError);
+      expect((e as RequestAbortedError).code).toBe('RF_FE_009');
+      expect((e as RequestAbortedError).route).toBe('users.index');
+    }
+  });
+
+  it('abort() before request dispatch aborts the signal passed to axios', async () => {
+    requestMock.mockImplementation(async (cfg: { url: string; signal?: AbortSignal }) => {
+      if (cfg.url.includes('/_forge/routes/public')) {
+        return { status: 200, data: levelRoutes, headers: {} };
+      }
+      // 业务请求挂起，等待外部 abort 触发
+      return new Promise((_resolve, reject) => {
+        const signal = cfg.signal!;
+        if (signal.aborted) {
+          reject(Object.assign(new Error('canceled'), { name: 'CanceledError', code: 'ERR_CANCELED' }));
+          return;
+        }
+        signal.addEventListener('abort', () => {
+          reject(Object.assign(new Error('canceled'), { name: 'CanceledError', code: 'ERR_CANCELED' }));
+        });
+      });
+    });
+    const forge = createForge();
+    await forge.load('public');
+    const req = forge.api('public', 'users.index');
+    req.abort();
+    await expect(req).rejects.toBeInstanceOf(RequestAbortedError);
   });
 });

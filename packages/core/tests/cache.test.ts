@@ -191,3 +191,37 @@ describe('RouteCache — storage unavailable fallback', () => {
     expect(cache.get('public')).toBeUndefined();
   });
 });
+
+describe('RouteCache — sessionStorage write path (L9)', () => {
+  let storage: FakeStorage;
+
+  beforeEach(() => {
+    storage = new FakeStorage();
+    (globalThis as any).sessionStorage = storage;
+  });
+  afterEach(() => {
+    delete (globalThis as any).sessionStorage;
+  });
+
+  it('writes to sessionStorage with route-forge: prefix and respects TTL', () => {
+    vi.useFakeTimers();
+    try {
+      const cache = new RouteCache({ storage: 'sessionStorage', ttl: 30 });
+      cache.set(makeResp('public'));
+      // 序列化条目带 route-forge: 前缀
+      const raw = storage.getItem('route-forge:public');
+      expect(raw).not.toBeNull();
+      const entry = JSON.parse(raw!);
+      expect(entry.level).toBe('public');
+      expect(entry.ttl).toBe(30);
+      // TTL 内可读
+      expect(cache.get('public')).toBeDefined();
+      // TTL 过期后读取即清除
+      vi.setSystemTime(Date.now() + 31_000);
+      expect(cache.get('public')).toBeUndefined();
+      expect(storage.getItem('route-forge:public')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
