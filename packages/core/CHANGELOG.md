@@ -1,0 +1,95 @@
+# Changelog — @route-forge/core
+
+本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
+
+## Unreleased
+
+### Fixed
+
+- adapter 解析抛出非预期错误降级到 builtin 时，透传 forge 拦截器管理器，用户拦截器不再被静默跳过
+- 层级元信息拉取不再经过业务拦截链：新增 `requestRaw` 原始通道，与 axios 路径行为对齐（此前解包型响应拦截器会破坏层级解析）
+- `BoundForge.levelLoaded` 加载失败时保持 reject 语义（原实现把失败吞成成功，`onLevelLoaded` 的 `onRejected` 分支不可达）
+
+### Removed
+
+- 移除 `effectiveStrict` 死代码：前端校验始终开启（层级未声明必抛 `UnknownLevelError`）；`strict` 选项标记 `@deprecated`，传入不再有任何效果
+
+### Tests
+
+- 补齐审计缺口，用例 181 → 217：adapter auto 检测/降级、自定义 Fetcher、invalidate 竞态、unassigned 真实层级分支、`useRoutePrefix`、`ready()` 语义、`onSummaryReady` 时序、signal 拦截器操作、类型推断回退等
+
+## 1.3.1 — 2026-08-28
+
+### Changed
+
+- 请求取消改为内置 AbortController：`forge.api()` 返回的 `ForgeRequest` 自带 `abort()` 方法，用户无需自行管理 AbortController
+
+## 1.3.0 — 2026-08-28
+
+### Added
+
+- 统一 API 表面：`ready()` 方法化（返回 `Promise<RouteForge>`）、`use(level?, prefix?)` 绑定入口、`BoundForge` 接口（`onLevelLoaded()` / `useRoutePrefix()`）
+
+## 1.2.2 — 2026-08-27
+
+### Changed
+
+- 工程升级：pnpm 11 / Node.js 24
+
+## 1.2.1 — 2026-08-27
+
+### Changed
+
+- CI 工作流迁移调整（仓库迁移至 route-forge 组织后的发布流水线验证）
+
+## 1.2.0 — 2026-08-26
+
+### Changed
+
+- IIFE 构建体积优化（浏览器 `<script>` 引入产物瘦身）
+- 仓库迁移至 [route-forge](https://github.com/route-forge) 组织，文档同步更新
+
+## 1.1.1 — 2026-08-26
+
+### Added
+
+- auto-discovery 守卫：`route()` / `hasRoute()` 在 discovery 未完成且无显式 `levels` 时抛 `ForgeError (RF_FE_010)`
+- `RouteForgeOptions.onSummaryReady` 回调：auto-discovery 完成后触发（推荐在此挂载应用）
+- `ready`：discovery + eager load 全部完成后 resolve
+- `onLevelLoaded(level, cb)` 订阅机制，供框架层驱动响应式更新
+
+### Fixed
+
+- 修复 forge.ts 5 个运行时缺陷
+
+## 1.1.0 — 2026-08-25
+
+### Added
+
+- 请求取消：通过 `AbortSignal` 取消进行中的请求，与 timeout 协同
+- `unassigned` 虚拟层级：后端未标记层级的路由通过摘要端点下发，前端无需独立 HTTP 请求即可消费
+
+## 1.0.2 — 2026-08-24
+
+### Added
+
+- `schemaVersion` 向前兼容（后端协议版本 > 客户端支持版本时告警）
+- 单次请求 `timeout` 覆盖（`api(level, name, { timeout })`）
+- 批量 `invalidate(['admin', 'manage'])`
+
+### Fixed
+
+- 修复 8 个运行时缺陷，新增 102 个测试用例
+
+## 1.0.0 — 2026-08-24
+
+首个正式版本（MVP）：
+
+- 分级懒加载、按层级隔离缓存（memory / sessionStorage / localStorage）、并发去重
+- 摘要端点自动发现（levels / eager / endpoint / url_prefix / strict_mode）
+- `forge.api(level, name, params)` 命名路由调用 + 参数智能消解（`params` / `query` / `body` / `headers`）
+- 拦截器（请求 LIFO / 响应 FIFO，对齐 axios；声明式 + 运行时注册）
+- Adapter：`auto` 检测 / `axios` 复用 / `builtin`（零依赖 fetch）/ 自定义 Fetcher
+- codegen CLI：从摘要端点生成 `ForgeRouteMap` TS 类型声明
+- 错误体系 `RF_FE_001~010`、加载状态跟踪（`isLoading` / `onLoadingChange`）
+- IIFE 浏览器构建（`<script>` 直接引入）

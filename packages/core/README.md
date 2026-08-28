@@ -281,6 +281,46 @@ const prefixed = bound.useRoutePrefix('posts')  // 追加前缀
 `ForgeError (RF_FE_010)`， 防止在路由数据未就绪时返回错误结果。`api()` 不受影响（内部自动 await
 discovery）。
 
+## 工具导出
+
+除 `createRouteForge` 外，core 包还导出以下工具件，供高级场景按需使用：
+
+| 导出                        | 说明                                                                                   |
+|-----------------------------|----------------------------------------------------------------------------------------|
+| `createInterceptorManager`  | 创建拦截器管理器（`use`/`eject`/`clear`），供自定义 Fetcher 复用统一拦截器实现   |
+| `RouteCache`                | 按层级隔离的路由缓存类（memory / sessionStorage / localStorage，TTL 过期），可独立使用 |
+| `LoadingTracker`            | 加载状态跟踪器（引用计数 + 订阅），框架适配层可基于它实现全局加载指示                |
+| `resolveRouteName`          | 前缀歧义异步消解（`prefix.suffix` 优先，回退后缀本身），`api()` 调用路径使用      |
+| `resolveRouteNameSync`      | 前缀歧义同步消解（基于已加载缓存），`route()` / `url()` 调用路径使用              |
+
+## 错误参考
+
+所有错误均为 `ForgeError` 子类，携带稳定的 `code` 字段，可按 `code` 分支处理：
+
+| 错误类                        | code        | 触发场景                                             |
+|-------------------------------|-------------|------------------------------------------------------|
+| `UnknownRouteError`         | `RF_FE_001` | 路由名不存在于已加载层级中                           |
+| `UnknownLevelError`         | `RF_FE_002` | 层级未在 levels 声明（前端校验始终开启）             |
+| `MissingRouteParamError`    | `RF_FE_003` | 必填路径参数缺失（无后端默认值）                     |
+| `AdapterNotFoundError`      | `RF_FE_005` | `adapter: 'axios'` 但宿主未安装/无有效 axios       |
+| `InvalidInterceptorReturnError` | `RF_FE_006` | 请求拦截器未返回 RequestConfig 对象               |
+| `NetworkError`              | `RF_FE_007` | 网络层失败（DNS、连接被拒等），`cause` 保留原始错误 |
+| `HTTPError`                 | `RF_FE_008` | HTTP 非 2xx，`context.status` 为状态码             |
+| `RequestAbortedError`       | `RF_FE_009` | 请求被 `abort()` / AbortSignal 取消               |
+| `ForgeError`（守卫）        | `RF_FE_010` | auto-discovery 未完成时调用 `route()`/`hasRoute()` |
+
+错误对象结构：
+
+```ts
+{
+  code: 'RF_FE_008',          // 稳定错误码
+  route?: string,             // 关联路由名
+  level?: string,             // 关联层级
+  context?: Record<string, unknown>,  // 附加上下文（如 HTTP 状态码）
+  cause?: unknown,            // 原始底层错误
+}
+```
+
 ## 文档
 
 - 仓库主页: https://github.com/route-forge/route-forge

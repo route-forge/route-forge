@@ -222,6 +222,104 @@ forge.api('admin', 'users.sho', { user: 123 })   // ❌ TS Error: 路由名不�
 forge.api('admin', 'users.show', { uid: 123 })   // ❌ TS Error: 参数名应为 user
 ```
 
+## 完整示例：真实项目的调用流程
+
+下面以一个 Vue 3 管理端为例，演示 Route Forge 在真实项目中的完整组织方式：
+初始化时序、登录态注入、401 处理、层级绑定、请求取消与错误处理。
+
+### 入口：摘要发现完成后再挂载应用
+
+```ts
+// main.ts
+import { createApp } from 'vue'
+import { createRouteForgePlugin } from '@route-forge/vue'
+import App from './App.vue'
+import { tokenStore } from './stores/auth'
+
+const app = createApp(App)
+
+const plugin = createRouteForgePlugin({
+  endpoint: '/_forge/routes',
+  // levels 不传 → 从摘要端点自动发现；eager 不传 → 取后端标记为 load:'eager' 的层级
+  interceptors: {
+    request: [
+      // 登录态注入：业务请求自动携带 Token
+      (config) => {
+        const token = tokenStore.get()
+        if (token) config.headers.Authorization = `Bearer ${token}`
+        return config
+      },
+    ],
+    response: [
+      (resp) => resp.data,  // 统一解包：api() 直接 resolve 业务数据
+      [undefined, (err) => {
+        // 401 → 清空登录态并跳转登录页；其余错误继续上抛
+        if ((err as any).context?.status === 401) {
+          tokenStore.clear()
+          location.href = '/login'
+        }
+        return Promise.reject(err)
+      }],
+    ],
+  },
+  // 推荐：摘要发现完成后再挂载应用，route()/hasRoute() 等同步方法即刻可用
+  onSummaryReady: () => app.mount('#app'),
+})
+
+app.use(plugin)
+// 注意：mount 已委托给 onSummaryReady，此处不再重复调用
+```
+
+### 业务组件：层级绑定 + 前缀 + 加载状态
+
+```vue
+<script setup lang="ts">
+import { useForge, useForgeApi } from '@route-forge/vue'
+import { ref } from 'vue'
+
+// 绑定 admin 层级 + users 前缀：路由名自动补全为 admin.users.*
+const users = useForge('admin', 'users')
+// 带 loading / error 状态的调用（同样支持层级 + 前缀绑定）
+const { call: fetchOrders, pending, error } = useForgeApi('admin', 'orders')
+
+const user = ref(null)
+const editUrl = ref('')
+
+async function loadUser(id: number) {
+  // 直接调用 = api 快捷方式；响应已被拦截器解包为业务数据
+  user.value = await users('show', { user: id })
+  // URL 生成：路由链接、<a href>、window.open 等场景
+  editUrl.value = users.route('edit', { user: id })
+}
+
+async function loadOrders() {
+  const { data, error: err } = await fetchOrders('index', { query: { page: 1 } })
+  if (err) console.error('订单加载失败', err)
+}
+</script>
+
+<template>
+  <a :href="editUrl">编辑用户</a>
+  <p v-if="pending">订单加载中…</p>
+</template>
+```
+
+### 请求取消与错误处理
+
+```ts
+// 取消：forge.api() 返回的 ForgeRequest 自带 abort()
+const req = forge.api('admin', 'users.show', { user: 123 })
+req.abort()  // Promise reject 为 RequestAbortedError（RF_FE_009），请求被中止
+
+// 错误速查：所有错误均为 ForgeError 子类，带稳定 code 字段，可按 code 分支处理
+//   RF_FE_001 UnknownRouteError        路由名不存在
+//   RF_FE_002 UnknownLevelError        层级未声明
+//   RF_FE_003 MissingRouteParamError   必填路径参数缺失
+//   RF_FE_007 NetworkError             网络层失败（DNS/连接）
+//   RF_FE_008 HTTPError                HTTP 非 2xx（context.status 为状态码）
+//   RF_FE_009 RequestAbortedError      请求被取消
+```
+
 ## Adapter 适配
 
 `createRouteForge({ adapter })` 支持多种 HTTP 客户端策略：
