@@ -61,6 +61,7 @@ beforeEach(() => {
 
 afterEach(() => {
   (globalThis as any).fetch = originalFetch;
+  localStorage.clear();
   vi.restoreAllMocks();
 });
 
@@ -307,5 +308,64 @@ describe('useForge API trimming', () => {
     );
     expect(bound.levelLoaded).toBeDefined();
     await waitFor(() => expect(bound.isLoaded('public')).toBe(true));
+  });
+
+  it('levelLoaded flips from false to true and triggers re-render after load', async () => {
+    // 回归测试：旧实现只给闭包变量赋值、不 setState，组件不会重渲染（H8）
+    const rendered: boolean[] = [];
+
+    function C() {
+      const bound = useForge({ level: 'public' }) as any;
+      rendered.push(bound.levelLoaded);
+      return <div>{String(bound.levelLoaded)}</div>;
+    }
+
+    const { getByText } = render(
+      <RouteForgeProvider options={makeOptions()}>
+        <C />
+      </RouteForgeProvider>,
+    );
+    // 首次渲染：未加载 → false
+    expect(rendered[0]).toBe(false);
+    // 加载完成：state 更新 → 组件重渲染 → UI 显示 true
+    await waitFor(() => expect(getByText('true')).toBeTruthy());
+    expect(rendered[rendered.length - 1]).toBe(true);
+  });
+
+  it('levelLoaded initializes true when level already cached in storage', async () => {
+    // 回归测试：已缓存层级在新组件首帧即为 true（useState 初始化器读取 isLoaded）
+    const opts = {
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin' as const,
+      cache: { storage: 'localStorage' as const },
+    };
+
+    function Preload() {
+      useForge({ level: 'public' });
+      return null;
+    }
+    const first = render(
+      <RouteForgeProvider options={opts}>
+        <Preload />
+      </RouteForgeProvider>,
+    );
+    await waitFor(() => expect(localStorage.getItem('route-forge:public')).toBeTruthy());
+    first.unmount();
+
+    const seen: boolean[] = [];
+    function Late() {
+      const bound = useForge({ level: 'public' }) as any;
+      seen.push(bound.levelLoaded);
+      return <div>{String(bound.levelLoaded)}</div>;
+    }
+    // 第二个树是全新 forge 实例，但从 localStorage 读到缓存 → 首帧即 true
+    const second = render(
+      <RouteForgeProvider options={opts}>
+        <Late />
+      </RouteForgeProvider>,
+    );
+    expect(seen[0]).toBe(true);
+    second.unmount();
   });
 });

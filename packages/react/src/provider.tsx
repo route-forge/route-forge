@@ -139,32 +139,42 @@ export function useForge(opts?: {
   const level = opts?.level;
   const prefix = opts?.prefix;
 
-  return useMemo(() => {
-    if (level === undefined) {
-      return forge;
-    }
+  // React 特化：levelLoaded → boolean，由 setState 驱动组件重渲染。
+  // loadedRef 作为渲染期镜像，供 bound 上的 getter 读取最新值（bound 对象本身保持稳定）。
+  const [loaded, setLoaded] = useState(() =>
+    level !== undefined ? forge.isLoaded(level) : false,
+  );
+  const loadedRef = useRef(loaded);
+  loadedRef.current = loaded;
 
-    // 委托 core 的 use()
-    const bound = forge.use(level, prefix);
-
-    // React 特化：将 levelLoaded 从 Promise 替换为 boolean（通过闭包 + getter/setter 驱动）
-    // 先保存原始 Promise 以便异步更新
-    const originalPromise = bound.levelLoaded as Promise<void>;
-    let loadedValue = forge.isLoaded(level);
-    const boundWithBoolean = bound as unknown as ReactBoundForge;
-
-    Object.defineProperty(boundWithBoolean, 'levelLoaded', {
-      get() { return loadedValue; },
-      set(v: boolean) { loadedValue = v; },
+  const bound = useMemo(() => {
+    if (level === undefined) return null;
+    // 委托 core 的 use()（内部已触发 load）
+    const b = forge.use(level, prefix);
+    Object.defineProperty(b, 'levelLoaded', {
+      get() { return loadedRef.current; },
       enumerable: true,
       configurable: true,
     });
-
-    // 异步更新：level 加载完成后更新 boolean 值
-    originalPromise.then(() => {
-      loadedValue = true;
-    }).catch(() => { /* 加载失败保持 false */ });
-
-    return boundWithBoolean;
+    return b;
   }, [forge, level, prefix]);
+
+  useEffect(() => {
+    if (level === undefined || !bound) return;
+    // level / forge 切换时先同步当前缓存状态
+    const current = forge.isLoaded(level);
+    if (loadedRef.current !== current) setLoaded(current);
+    if (current) return;
+    let cancelled = false;
+    // forge.load 内部有 inflight 去重，与 createBoundForge 内部触发的 load 不会重复请求
+    forge.load(level).then(
+      () => { if (!cancelled) setLoaded(true); },
+      () => { /* 加载失败时 levelLoaded 保持 false */ },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [bound, forge, level]);
+
+  return level === undefined ? forge : (bound as unknown as ReactBoundForge);
 }
