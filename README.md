@@ -27,7 +27,7 @@ TypeScript 类型保护。
 | **隔离缓存**   | 每层级缓存独立存放，互不污染，支持 memory / sessionStorage / localStorage      |
 | **并发去重**   | 同层级并发请求自动合并为一次，避免首屏请求雪崩                                 |
 | **拦截器**     | 请求 / 响应拦截链，与 axios 行为一致（LIFO / FIFO），支持声明式注册和动态管理  |
-| **请求取消**   | 通过 `AbortSignal` 取消进行中的请求，与 timeout 协同工作                       |
+| **请求取消**   | `forge.api()` 返回的 `ForgeRequest` 自带 `abort()`，与 timeout 协同工作        |
 | **类型安全**   | 后端 Artisan 命令生成 TS 类型声明，路由名 → 参数 → 响应全链路编译期校验        |
 | **未分配层级** | 后端未标记层级的路由自动归入 `unassigned` 虚拟层级，前端可直接消费             |
 | **零侵入**     | 后端通过 Laravel macro 和 ServiceProvider 扩展，不修改框架核心                 |
@@ -146,10 +146,9 @@ const url = forge.route('public', 'login.show')
 await forge.load('admin')
 forge.invalidate('admin')
 
-// 请求取消（AbortSignal）
-const controller = new AbortController()
-const promise = forge.api('admin', 'users.show', { user: 123, signal: controller.signal })
-controller.abort()  // 取消请求，抛出 RequestAbortedError
+// 请求取消：ForgeRequest 自带 abort()，无需自行管理 AbortController
+const req = forge.api('admin', 'users.show', { user: 123 })
+req.abort()  // 取消请求，Promise reject 为 RequestAbortedError
 
 // 未分配层级 — 后端未标记 tier 的路由通过 'unassigned' 虚拟层级访问
 await forge.load('unassigned')

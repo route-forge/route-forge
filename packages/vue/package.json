@@ -1,6 +1,6 @@
 {
   "name": "@route-forge/vue",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Route Forge 的 Vue 3 集成：插件 + composable（useForge/useForgeApi/useForgeLevel/useForgeRoute/useForgeByPrefix）",
   "license": "MIT",
   "author": "阿杰很厉害 <506907958@qq.com>",
@@ -49,7 +49,7 @@
     "vue": "^3.4.0"
   },
   "dependencies": {
-    "@route-forge/core": "workspace:*"
+    "@route-forge/core": "workspace:^"
   },
   "publishConfig": {
     "access": "public"

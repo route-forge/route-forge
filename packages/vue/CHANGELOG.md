@@ -2,7 +2,15 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
-## Unreleased
+## 1.4.0 — 2026-08-28
+
+与 core 锁步发布，修复依赖锁定问题。
+
+### Changed
+
+- 依赖 `@route-forge/core` 从 `workspace:*`（发布为精确版本）改为 `workspace:^`（发布为 `^1.4.0`），
+  用户可独立升级 core 补丁
+- 承接 core 1.4.0 的元信息拦截链隔离与 `levelLoaded` reject 语义修复
 
 ### Tests
 

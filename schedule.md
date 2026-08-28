@@ -68,7 +68,7 @@
 
 | 优先级 | 项目 | 说明 |
 |--------|------|------|
-| P2 | 发布 Unreleased 内容 | 三个包 CHANGELOG 的 Unreleased 区待发版（建议 core 1.3.2 / vue & react 1.3.1） |
+| P1 | 完成 1.4.0 锁步发布 | 版本与 CHANGELOG 已就绪（1.4.0）；待：push + 打 tag（1.4.0 / core-1.4.0 / vue-1.4.0 / react-1.4.0）触发 CI；core 1.3.1 需 npm deprecate（需 npm 登录态，用户本地执行） |
 | P3 | 端到端示例项目（Laravel + Vue） | 已由根 README 完整示例章节替代；可运行示例暂缓 |
 | P3 | v1.x 路线图 | 可视化面板（v1.1）/ OpenAPI 桥接（v1.2）/ Vite 插件（v1.3）—— 均未启动，按需排期 |
 | — | 后端侧待办 | Laravel 9/10/11 兼容矩阵实测（仅 13.x 验证过），见独立仓库 |

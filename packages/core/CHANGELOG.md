@@ -2,7 +2,7 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
-## Unreleased
+## 1.4.0 — 2026-08-28
 
 ### Fixed
 
@@ -18,11 +18,13 @@
 
 - 补齐审计缺口，用例 181 → 217：adapter auto 检测/降级、自定义 Fetcher、invalidate 竞态、unassigned 真实层级分支、`useRoutePrefix`、`ready()` 语义、`onSummaryReady` 时序、signal 拦截器操作、类型推断回退等
 
-## 1.3.1 — 2026-08-28
+## 1.3.1 — 2026-08-28（已废弃，请使用 1.4.0+）
 
 ### Changed
 
-- 请求取消改为内置 AbortController：`forge.api()` 返回的 `ForgeRequest` 自带 `abort()` 方法，用户无需自行管理 AbortController
+- ⚠️ 请求取消改为内置 AbortController：`forge.api()` 返回的 `ForgeRequest` 自带 `abort()` 方法。
+  此为破坏性变更（旧写法传入 `signal` 参数将静默失效），误发为 patch 版本，已在 npm 标记 deprecated，
+  由 1.4.0 正式承接
 
 ## 1.3.0 — 2026-08-28
 
