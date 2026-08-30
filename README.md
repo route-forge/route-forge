@@ -267,6 +267,14 @@ const plugin = createRouteForgePlugin({
 
 app.use(plugin)
 // 注意：mount 已委托给 onSummaryReady，此处不再重复调用
+// 失败兜底：摘要端点不可达（网络错误/非 2xx/超时）时 onSummaryReady 不会触发，
+// app.mount 不执行 → 必须接住 ready() 的 reject，否则用户面对白屏
+plugin.ready().catch((err) => {
+  console.error('[route-forge] 初始化失败，应用未挂载', err)
+  // 按业务需要降级：渲染错误页 / 重试 / 上报
+  document.getElementById('app')!.innerHTML =
+    '<p>服务暂不可用，请刷新重试</p>'
+})
 ```
 
 ### 业务组件：层级绑定 + 前缀 + 加载状态

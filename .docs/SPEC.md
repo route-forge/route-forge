@@ -943,6 +943,12 @@ const plugin = createRouteForgePlugin({
   },
 });
 app.use(plugin);
+// 失败兜底：摘要端点不可达时 onSummaryReady 不触发、mount 不执行 →
+// 必须接住 ready() 的 reject（否则白屏且无任何提示）
+plugin.ready().catch((err) => {
+  console.error('[route-forge] init failed', err);
+  /* 按业务需要降级：错误页 / 重试 / 上报 */
+});
 // 也可直接挂载（不使用 onSummaryReady 回调）
 // app.mount('#app');
 ```
@@ -1068,6 +1074,8 @@ const plugin = createRouteForgePlugin({
   },
 });
 app.use(plugin);
+// 失败兜底（摘要端点不可达时 onSummaryReady 不触发，须接住 reject 避免白屏）：
+plugin.ready().catch((err) => { console.error('[route-forge] init failed', err); });
 
 // React 推荐初始化模式
 const forge = createRouteForge({
@@ -1075,6 +1083,7 @@ const forge = createRouteForge({
     ReactDOM.createRoot(document.getElementById('root')!).render(<App />);
   },
 });
+forge.ready().catch((err) => { console.error('[route-forge] init failed', err); });
 ```
 
 如果不使用 `onSummaryReady`，应用可能在路由数据就绪前渲染，此时 `route()` / `hasRoute()` 会触发

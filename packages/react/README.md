@@ -17,14 +17,19 @@ import { createRoot } from 'react-dom/client'
 import { RouteForgeProvider } from '@route-forge/react'
 import { createRouteForge } from '@route-forge/core'
 
-// 推荐：使用 onSummaryReady 回调确保路由数据就绪后再渲染
+// 推荐：在 onSummaryReady 回调中标记就绪后再渲染，并接住 ready() 失败
+const forgeReady = createRouteForge({
+  endpoint: '/_forge/routes',
+  onSummaryReady: () => { /* 路由数据已就绪 */ },
+})
+// 失败兜底：摘要端点不可达（网络错误/非 2xx/超时）时 onSummaryReady 不触发，
+// 须接住 ready() 的 reject，否则应用静默卡在初始化
+forgeReady.ready().catch((err) => {
+  console.error('[route-forge] init failed', err)
+})
+
 createRoot(document.getElementById('root')!).render(
-  <RouteForgeProvider options={{
-    endpoint: '/_forge/routes',
-    onSummaryReady: () => {
-      // 路由数据已就绪
-    },
-  }}>
+  <RouteForgeProvider options={{ endpoint: '/_forge/routes' }}>
     <App />
   </RouteForgeProvider>,
 )

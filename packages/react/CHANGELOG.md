@@ -4,6 +4,10 @@
 
 ## [Unreleased] v2.0.0
 
+### Docs
+
+- 文档补 onSummaryReady 失败兜底示例
+
 ### Fixed
 
 - `useForgeApi` 实现侧类型保真：`(forge as any).api(...)` 双重类型擦除改为按绑定形态分发的

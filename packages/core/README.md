@@ -208,6 +208,11 @@ const forge = createRouteForge({
     app.mount('#app')
   },
 })
+// 失败兜底：摘要端点不可达（网络错误/非 2xx/超时）时 onSummaryReady 不触发，
+// mount 不执行 → 必须接住 ready() 的 reject，否则用户面对白屏
+forge.ready().catch((err) => {
+  console.error('[route-forge] init failed', err)
+})
 ```
 
 ### `forge.ready()` 方法

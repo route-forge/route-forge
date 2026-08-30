@@ -4,6 +4,10 @@
 
 ## [Unreleased] v2.0.0
 
+### Docs
+
+- 文档补 onSummaryReady 失败兜底示例（摘要失败时回调不触发、mount 不执行，须接住 ready() 的 reject 避免白屏）
+
 ### Changed
 
 - 摘要端点拉取改走 adapter 原始通道（与层级路由表拉取同一 `requestRaw` 通道，跳过业务拦截链），
