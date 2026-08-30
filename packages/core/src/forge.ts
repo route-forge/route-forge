@@ -92,10 +92,14 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       const summaryUrl = explicitEndpoint; // GET {endpoint} = 摘要端点
       const resp = await fetch(summaryUrl, { method: 'GET' });
       if (!resp.ok) {
-        console.warn(
-          `[route-forge] summary endpoint ${summaryUrl} unreachable (HTTP ${resp.status}); falling back to explicit options`,
-        );
-        return null;
+        if (explicitLevels && explicitLevels.length > 0) {
+          console.warn(
+            `[route-forge] summary endpoint ${summaryUrl} unreachable (HTTP ${resp.status}); falling back to explicit options`,
+          );
+          return null;
+        }
+        // 未传 levels 且摘要端点返回非 2xx → 无可用降级，直接抛错（ready() 将 reject）
+        throw new UnknownLevelError('(auto-discovery)');
       }
       return (await resp.json()) as SummaryResponse;
     } catch (e) {
@@ -189,9 +193,13 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   // --- Auto-discovery 完成状态 + ready Promise ---
   let autoDiscoveryCompleted = false;
   let resolveReady!: (value: RouteForge) => void;
-  const readyPromise = new Promise<RouteForge>((resolve) => {
+  let rejectReady!: (reason?: unknown) => void;
+  const readyPromise = new Promise<RouteForge>((resolve, reject) => {
     resolveReady = resolve;
+    rejectReady = reject;
   });
+  // 无人调用 ready() 时防 unhandled rejection；不改变 reject 语义，订阅者仍能收到错误
+  readyPromise.catch(() => {});
 
   const cacheTtl = cacheOpts.ttl ?? DEFAULT_CACHE_TTL;
   const cacheStorage = cacheOpts.storage ?? 'memory';
@@ -602,7 +610,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     return result;
   }
 
-  // eager 层级自动加载 + onSummaryReady 回调 + ready Promise resolve
+  // eager 层级自动加载 + onSummaryReady 回调 + ready Promise settle
   // 不阻塞 createRouteForge 返回；在自动发现完成后触发
   void autoDiscoveryPromise
     .then(() => {
@@ -610,18 +618,28 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       autoDiscoveryCompleted = true;
       // 触发 onSummaryReady（eager load 之前）
       options.onSummaryReady?.();
-      // eager load
+      // eager load：单个层级失败不阻塞 ready（SPEC §4.1.9）。
+      // 失败以完整异常（含堆栈）抛出到控制台，且不缓存失败态——
+      // 后续 load()/api() 直接调用时会重试该层级，再失败时向调用方抛出
       if (effectiveEager.length > 0) {
-        return Promise.all(effectiveEager.map((lvl) => load(lvl))).catch((e) => {
-          console.warn(`[route-forge] eager load failed: ${(e as Error).message}`);
+        return Promise.allSettled(effectiveEager.map((lvl) => load(lvl))).then((results) => {
+          results.forEach((r, i) => {
+            if (r.status === 'rejected') {
+              console.error(
+                `[route-forge] eager load failed for level "${effectiveEager[i]}":`,
+                r.reason,
+              );
+            }
+          });
         });
       }
     })
     .then(() => {
       resolveReady(forgeInstance);
     })
-    .catch(() => {
-      /* 自动发现失败时不触发 eager / ready */
+    .catch((e) => {
+      // 自动发现失败（无可用降级）→ ready() reject 携带原始错误，不再永久挂起
+      rejectReady(e);
     });
 
   // --- ready() 方法：始终返回 Promise<this> ---

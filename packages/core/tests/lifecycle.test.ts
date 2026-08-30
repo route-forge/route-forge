@@ -252,8 +252,8 @@ describe('ready() semantics (H6 / M8)', () => {
     expect(result).toBe(forge);
   });
 
-  it('never resolves when auto-discovery fails without explicit levels', async () => {
-    // fetch 直接网络错误且未传 levels → summaryPromise 抛 UnknownLevelError
+  it('rejects with the original error when auto-discovery fails without explicit levels', async () => {
+    // fetch 直接网络错误且未传 levels → summaryPromise 抛 UnknownLevelError → ready() reject
     (globalThis as any).fetch = vi.fn(async () => {
       throw new Error('network down');
     });
@@ -263,18 +263,75 @@ describe('ready() semantics (H6 / M8)', () => {
       endpoint: '/_forge/routes',
       adapter: 'builtin',
     });
+    // 回调重载：onRejected 分支触发并携带原始错误
     void forge.ready(onFulfilled, onRejected);
-    // 等待足够时间：ready 既不 resolve 也不触发回调
     await new Promise((r) => setTimeout(r, 50));
     expect(onFulfilled).not.toHaveBeenCalled();
-    expect(onRejected).not.toHaveBeenCalled();
-    const settled = await Promise.race([
-      forge.ready().then(() => 'resolved'),
-      new Promise((r) => setTimeout(() => r('pending'), 30)),
-    ]);
-    expect(settled).toBe('pending');
-    // 错误在 load 调用时重新抛出（不丢失）
+    expect(onRejected).toHaveBeenCalledTimes(1);
+    // 无参模式：reject 携带错误（不再永久挂起）
+    await expect(forge.ready()).rejects.toThrow();
+    // 错误在 load 调用时同样重新抛出（不丢失）
     await expect(forge.load('public')).rejects.toThrow();
+  });
+
+  it('rejects when summary endpoint returns non-2xx without explicit levels', async () => {
+    // 摘要端点 HTTP 500 且无显式 levels → 无可用降级，ready() reject（原行为是谎报 resolve）
+    (globalThis as any).fetch = vi.fn(async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({}),
+      text: async () => '',
+      headers: new Headers(),
+    }));
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      adapter: 'builtin',
+    });
+    await expect(forge.ready()).rejects.toThrow();
+  });
+
+  it('eager load failure does not block ready, and direct calls retry then throw', async () => {
+    // eager 层级加载失败：ready 仍 resolve，异常以 console.error 抛出；
+    // 失败不缓存——直接调用 load()/api() 时重试，再失败向调用方抛出
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let levelFetchCalls = 0;
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url === '/_forge/routes') {
+        const summary = makeSummary(); // admin 为 eager
+        return {
+          ok: true, status: 200,
+          json: async () => summary,
+          text: async () => JSON.stringify(summary),
+          headers: new Headers({ 'content-type': 'application/json' }),
+        } as any;
+      }
+      // admin 层级拉取始终失败
+      levelFetchCalls++;
+      return {
+        ok: false, status: 500,
+        json: async () => ({}),
+        text: async () => '',
+        headers: new Headers(),
+      } as any;
+    });
+
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      adapter: 'builtin',
+    });
+    // eager 失败不阻塞：ready 照常 resolve
+    const resolved = await forge.ready();
+    expect(resolved).toBe(forge);
+    // 异常已抛出到控制台（含层级名）
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('eager load failed for level "admin"'),
+      expect.any(Error),
+    );
+    expect(levelFetchCalls).toBe(1);
+    // 开发者忽略异常后直接调用：重试加载（再次发请求），再失败时向调用方抛出
+    await expect(forge.load('admin')).rejects.toThrow();
+    expect(levelFetchCalls).toBe(2);
+    error.mockRestore();
   });
 });
 

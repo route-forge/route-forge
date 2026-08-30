@@ -1077,7 +1077,13 @@ auto-discovery 守卫错误（见下方）。
 
 ##### `forge.ready()` 方法
 
-`forge.ready()` 方法在 auto-discovery + eager load 全部完成后 resolve，始终返回 `Promise<RouteForge>`（resolve 值为 forge 实例自身），支持链式调用：
+`forge.ready()` 方法在 auto-discovery 成功 + eager load 全部尝试完成后 settle，始终返回 `Promise<RouteForge>`（resolve 值为 forge 实例自身），支持链式调用：
+
+- **resolve**：自动发现成功，且所有 eager 层级加载尝试完成。单个 eager 层级失败不阻塞
+  ready（仍 resolve），失败以完整异常（含堆栈）抛出到控制台（`console.error`）；失败不缓存
+  失败态，后续 `load()` / `api()` 直接调用时会重试该层级，再失败时向调用方抛出。
+- **reject**：自动发现失败（摘要端点网络错误或返回非 2xx，且未传显式 `levels` 无可用降级），
+  携带原始错误，不再永久挂起。
 
 ```ts
 const forge = createRouteForge({ /* ... */ });

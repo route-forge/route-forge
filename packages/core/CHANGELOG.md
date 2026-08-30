@@ -4,6 +4,15 @@
 
 ## [Unreleased] v2.0.0
 
+### Fixed
+
+- `ready()` 自动发现失败时改为 reject 并携带原始错误：原 `.catch(() => {})` 吞掉错误后
+  `ready()` 永久挂起（既不 resolve 也不 reject），调用方无感知；摘要端点返回非 2xx 且
+  未传显式 `levels`（无可用降级）时同样 reject（原行为是告警后谎报 resolve）
+- eager 层级加载失败不再静默 `console.warn`：改为逐层级 `console.error` 抛出完整异常
+  （含堆栈），且不阻塞 `ready()`；失败不缓存失败态，后续 `load()`/`api()` 直接调用时
+  重试该层级，再失败时向调用方抛出
+
 ### Removed
 
 - 移除 `UseForgeByPrefixReturn` 类型导出：vue/react 的 `useForgeByPrefix` 与 `useForge(level, prefix)`
