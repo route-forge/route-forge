@@ -196,23 +196,22 @@ unsub()
 | Level load     | 拉取某层级路由元数据           | `forge.isLoaded(level)`     |
 | API request    | 业务接口请求                   | `forge.isLoading()`         |
 
-### `onSummaryReady` 回调
+### `ready()` 后挂载应用
 
-推荐在回调中挂载应用，确保路由数据就绪：
+推荐在 `ready()` resolve 后挂载应用（auto-discovery + eager 层级全部完成），
+失败走 `catch`（onSummaryReady 回调已移除，统一走 ready——完整成功/失败语义链）：
 
 ```ts
 const forge = createRouteForge({
   endpoint: '/_forge/routes',
-  onSummaryReady: () => {
-    // 摘要端点完成，路由数据已可用
-    app.mount('#app')
-  },
 })
-// 失败兜底：摘要端点不可达（网络错误/非 2xx/超时）时 onSummaryReady 不触发，
-// mount 不执行 → 必须接住 ready() 的 reject，否则用户面对白屏
-forge.ready().catch((err) => {
-  console.error('[route-forge] init failed', err)
-})
+// 成功：摘要 + eager 完成后挂载；失败：接住 reject，避免静默白屏
+forge.ready()
+  .then(() => app.mount('#app'))
+  .catch((err) => {
+    console.error('[route-forge] init failed', err)
+    // 按业务需要降级：渲染错误页 / 重试 / 上报
+  })
 ```
 
 ### `forge.ready()` 方法

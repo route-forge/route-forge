@@ -317,16 +317,6 @@ export interface RouteForgeOptions {
   strict?: boolean;
   timeout?: number;
   baseURL?: string;
-  /**
-   * 摘要端点（auto-discovery）完成后的回调。
-   * 推荐用法：在回调中 mount 应用，确保 route() / hasRoute() 等同步方法可用。
-   * @example
-   * createRouteForgePlugin({
-   *   endpoint: '/_forge/routes',
-   *   onSummaryReady: () => app.mount('#app'),
-   * });
-   */
-  onSummaryReady?: () => void;
 }
 
 /**

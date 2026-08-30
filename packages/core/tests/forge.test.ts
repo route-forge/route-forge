@@ -1652,22 +1652,6 @@ describe('auto-discovery guard & callbacks', () => {
     }
   });
 
-  it('onSummaryReady callback fires after discovery completes', async () => {
-    const summary = makeSummary();
-    mockSummary(summary);
-    let readyCalled = false;
-    const forge = createRouteForge({
-      endpoint: '/_forge/routes',
-      levels: ['public'],
-      adapter: 'builtin',
-      onSummaryReady: () => {
-        readyCalled = true;
-      },
-    });
-    await forge.ready();
-    expect(readyCalled).toBe(true);
-  });
-
   it('forge.ready() resolves after discovery + eager load completes', async () => {
     const summary = makeSummary();
     mockFull(summary, {

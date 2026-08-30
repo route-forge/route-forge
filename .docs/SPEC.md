@@ -938,19 +938,16 @@ import {createRouteForgePlugin} from '@route-forge/vue';
 const app = createApp(App);
 const plugin = createRouteForgePlugin({
   /* 同 4.1.1 */
-  onSummaryReady: () => {
-    app.mount('#app');  // 推荐：在路由数据就绪后挂载应用
-  },
 });
 app.use(plugin);
-// 失败兜底：摘要端点不可达时 onSummaryReady 不触发、mount 不执行 →
-// 必须接住 ready() 的 reject（否则白屏且无任何提示）
-plugin.ready().catch((err) => {
+// 推荐：ready()（摘要发现 + eager 层级全部完成）后挂载应用
+// 失败兜底：摘要端点不可达时 ready() reject，必须接住（否则白屏且无任何提示）
+plugin.ready().then(() => {
+  app.mount('#app');
+}).catch((err) => {
   console.error('[route-forge] init failed', err);
   /* 按业务需要降级：错误页 / 重试 / 上报 */
 });
-// 也可直接挂载（不使用 onSummaryReady 回调）
-// app.mount('#app');
 ```
 
 ##### useForge — 核心 composable
@@ -1061,37 +1058,38 @@ Route Forge 的初始化涉及三个独立的异步阶段，理解它们的关�
 ③ API request（业务请求）      ──  forge.api() 发起的实际业务请求
 ```
 
-##### `onSummaryReady` 回调
+##### `forge.ready()` 方法（唯一初始化等待入口）
 
-`RouteForgeOptions` 新增 `onSummaryReady` 回调，在 auto-discovery（摘要端点）完成后触发。推荐在此回调中挂载应用，确保路由数据已就绪：
+> v2.0.0 移除了 `onSummaryReady` 回调，统一走 `ready()`：回调仅有成功通道，其设计曾导致
+> 失败被静默吞掉（ready 挂起 + 白屏无提示）。`ready()` 提供完整的成功/失败语义链，且 resolve
+> 时机更安全（eager 层级也已完成）。
+
+推荐在 `ready()` resolve 后挂载应用，确保路由数据已就绪：
 
 ```ts
 // Vue 推荐初始化模式
 const app = createApp(App);
-const plugin = createRouteForgePlugin({
-  onSummaryReady: () => {
-    app.mount('#app');  // 路由数据就绪后再挂载
-  },
-});
+const plugin = createRouteForgePlugin({ /* 同 4.1.1 */ });
 app.use(plugin);
-// 失败兜底（摘要端点不可达时 onSummaryReady 不触发，须接住 reject 避免白屏）：
-plugin.ready().catch((err) => { console.error('[route-forge] init failed', err); });
+plugin.ready()
+  .then(() => app.mount('#app'))  // 摘要 + eager 层级全部完成后挂载
+  .catch((err) => { console.error('[route-forge] init failed', err); });
 
 // React 推荐初始化模式
-const forge = createRouteForge({
-  onSummaryReady: () => {
+const forge = createRouteForge({ /* 同 4.1.1 */ });
+forge.ready()
+  .then(() => {
     ReactDOM.createRoot(document.getElementById('root')!).render(<App />);
-  },
-});
-forge.ready().catch((err) => { console.error('[route-forge] init failed', err); });
+  })
+  .catch((err) => { console.error('[route-forge] init failed', err); });
 ```
 
-如果不使用 `onSummaryReady`，应用可能在路由数据就绪前渲染，此时 `route()` / `hasRoute()` 会触发
+如果不等待 `ready()`，应用可能在路由数据就绪前渲染，此时 `route()` / `hasRoute()` 会触发
 auto-discovery 守卫错误（见下方）。
 
-##### `forge.ready()` 方法
+##### `forge.ready()` 签名与语义
 
-`forge.ready()` 方法在 auto-discovery 成功 + eager load 全部尝试完成后 settle，始终返回 `Promise<RouteForge>`（resolve 值为 forge 实例自身），支持链式调用：
+`ready()` 在 auto-discovery 成功 + eager load 全部尝试完成后 settle，始终返回 `Promise<RouteForge>`（resolve 值为 forge 实例自身），支持链式调用：
 
 - **resolve**：自动发现成功，且所有 eager 层级加载尝试完成。单个 eager 层级失败不阻塞
   ready（仍 resolve），失败以完整异常（含堆栈）抛出到控制台（`console.error`）；失败不缓存
@@ -1115,11 +1113,6 @@ forge.ready(
 // 链式调用：ready 返回 forge 自身
 const bound = await forge.ready().then(f => f.use('admin'));
 ```
-
-> `onSummaryReady` 在 discovery 完成后即触发（eager load 可能尚未完成）；`forge.ready()` 等待 discovery +
-> eager load 全部完成。
-> 如果只需要确保 `route()` / `hasRoute()` 可用，`onSummaryReady` 即可；如果需要 eager 层级也已加载，使用
-> `forge.ready()`。
 
 ##### `BoundForge.onLevelLoaded()` 方法
 
@@ -1159,7 +1152,7 @@ auto-discovery 即可知道层级存在。
 
 | 场景                              | 推荐方式                                         |
 |-----------------------------------|--------------------------------------------------|
-| 传统 SPA（document 加载后 mount） | `onSummaryReady` 回调中 mount 应用               |
+| 传统 SPA（document 加载后 mount） | `forge.ready().then(() => app.mount())`        |
 | 异步初始化（如 SSR hydration）    | `await forge.ready()` 后 mount                    |
 | IIFE 浏览器场景                    | `forge.ready().then(f => f.use('admin'))` 链式调用 |
 | 组件级懒加载                      | `useForge(level)` / `useForgeRoute` 内部自动处理 |
@@ -1328,7 +1321,6 @@ const forge = createRouteForge({
 | `strict`                | `boolean`                                    | `false`            | @deprecated 前端校验始终开启，此选项不被消费（见 §4.1.5）             |
 | `timeout`               | `number`                                     | `30000`            | 默认请求超时（毫秒）                                                  |
 | `baseURL`               | `string`                                     | `''`               | 前端 baseURL；为空时使用相对路径                                      |
-| `onSummaryReady`        | `() => void`                                 | `undefined`        | Auto-discovery 完成后回调；推荐在此回调中挂载应用（见 §4.1.9）        |
 
 ### 5.3 配置覆盖关系
 

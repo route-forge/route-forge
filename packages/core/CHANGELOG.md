@@ -4,6 +4,14 @@
 
 ## [Unreleased] v2.0.0
 
+### Removed
+
+- 移除 `onSummaryReady` 回调（breaking）：回调仅有成功通道，其设计曾导致失败被静默吞掉
+  （ready() 挂起 + 挂载白屏无提示，即问题 #2 的根源）。初始化统一走 `ready()`——
+  完整的成功/失败语义链，且 resolve 时机更安全（eager 层级也已完成）。
+  迁移：`onSummaryReady: () => app.mount('#app')` →
+  `forge.ready().then(() => app.mount('#app')).catch(err => { ... })`
+
 ### Docs
 
 - 文档补 onSummaryReady 失败兜底示例（摘要失败时回调不触发、mount 不执行，须接住 ready() 的 reject 避免白屏）

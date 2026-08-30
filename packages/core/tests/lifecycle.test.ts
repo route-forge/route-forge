@@ -1,12 +1,12 @@
 /**
- * 生命周期与时序测试：自动发现 / ready / onSummaryReady / BoundForge / invalidate 竞态
+ * 生命周期与时序测试：自动发现 / ready / BoundForge / invalidate 竞态
  *
  * 覆盖审计项：
  *   - H3：invalidate() 失效代数——加载期间被 invalidate 后，在途响应不回写缓存
  *   - H4：后端将 unassigned 注册为真实层级时走 HTTP 拉取（不走虚拟层级）
  *   - H5：BoundForge.useRoutePrefix() 返回绑定新前缀的 BoundForge
  *   - H6：ready() 回调重载；auto-discovery 失败时 ready 永不 resolve
- *   - H7：onSummaryReady 在 eager load 之前触发
+ *   - H7：ready() 在 eager load 完成后才 resolve（onSummaryReady 已移除）
  *   - M4：schemaVersion > 1 告警
  *   - M7：请求前已 abort → 不发出业务请求
  *   - M8：ready() resolve 值为 forge 实例自身
@@ -335,28 +335,21 @@ describe('ready() semantics (H6 / M8)', () => {
   });
 });
 
-// ─── H7：onSummaryReady 时序 ────────────────────────────────
+// ─── H7：ready() 时序（onSummaryReady 已移除，统一走 ready） ──
 
-describe('onSummaryReady timing (H7)', () => {
-  it('fires after discovery but before eager load', async () => {
+describe('ready() timing (H7)', () => {
+  it('resolves only after discovery AND eager levels are loaded', async () => {
     mockBackend(makeSummary(), { public: publicRoutes, admin: adminRoutes });
-    let loadedAtCallback: boolean | undefined;
-    let callbackFired = false;
     const forge = createRouteForge({
       endpoint: '/_forge/routes',
       levels: ['public', 'admin'],
       adapter: 'builtin',
-      onSummaryReady: () => {
-        callbackFired = true;
-        // admin 是后端 eager 层级：回调时不应已加载
-        loadedAtCallback = forge.isLoaded('admin');
-      },
     });
     await forge.ready();
-    expect(callbackFired).toBe(true);
-    expect(loadedAtCallback).toBe(false);
-    // ready 之后 eager 层级已完成加载
+    // ready resolve 后：eager 层级（admin）必然已完成加载；lazy 层级（public）未被触发
+    // （旧 onSummaryReady 在 eager 之前触发，挂载场景下反而是坑——见 v2.0.0 变更记录）
     expect(forge.isLoaded('admin')).toBe(true);
+    expect(forge.isLoaded('public')).toBe(false);
   });
 });
 

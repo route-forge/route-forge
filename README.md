@@ -261,15 +261,14 @@ const plugin = createRouteForgePlugin({
       }],
     ],
   },
-  // 推荐：摘要发现完成后再挂载应用，route()/hasRoute() 等同步方法即刻可用
-  onSummaryReady: () => app.mount('#app'),
 })
 
 app.use(plugin)
-// 注意：mount 已委托给 onSummaryReady，此处不再重复调用
-// 失败兜底：摘要端点不可达（网络错误/非 2xx/超时）时 onSummaryReady 不会触发，
-// app.mount 不执行 → 必须接住 ready() 的 reject，否则用户面对白屏
-plugin.ready().catch((err) => {
+// 推荐：摘要发现 + eager 层级全部完成后挂载应用，route()/hasRoute() 等同步方法即刻可用
+// 注意：mount 已委托给 ready().then，此处不再重复调用
+// 失败兜底：摘要端点不可达（网络错误/非 2xx/超时）时 ready() reject，
+// 必须接住，否则用户面对白屏（onSummaryReady 已移除，统一走 ready）
+plugin.ready().then(() => app.mount('#app')).catch((err) => {
   console.error('[route-forge] 初始化失败，应用未挂载', err)
   // 按业务需要降级：渲染错误页 / 重试 / 上报
   document.getElementById('app')!.innerHTML =

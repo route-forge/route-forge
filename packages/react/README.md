@@ -17,22 +17,23 @@ import { createRoot } from 'react-dom/client'
 import { RouteForgeProvider } from '@route-forge/react'
 import { createRouteForge } from '@route-forge/core'
 
-// 推荐：在 onSummaryReady 回调中标记就绪后再渲染，并接住 ready() 失败
-const forgeReady = createRouteForge({
+// 推荐：Provider 外先建 forge，ready()（摘要 + eager 层级全部完成）后再渲染
+// （onSummaryReady 回调已移除，统一走 ready——完整成功/失败语义链）
+const forge = createRouteForge({
   endpoint: '/_forge/routes',
-  onSummaryReady: () => { /* 路由数据已就绪 */ },
 })
-// 失败兜底：摘要端点不可达（网络错误/非 2xx/超时）时 onSummaryReady 不触发，
-// 须接住 ready() 的 reject，否则应用静默卡在初始化
-forgeReady.ready().catch((err) => {
-  console.error('[route-forge] init failed', err)
-})
-
-createRoot(document.getElementById('root')!).render(
-  <RouteForgeProvider options={{ endpoint: '/_forge/routes' }}>
-    <App />
-  </RouteForgeProvider>,
-)
+forge.ready()
+  .then(() => {
+    createRoot(document.getElementById('root')!).render(
+      <RouteForgeProvider options={{ endpoint: '/_forge/routes' }}>
+        <App />
+      </RouteForgeProvider>,
+    )
+  })
+  .catch((err) => {
+    // 失败兜底：摘要端点不可达（网络错误/非 2xx/超时）时接住 reject，避免静默卡在初始化
+    console.error('[route-forge] init failed', err)
+  })
 ```
 
 ## useForge — 核心 hook

@@ -629,14 +629,12 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     return result;
   }
 
-  // eager 层级自动加载 + onSummaryReady 回调 + ready Promise settle
+  // eager 层级自动加载 + ready Promise settle
   // 不阻塞 createRouteForge 返回；在自动发现完成后触发
   void autoDiscoveryPromise
     .then(() => {
       // 摘要处理完成 → auto-discovery 已完成（eager load 之前设置，确保 level 加载后 route() 可用）
       autoDiscoveryCompleted = true;
-      // 触发 onSummaryReady（eager load 之前）
-      options.onSummaryReady?.();
       // eager load：单个层级失败不阻塞 ready（SPEC §4.1.9）。
       // 失败以完整异常（含堆栈）抛出到控制台，且不缓存失败态——
       // 后续 load()/api() 直接调用时会重试该层级，再失败时向调用方抛出

@@ -404,18 +404,17 @@ describe('useForge API trimming', () => {
   });
 });
 
-describe('onSummaryReady via plugin options (M5)', () => {
-  it('fires after auto-discovery completes, before ready() resolves', async () => {
-    const order: string[] = [];
+describe('plugin.ready() (M5)', () => {
+  it('resolves after auto-discovery + eager load; recommended mount entry', async () => {
     const plugin = createRouteForgePlugin({
       endpoint: '/_forge/routes',
       levels: ['public'],
       adapter: 'builtin',
-      onSummaryReady: () => order.push('summary'),
     });
-    await plugin.ready();
-    order.push('ready');
-    // 回调在 ready 之前触发且只触发一次（推荐在此挂载应用）
-    expect(order).toEqual(['summary', 'ready']);
+    // onSummaryReady 已移除（v2.0.0）：挂载应用统一走 ready().then(...)，
+    // 失败走 .catch —— 完整的成功/失败语义链
+    const mounted = await plugin.ready().then(() => true).catch(() => false);
+    expect(mounted).toBe(true);
+    expect(plugin.ready).toBeTypeOf('function');
   });
 });

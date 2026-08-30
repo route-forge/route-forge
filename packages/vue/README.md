@@ -19,21 +19,18 @@ import App from './App.vue'
 
 const plugin = createRouteForgePlugin({
   endpoint: '/_forge/routes',
-  onSummaryReady: () => {
-    // 推荐：在路由数据就绪后挂载应用
-    app.mount('#app')
-  },
 })
 
 const app = createApp(App)
 app.use(plugin)
-// 失败兜底：摘要端点不可达（网络错误/非 2xx/超时）时 onSummaryReady 不触发，
-// mount 不执行 → 必须接住 ready() 的 reject，否则用户面对白屏
-plugin.ready().catch((err) => {
-  console.error('[route-forge] init failed', err)
-})
-// 如果不使用 onSummaryReady 回调，也可以直接挂载
-// app.mount('#app')
+// 推荐：ready()（摘要 + eager 层级全部完成）后再挂载应用
+// （onSummaryReady 回调已移除，统一走 ready——完整成功/失败语义链）
+plugin.ready()
+  .then(() => app.mount('#app'))
+  .catch((err) => {
+    // 失败兜底：摘要端点不可达（网络错误/非 2xx/超时）时接住 reject，避免静默白屏
+    console.error('[route-forge] init failed', err)
+  })
 ```
 
 ## useForge — 核心 composable

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
-import { StrictMode, useContext } from 'react';
+import { StrictMode, useContext, useEffect } from 'react';
 import {
   ForgeContext,
   RouteForgeProvider,
@@ -489,16 +489,22 @@ describe('useForgeRoute reactivity (M3)', () => {
   });
 });
 
-describe('onSummaryReady via provider options (M5)', () => {
-  it('fires after auto-discovery completes', async () => {
-    const cb = vi.fn();
+describe('forge ready via provider (M5)', () => {
+  it('ready() resolves after auto-discovery + eager load', async () => {
+    // onSummaryReady 已移除（v2.0.0）：统一走 ready().then/.catch
+    let resolved = false;
+    function C() {
+      const forge = useContext(ForgeContext);
+      useEffect(() => {
+        forge!.ready().then(() => { resolved = true; });
+      }, [forge]);
+      return <div />;
+    }
     render(
-      <RouteForgeProvider
-        options={{ endpoint: '/_forge/routes', levels: ['public'], adapter: 'builtin', onSummaryReady: cb }}
-      >
-        <div />
+      <RouteForgeProvider options={{ endpoint: '/_forge/routes', levels: ['public'], adapter: 'builtin' }}>
+        <C />
       </RouteForgeProvider>,
     );
-    await waitFor(() => expect(cb).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(resolved).toBe(true));
   });
 });

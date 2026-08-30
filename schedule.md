@@ -60,7 +60,7 @@
 - fix(core)：`BoundForge.levelLoaded` 加载失败保持 reject 语义，`onLevelLoaded`
   的 onRejected 分支可达
 - 补齐审计缺口 39 个用例：adapter 全路径 / invalidate 竞态 / unassigned 真实层级 /
-  useRoutePrefix / ready 语义 / onSummaryReady 时序 / abort 短路 / 类型推断等
+  useRoutePrefix / ready 语义（含失败 reject）/ abort 短路 / 类型推断等
 
 ---
 
