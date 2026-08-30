@@ -548,6 +548,10 @@ await forge.load(['client', 'manage']);
 - 调用 `forge.invalidate(level?)` 手动失效：传参失效指定层级，不传则失效全部。
 - `forge.isLoaded(level?)` 检查缓存状态：传参检查指定层级是否已加载，不传检查全部已声明层级。
 - `storage: 'localStorage'` 时，跨会话保留路由表；`sessionStorage` 仅当前标签页有效；`memory` 重载即丢。
+- storage 模式内存镜像：读盘解析（`getItem` + `JSON.parse` 整层路由表）是同步阻塞操作，
+  `route()`/`api()` 热路径上重复执行代价高。首次读取解析后条目驻留内存，后续 `get` 直接命中；
+  写操作（`set`/`del`/`clear`）同步更新镜像；其他标签页修改 storage 时通过 `storage` 事件失效
+  对应镜像，跨标签页新鲜度与无镜像时一致。镜像内同样执行 TTL 检查，不产生过期数据驻留。
 - 虚拟层级 `unassigned`：路由数据直接来自摘要端点（不发独立 HTTP 请求），缓存条目在
   `forge.load('unassigned')` 时从已获取的摘要数据构建，TTL 使用前端 `cache.ttl` 兜底（摘要契约未为 unassigned 单独下发 `cache` 字段）。
 

@@ -6,6 +6,10 @@
  * - 每层级独立条目，互不污染（cache key = `route-forge:${level}`）
  * - TTL 优先用后端响应里的 cache 字段，本地 cache.ttl 仅作兜底
  * - storage: 'memory' | 'sessionStorage' | 'localStorage'
+ * - storage 模式下维护内存镜像：首次读盘解析后驻留内存，后续 get 直接命中
+ *   （读盘 + JSON.parse 整层路由表是同步阻塞操作，热路径重复执行代价高）；
+ *   写操作（set/del/clear）同步更新镜像，并通过 storage 事件感知其他
+ *   tab 的写入/失效，保证跨 tab 新鲜度与无镜像时一致
  */
 
 import type { CacheStorage, LevelRoutesResponse, RouteMeta } from './types.js';
@@ -36,11 +40,22 @@ export class RouteCache {
   private readonly fallbackTtl: number;
   private readonly backend: Storage | null;
   private readonly memory = new Map<string, CacheEntry>();
+  /** 其他 tab 修改 storage 时失效对应镜像（storage 事件：自己的写不触发，自己的写经 set/del 已同步） */
+  private readonly onStorageEvent = (e: StorageEvent): void => {
+    if (!e.key) return; // key 为 null 表示 clear() 清空了整个 storage
+    if (!e.key.startsWith(KEY_PREFIX)) return;
+    // 去掉前缀得到 level（key 构造无 encode，反向切片即可）
+    this.memory.delete(e.key.slice(KEY_PREFIX.length));
+  };
 
   constructor(opts: { storage: CacheStorage; ttl: number }) {
     this.storage = opts.storage;
     this.fallbackTtl = opts.ttl;
     this.backend = pickStorage(opts.storage);
+    // 仅 storage 模式需要监听跨 tab 变更；typeof 防御 SSR/非浏览器环境
+    if (this.backend && typeof globalThis.addEventListener === 'function') {
+      globalThis.addEventListener('storage', this.onStorageEvent);
+    }
   }
 
   private key(level: string): string {
@@ -51,6 +66,10 @@ export class RouteCache {
     if (this.storage === 'memory' || !this.backend) {
       return this.getFromMemory(level);
     }
+    // 1. 内存镜像优先：命中则免读盘+解析（getFromMemory 内含 TTL 检查，过期自动剔除）
+    const mirrored = this.getFromMemory(level);
+    if (mirrored) return mirrored;
+    // 2. 镜像 miss（首次读取 / TTL 过期 / 跨 tab 失效后）→ 读盘解析
     const raw = this.backend.getItem(this.key(level));
     if (raw) {
       try {
@@ -59,13 +78,14 @@ export class RouteCache {
           this.del(level);
           return undefined;
         }
+        // 3. 写入镜像，后续 get 直接走内存
+        this.memory.set(level, entry);
         return entry;
       } catch {
         return undefined;
       }
     }
-    // storage 写入曾失败（如配额满/被禁用）时，条目可能仅存在于内存回退中，需兼顾读取
-    return this.getFromMemory(level);
+    return undefined;
   }
 
   private getFromMemory(level: string): CacheEntry | undefined {
@@ -94,15 +114,15 @@ export class RouteCache {
       ttl,
       cachedAt: Date.now(),
     };
+    // 无条件先写内存镜像：写入方自己立刻享受内存命中（不再每次 get 重新读盘解析）
+    this.memory.set(resp.level, entry);
     if (this.storage === 'memory' || !this.backend) {
-      this.memory.set(resp.level, entry);
       return;
     }
     try {
       this.backend.setItem(this.key(resp.level), JSON.stringify(entry));
     } catch {
-      // 容量满或被禁用：回退内存
-      this.memory.set(resp.level, entry);
+      // 容量满或被禁用：镜像已写入，backend 跳过（读取路径仍可命中内存）
     }
   }
 

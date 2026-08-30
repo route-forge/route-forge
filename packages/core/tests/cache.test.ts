@@ -180,6 +180,111 @@ describe('RouteCache — persistent storage backend', () => {
   });
 });
 
+describe('RouteCache — storage 模式内存镜像', () => {
+  let storage: FakeStorage;
+  /** node 的 globalThis 不是 EventTarget：临时挂最小分发器，模拟浏览器 storage 事件 */
+  let listeners: ((e: Event) => void)[] = [];
+
+  beforeEach(() => {
+    storage = new FakeStorage();
+    (globalThis as any).localStorage = storage;
+    listeners = [];
+    (globalThis as any).addEventListener = (type: string, cb: (e: Event) => void) => {
+      if (type === 'storage') listeners.push(cb);
+    };
+    (globalThis as any).dispatchEvent = (ev: Event) => {
+      for (const cb of listeners) cb(ev);
+      return true;
+    };
+  });
+  afterEach(() => {
+    delete (globalThis as any).localStorage;
+    delete (globalThis as any).addEventListener;
+    delete (globalThis as any).dispatchEvent;
+  });
+
+  /** 手动派发 storage 事件（模拟其他 tab 写入） */
+  function dispatchStorageEvent(key: string | null): void {
+    const ev = new Event('storage') as StorageEvent;
+    Object.defineProperty(ev, 'key', { value: key });
+    (globalThis as any).dispatchEvent(ev);
+  }
+
+  it('second get hits memory mirror — getItem called only once', () => {
+    // 预置一条 storage 条目（模拟页面刷新后残留的持久化缓存）
+    storage.setItem(
+      'route-forge:public',
+      JSON.stringify({ level: 'public', routes: makeResp('public').routes, ttl: 60, cachedAt: Date.now() }),
+    );
+    const getItemSpy = vi.spyOn(storage, 'getItem');
+
+    const cache = new RouteCache({ storage: 'localStorage', ttl: 60 });
+    const first = cache.get('public');
+    const second = cache.get('public');
+    const third = cache.get('public');
+
+    expect(first).toBeDefined();
+    expect(second).toBe(first);
+    expect(third).toBe(first);
+    // 热路径只允许一次读盘：后续 get 全部命中内存镜像
+    expect(getItemSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('set writes memory mirror immediately — subsequent get never reads storage', () => {
+    const cache = new RouteCache({ storage: 'localStorage', ttl: 60 });
+    cache.set(makeResp('public'));
+    const getItemSpy = vi.spyOn(storage, 'getItem');
+    expect(cache.get('public')!.routes['user.show']).toBeDefined();
+    expect(cache.get('public')!.routes['user.show']).toBeDefined();
+    // 写入方自己的镜像已就位，读盘零次
+    expect(getItemSpy).not.toHaveBeenCalled();
+  });
+
+  it('storage event from another tab invalidates the mirror', () => {
+    const cache = new RouteCache({ storage: 'localStorage', ttl: 60 });
+    cache.set(makeResp('public'));
+    expect(cache.get('public')).toBeDefined();
+
+    // 其他 tab 删除该条目（storage 数据与镜像同步消失）→ get 返回 undefined
+    storage.removeItem('route-forge:public');
+    dispatchStorageEvent('route-forge:public');
+    expect(cache.get('public')).toBeUndefined();
+
+    // 其他 tab 写入新版本 → 镜像失效 → 下次 get 重新读盘拿到新数据
+    const fresh = {
+      level: 'public',
+      routes: { 'v2.route': { name: 'v2.route', uri: 'v2', methods: ['GET'], parameters: [] } },
+      ttl: 60,
+      cachedAt: Date.now(),
+    };
+    storage.setItem('route-forge:public', JSON.stringify(fresh));
+    dispatchStorageEvent('route-forge:public');
+    expect(cache.get('public')!.routes['v2.route']).toBeDefined();
+  });
+
+  it('storage event with non-route-forge key or null key does not touch the mirror', () => {
+    const cache = new RouteCache({ storage: 'localStorage', ttl: 60 });
+    cache.set(makeResp('public'));
+    dispatchStorageEvent('other-app:key');
+    dispatchStorageEvent(null);
+    expect(cache.get('public')).toBeDefined();
+  });
+
+  it('mirror still expires by TTL — no stale data served from memory', () => {
+    vi.useFakeTimers();
+    try {
+      const cache = new RouteCache({ storage: 'localStorage', ttl: 5 });
+      cache.set(makeResp('public'));
+      vi.advanceTimersByTime(6_000);
+      // TTL 检查在内存路径内执行：镜像中的过期条目同样被剔除
+      expect(cache.get('public')).toBeUndefined();
+      expect(storage.getItem('route-forge:public')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('RouteCache — storage unavailable fallback', () => {
   it('falls back to memory when requested storage missing in host', () => {
     // node 环境默认无 sessionStorage → pickStorage 返回 null → 走内存

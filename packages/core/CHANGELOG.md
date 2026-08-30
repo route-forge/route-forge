@@ -4,6 +4,14 @@
 
 ## [Unreleased] v2.0.0
 
+### Performance
+
+- storage 模式（sessionStorage/localStorage）新增内存镜像：原 `route()`/`api()` 热路径上每次
+  `cache.get()` 都执行 `getItem` + `JSON.parse` 整层路由表（同步阻塞主线程，路由表大/链接多时
+  放大明显）。现在首次读盘解析后条目驻留内存，后续 `get` 直接命中；`set` 写入即建镜像；
+  其他标签页修改 storage 时通过 `storage` 事件失效对应镜像，跨标签页新鲜度与原实现一致；
+  镜像内同样执行 TTL 检查，无过期数据驻留
+
 ### Fixed
 
 - `ready()` 自动发现失败时改为 reject 并携带原始错误：原 `.catch(() => {})` 吞掉错误后
