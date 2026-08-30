@@ -1,7 +1,7 @@
 # @route-forge/vue
 
 Route Forge 的 Vue 3 集成：插件 + composable（`useForge` / `useForgeApi` /
-`useForgeRoute` / `useForgeByPrefix`）。
+`useForgeRoute`）。
 
 ## 安装
 
@@ -94,7 +94,6 @@ forge.api('search.show', {
 import {
   useForgeApi,
   useForgeRoute,
-  useForgeByPrefix,
 } from '@route-forge/vue'
 
 // useForgeApi — 带 loading/error 状态的 API 调用
@@ -104,10 +103,6 @@ const { data } = await call('admin', 'users.show', { user: 1 })
 // useForgeRoute — 响应式 URL 生成器，内部处理 level 加载状态
 // level 未加载时返回 ''，加载后自动更新
 const url = useForgeRoute('public', 'login.show')
-
-// useForgeByPrefix — 层级 + 名字前缀封装
-const { api, route } = useForgeByPrefix('admin', 'users')
-await api('show', { user: 1 })   // = forge.api('admin', 'users.show', { user: 1 })
 ```
 
 ## 模板内使用

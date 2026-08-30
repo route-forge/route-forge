@@ -457,9 +457,3 @@ export interface UseForgeApiBoundReturn<L extends string, PendingType = unknown,
   error: ErrorType;
   call: UseForgeApiBoundCall<L>;
 }
-
-/** useForgeByPrefix 返回类型 */
-export interface UseForgeByPrefixReturn {
-  api: (suffix: string, params?: ApiCallParams) => Promise<unknown>;
-  route: (suffix: string, params?: Record<string, unknown>) => string;
-}

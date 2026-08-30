@@ -8,6 +8,9 @@ build/
 *.tsbuildinfo
 .turbo/
 
+# Agent scratchpad
+.trash/
+
 # IDE / OS
 .idea/
 .vscode/*

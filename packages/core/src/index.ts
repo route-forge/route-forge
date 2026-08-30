@@ -45,7 +45,6 @@ export type {
   UseForgeApiBoundCall,
   UseForgeApiReturn,
   UseForgeApiBoundReturn,
-  UseForgeByPrefixReturn,
 } from './types.js';
 
 export type { RouteResolver } from './resolveRouteName.js';

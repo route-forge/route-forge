@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick } from 'vue';
 import { mount } from '@vue/test-utils';
-import { createRouteForgePlugin, useForge, useForgeByPrefix } from '../src/index.js';
+import { createRouteForgePlugin, useForge } from '../src/index.js';
 import type { LevelRoutesResponse, SummaryResponse } from '@route-forge/core';
 
 // ─── mock helpers ───────────────────────────────────────────
@@ -211,107 +211,5 @@ describe('useForge with prefix — smart route name resolution', () => {
     } catch (e: any) {
       expect(e.message).not.toContain('not found');
     }
-  });
-});
-
-describe('useForgeByPrefix — smart route name resolution', () => {
-  it('suffix without prefix → auto-join', async () => {
-    const wrapper = mountWithForge(() => {
-      const { route } = useForgeByPrefix('admin', 'users');
-      return { route };
-    }, {
-      'users.show': {
-        name: 'users.show',
-        uri: 'users/{user}',
-        methods: ['GET'],
-        parameters: ['user'],
-      },
-    });
-
-    await waitForLoad();
-
-    const { route } = (wrapper.vm as any);
-    const url = route('show', { user: 1 });
-    expect(url).toContain('users/1');
-  });
-
-  it('ambiguous: joined exists → use joined', async () => {
-    const wrapper = mountWithForge(() => {
-      const { route } = useForgeByPrefix('admin', 'users');
-      return { route };
-    }, {
-      'users.users.show': {
-        name: 'users.users.show',
-        uri: 'users/users/show',
-        methods: ['GET'],
-        parameters: [],
-      },
-      'users.show': { name: 'users.show', uri: 'users/show', methods: ['GET'], parameters: [] },
-    });
-
-    await waitForLoad();
-
-    const { route } = (wrapper.vm as any);
-    const url = route('users.show');
-    expect(url).toContain('users/users/show');
-  });
-
-  it('ambiguous: joined NOT exists → fallback to suffix', async () => {
-    const wrapper = mountWithForge(() => {
-      const { route } = useForgeByPrefix('admin', 'users');
-      return { route };
-    }, {
-      'users.show': { name: 'users.show', uri: 'users/show', methods: ['GET'], parameters: [] },
-    });
-
-    await waitForLoad();
-
-    const { route } = (wrapper.vm as any);
-    const url = route('users.show');
-    expect(url).toContain('users/show');
-  });
-
-  it('ambiguous: neither exists → throws', async () => {
-    const wrapper = mountWithForge(() => {
-      const { route } = useForgeByPrefix('admin', 'users');
-      return { route };
-    }, {
-      'other.route': { name: 'other.route', uri: 'other', methods: ['GET'], parameters: [] },
-    });
-
-    await waitForLoad();
-
-    const { route } = (wrapper.vm as any);
-    expect(() => route('users.show')).toThrow(/Route "users\.users\.show" not found/);
-  });
-
-  it('empty suffix → returns prefix route', async () => {
-    const wrapper = mountWithForge(() => {
-      const { route } = useForgeByPrefix('admin', 'users');
-      return { route };
-    }, {
-      'users': { name: 'users', uri: 'users', methods: ['GET'], parameters: [] },
-    });
-
-    await waitForLoad();
-
-    const { route } = (wrapper.vm as any);
-    const url = route('');
-    expect(url).toContain('users');
-  });
-
-  it('custom separator works', async () => {
-    const wrapper = mountWithForge(() => {
-      const { route } = useForgeByPrefix('admin', 'users', '/');
-      return { route };
-    }, {
-      'users/show': { name: 'users/show', uri: 'users/show', methods: ['GET'], parameters: [] },
-    });
-
-    await waitForLoad();
-
-    const { route } = (wrapper.vm as any);
-    const url = route('show');
-    expect(url).toContain('users/show');
   });
 });

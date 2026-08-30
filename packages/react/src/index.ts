@@ -18,6 +18,3 @@ export type {
 } from './hooks/useForgeApi.js';
 
 export { useForgeRoute } from './hooks/useForgeRoute.js';
-
-export { useForgeByPrefix } from './hooks/useForgeByPrefix.js';
-export type { UseForgeByPrefixReturn } from './hooks/useForgeByPrefix.js';

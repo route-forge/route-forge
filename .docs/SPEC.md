@@ -1018,7 +1018,7 @@ declare function useForge(): RouteForge;
 
 ```vue
 <script setup lang="ts">
-import {useForgeApi, useForgeRoute, useForgeByPrefix} from '@route-forge/vue';
+import {useForgeApi, useForgeRoute} from '@route-forge/vue';
 
 // useForgeApi：包装 forge.api()，自动管理 loading/error 状态
 const {call, pending, error} = useForgeApi();
@@ -1027,19 +1027,13 @@ const {data} = await call('admin', 'users.show', {user: 123});
 // useForgeRoute：响应式 URL 生成器，内部处理 level 加载状态
 // level 未加载时返回 ''，加载后自动更新
 const url = useForgeRoute('public', 'login.show');
-
-// useForgeByPrefix：带层级 + 名字前缀的封装
-const {api, route} = useForgeByPrefix('admin', 'users');
-await api('show', {user: 1});   // = forge.api('admin', 'users.show', {user: 1})
 </script>
 ```
 
 插件提供的完整能力清单：
 
-- `useForge(level?, prefix?)`：获取 forge 实例。不传 level 返回完整 `RouteForge` 实例；传 level 时内部调用 `forge.use(level, prefix?)`，自动触发 load，提供同步方法 + `levelLoaded` 响应式状态 + `onLevelLoaded()` / `useRoutePrefix()` 等 BoundForge 方法。
+- `useForge(level?, prefix?)`：获取 forge 实例。不传 level 返回完整 `RouteForge` 实例；传 level 时内部调用 `forge.use(level, prefix?)`，自动触发 load，提供同步方法 + `levelLoaded` 响应式状态 + `onLevelLoaded()` / `useRoutePrefix()` 等 BoundForge 方法。名字前缀由 `prefix` 参数承担（智能前缀消解与 `useForgeByPrefix` 相同，后者已移除）。
 - `useForgeApi()`：包装 `forge.api()`，自动管理 loading/error 状态。
-- `useForgeByPrefix(level, prefix)`：带指定层级和名字前缀的封装，`route` 方法在 level 未加载时返回
-  `''`。
 - `useForgeRoute(level, name, params?)`：响应式 URL 生成器，内部处理 level 加载状态，未加载返回 `''`
   ，加载后自动更新。
 - 全局属性 `$forge` 与模板内 `{{ $forge.route('admin', 'users.show', { user: 1 }) }}` 工具函数。
@@ -1445,8 +1439,8 @@ class ForgeError extends Error {
 - ✅ 后端：层级分配（3 种方式）、五级优先级、元信息端点、摘要端点、`middleware_match`（any/all/DNF）、缓存、`php artisan route:forge:list`、`php artisan route:forge:types` Artisan 命令
 - ✅ 前端：懒加载、隔离缓存、并发去重、拦截器、严格模式、摘要端点自动发现
 - ✅ Adapter：auto 检测、内置 builtin、axios 复用、自定义 Fetcher
-- ✅ Vue 插件：`useForge(level?, prefix?)`（内部委托 `forge.use()`，层级绑定 + `levelLoaded` Ref）/`useForgeApi`/`useForgeRoute`/`useForgeByPrefix`
-- ✅ React 集成：`RouteForgeProvider` / `useForge({ level?, prefix? })`（内部委托 `forge.use()`，`levelLoaded` boolean） / `useForgeApi` / `useForgeRoute` / `useForgeByPrefix`
+- ✅ Vue 插件：`useForge(level?, prefix?)`（内部委托 `forge.use()`，层级绑定 + `levelLoaded` Ref）/`useForgeApi`/`useForgeRoute`
+- ✅ React 集成：`RouteForgeProvider` / `useForge({ level?, prefix? })`（内部委托 `forge.use()`，`levelLoaded` boolean） / `useForgeApi` / `useForgeRoute`
 - ✅ Core API：`forge.ready()` 方法（返回 `Promise<RouteForge>`）/ `forge.use(level?, prefix?)` 统一绑定入口 / `BoundForge` 接口（`onLevelLoaded()` / `useRoutePrefix()`）
 
 ### 8.2 v1.x 路线图

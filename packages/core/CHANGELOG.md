@@ -2,6 +2,13 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [Unreleased] v2.0.0
+
+### Removed
+
+- 移除 `UseForgeByPrefixReturn` 类型导出：vue/react 的 `useForgeByPrefix` 与 `useForge(level, prefix)`
+  功能重复，已随框架包一并移除（breaking change）
+
 ## 1.4.0 — 2026-08-28
 
 ### Fixed

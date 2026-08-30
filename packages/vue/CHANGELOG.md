@@ -2,6 +2,14 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [Unreleased] v2.0.0
+
+### Removed
+
+- 移除 `useForgeByPrefix` composable：与 `useForge(level, prefix)` 功能重复（前者为后者的严格子集，
+  仅多一个 separator 参数），统一入口减少心智负担。前缀绑定请改用 `useForge(level, prefix)`（Vue）/
+  `useForge({ level, prefix })`（React），智能前缀消解行为完全一致
+
 ## 1.4.0 — 2026-08-28
 
 与 core 锁步发布，修复依赖锁定问题。

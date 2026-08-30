@@ -36,13 +36,13 @@
 #### 3. Vue 3 插件（100%）
 - `createRouteForgePlugin`（provide + `$forge.route` + ready）
 - `useForge(level?, prefix?)`（levelLoaded → Ref<boolean>）
-- `useForgeApi` / `useForgeRoute`（未加载返回 ''）/ `useForgeByPrefix`（智能前缀消解）
+- `useForgeApi` / `useForgeRoute`（未加载返回 ''）；前缀绑定统一走 `useForge(level, prefix)`
 - 测试 27 个全绿
 
 #### 4. React 集成（100%）
 - `RouteForgeProvider`（options 浅比较保证实例稳定）
 - `useForge({ level?, prefix? })`（levelLoaded → boolean，state 驱动重渲染）
-- `useForgeApi` / `useForgeRoute` / `useForgeByPrefix`
+- `useForgeApi` / `useForgeRoute`；前缀绑定统一走 `useForge({ level, prefix })`
 - 测试 29 个全绿
 
 #### 5. 文档（100%）
