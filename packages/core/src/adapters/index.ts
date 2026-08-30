@@ -3,7 +3,7 @@
  * @see .docs/SPEC.md §4.3
  *
  * Route Forge 提供三种 adapter：
- *   1. 'auto'（默认）：检测到宿主 axios 则用之；否则用内置 builtin adapter
+ *   1. 'auto'（默认）：动态 import 探测宿主 axios（防静态打包误判），检测到则用之；否则用内置 builtin adapter
  *   2. 'axios'：强制宿主 axios，未安装抛 AdapterNotFoundError
  *   3. 'builtin'：强制内置实现
  * 自定义 Fetcher 接口直接传入即可（绕过 auto 检测）。
@@ -47,7 +47,6 @@ export interface ResolveAdapterOptions {
 
 /**
  * 解析 adapter 配置；同步阶段尝试 import('axios')，失败则降级。
- * 注意：实际 axios 探测在生产实现里需要 lazy import；此处仅为框架占位。
  */
 export async function resolveAdapter(opts: ResolveAdapterOptions): Promise<ResolvedAdapter> {
   const { adapter } = opts;

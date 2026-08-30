@@ -7,8 +7,23 @@ export interface ForgeErrorContext {
   [key: string]: unknown;
 }
 
+/**
+ * Route Forge 错误码字面量联合。
+ * 用户侧 `switch (e.code)` 可获得穷尽检查（漏分支编译报错）。
+ */
+export type ForgeErrorCode =
+  | 'RF_FE_001'  // 路由名不存在
+  | 'RF_FE_002'  // 层级未声明
+  | 'RF_FE_003'  // 必填路径参数缺失
+  | 'RF_FE_005'  // adapter:'axios' 但未检测到 axios
+  | 'RF_FE_006'  // 请求拦截器返回非 RequestConfig
+  | 'RF_FE_007'  // 网络错误
+  | 'RF_FE_008'  // HTTP 非 2xx
+  | 'RF_FE_009'  // 请求被取消
+  | 'RF_FE_010'; // auto-discovery 未完成守卫
+
 export class ForgeError extends Error {
-  readonly code: string;
+  readonly code: ForgeErrorCode;
   readonly route?: string;
   readonly level?: string;
   readonly context?: ForgeErrorContext;
@@ -17,7 +32,7 @@ export class ForgeError extends Error {
   constructor(
     message: string,
     opts: {
-      code: string;
+      code: ForgeErrorCode;
       route?: string;
       level?: string;
       context?: ForgeErrorContext;

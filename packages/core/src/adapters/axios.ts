@@ -6,7 +6,6 @@
  * - 不接管或修改宿主 axios 已有拦截器/defaults 配置，仅调用其 request 入口
  * - 宿主 axios 的 defaults.baseURL/defaults.headers 自动生效
  * - 宿主已注册的拦截器会先执行；Route Forge 自身拦截器在宿主拦截器之后执行
- *   （由 forge.interceptors 注入到宿主 axios 时序）后续阶段填充
  * - 未检测到 axios 时返回 null（让 'auto' 自动降级到 builtin）
  */
 

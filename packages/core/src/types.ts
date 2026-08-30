@@ -21,7 +21,11 @@ export interface RouteMeta {
   parameter_defaults?: Record<string, unknown>;
   /** 所属层级（前端填充，便于隔离缓存） */
   level?: string;
-  /** 后端下发的缓存 TTL（秒），优先级高于本地 cache.ttl */
+  /**
+   * 后端 manifest 契约字段：路由级缓存 TTL（秒）。
+   * 当前前端按层级消费 TTL（LevelRoutesResponse.cache，见 cache.ts），
+   * 路由级字段为后端契约预留——将来支持路由级缓存时无需改类型。
+   */
   cache?: number | null;
 }
 

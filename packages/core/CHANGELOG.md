@@ -4,6 +4,12 @@
 
 ## [Unreleased] v2.0.0
 
+### Changed
+
+- `ForgeError.code` 收窄为 `ForgeErrorCode` 字面量联合（`'RF_FE_001' | ... | 'RF_FE_010'`，004 空缺）
+  并从 `@route-forge/core` 导出——用户侧 `switch (e.code)` 获得穷尽检查；
+  向 `code` 赋任意 `string` 的代码将编译失败（类型级 breaking）
+
 ### Removed
 
 - 移除 `onSummaryReady` 回调（breaking）：回调仅有成功通道，其设计曾导致失败被静默吞掉

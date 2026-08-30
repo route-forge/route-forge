@@ -38,8 +38,9 @@ describe('error class contract', () => {
   });
 
   it('optional fields stay undefined when not provided', () => {
-    const e = new ForgeError('msg', { code: 'X' });
-    expect(e.code).toBe('X');
+    // code 已收窄为 ForgeErrorCode 字面量联合（v2.0.0），测试用合法码
+    const e = new ForgeError('msg', { code: 'RF_FE_001' });
+    expect(e.code).toBe('RF_FE_001');
     expect(e.message).toBe('msg');
     expect(e.route).toBeUndefined();
     expect(e.level).toBeUndefined();

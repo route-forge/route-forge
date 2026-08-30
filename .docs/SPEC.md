@@ -716,6 +716,7 @@ type RequestConfig = {
     meta: RouteMeta;          // 路由元信息（uri/methods/parameters 等）
   timeout?: number;         // 单次请求超时覆盖（毫秒）
   signal?: AbortSignal;     // 请求取消信号（内部自动创建，拦截器可修改）
+  paramsSerializer?: (params: Record<string, unknown>) => string;  // 自定义 query 序列化（builtin adapter）
 };
 
 // 响应拦截器接收的数据对象（首段 onFulfilled 接收完整 ResponseData，后续段接收上一段返回值）
@@ -1394,12 +1395,15 @@ const forge = createRouteForge({
 | `NetworkError`                  | `RF_FE_007` | adapter 抛出的网络错误（DNS、连接超时等）  |
 | `HTTPError`                     | `RF_FE_008` | HTTP 非 2xx 且未被 `onRejected` 拦截器恢复 |
 | `RequestAbortedError`           | `RF_FE_009` | 请求被 `AbortSignal` 取消                  |
+| `ForgeError`（守卫）            | `RF_FE_010` | auto-discovery 未完成时调用 `route()` / `hasRoute()`（见 §4.1.9） |
 
 ### 6.3 错误对象结构
 
 ```ts
 class ForgeError extends Error {
-    readonly code: string;        // 如 'RF_FE_003'
+    // v2.0.0 起收窄为字面量联合 ForgeErrorCode（RF_FE_001~010，004 空缺），
+    // switch (e.code) 可获得穷尽检查；类型可从 '@route-forge/core' 导入
+    readonly code: ForgeErrorCode;  // 如 'RF_FE_003'
     readonly route?: string;      // 触发错误的路由名（如适用）
     readonly level?: string;      // 触发错误的层级（如适用）
     readonly context?: Record<string, unknown>;  // 额外上下文（如缺失的参数名、HTTP 状态等）

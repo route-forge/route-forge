@@ -20,6 +20,7 @@ export {
   HTTPError,
   RequestAbortedError,
 } from './errors.js';
+export type { ForgeErrorCode } from './errors.js';
 
 export type {
   RouteMeta,
