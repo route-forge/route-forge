@@ -50,9 +50,28 @@ export interface RouteForgeProviderProps {
  */
 export function RouteForgeProvider({ options, children }: RouteForgeProviderProps) {
   const ref = useRef<{ options: RouteForgeOptions; forge: RouteForge } | null>(null);
-  if (ref.current === null || !optionsEqual(ref.current.options, options)) {
+  // 实例版本：options 实际变化重建 forge 后递增，驱动 context value 更新
+  const [version, setVersion] = useState(0);
+
+  // lazy init（React 官方认可的幂等初始化模式）：首次渲染建实例。
+  // 渲染期只做 null 检查 + 赋值，重复执行幂等（StrictMode 双渲染也只有一个实例）；
+  // createRouteForge 内部立即发起摘要 fetch，但 core 层有缓存/inflight 去重兜底。
+  if (ref.current === null) {
     ref.current = { options, forge: createRouteForge(options) };
   }
+
+  // options 变化检测移到 effect（渲染期不换实例）：
+  // 换实例延后一帧（渲染完成后），换取 concurrent/StrictMode 下渲染热路径无副作用。
+  useEffect(() => {
+    if (!optionsEqual(ref.current!.options, options)) {
+      ref.current = { options, forge: createRouteForge(options) };
+      setVersion((v) => v + 1);
+    }
+  }, [options]);
+
+  // version 仅用于触发重渲染（读取 ref.current.forge 保证最新实例）；
+  // context value 引用稳定性：同一实例期间 value 不变，避免全树无谓重渲染
+  void version;
   return <ForgeContext.Provider value={ref.current.forge}>{children}</ForgeContext.Provider>;
 }
 

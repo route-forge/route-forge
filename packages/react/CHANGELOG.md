@@ -6,6 +6,15 @@
 
 ### Fixed
 
+- `useForgeRoute` 的 `params` 依赖序列化：内联对象字面量每次渲染都是新引用，
+  原实现直接放进依赖数组导致 effect 每次渲染重跑。现以 JSON 序列化内容为依赖，
+  内容不变则跳过
+- `RouteForgeProvider` 实例创建移出渲染热路径：原实现在渲染期检测 options 变化并
+  重建实例（内含摘要 fetch 副作用）。改为 lazy init（首次渲染）+ `useEffect` 检测
+  options 变化（换实例延后一帧），StrictMode/concurrent 下提交的实例唯一
+
+### Fixed
+
 - `useForgeRoute` 渲染期错误不再静默吞掉：路由名不存在或必填参数缺失时降级为 `''` 之外，
   以样式化 `console.warn` 输出完整错误（含堆栈）——开发期控制台醒目可见，生产无副作用。
   与 Vue 版行为对齐

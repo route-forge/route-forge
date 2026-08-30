@@ -36,14 +36,21 @@ export function useForgeRoute(
 
   const [url, setUrl] = useState('');
 
+  // params 依赖序列化：内联对象字面量每次渲染都是新引用，直接进依赖数组会导致
+  // effect 每次渲染重跑。以内容（JSON 序列化）为依赖，内容不变则跳过。
+  // 注：key 顺序敏感（{a,b} ≠ {b,a}）——多算一次 URL 而非出错，URL 参数场景无害。
+  const paramsKey = params === undefined ? '' : JSON.stringify(params);
+
   useEffect(() => {
     let cancelled = false;
+    // 从序列化键还原参数：彻底切断对 params 引用的依赖
+    const p = paramsKey === '' ? undefined : (JSON.parse(paramsKey) as Record<string, unknown>);
 
     if (!forge.isLoaded(level)) {
       forge.load(level).then(() => {
         if (!cancelled) {
           try {
-            setUrl(forge.route(level, name, params));
+            setUrl(forge.route(level, name, p));
           } catch (e) {
             warnRenderError(e);
             setUrl('');
@@ -54,7 +61,7 @@ export function useForgeRoute(
       });
     } else {
       try {
-        setUrl(forge.route(level, name, params));
+        setUrl(forge.route(level, name, p));
       } catch (e) {
         warnRenderError(e);
         setUrl('');
@@ -64,7 +71,8 @@ export function useForgeRoute(
     return () => {
       cancelled = true;
     };
-  }, [forge, level, name, params]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- params 经 paramsKey 序列化进入依赖
+  }, [forge, level, name, paramsKey]);
 
   return url;
 }
