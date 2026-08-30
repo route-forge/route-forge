@@ -4,12 +4,24 @@
  *
  * - level 未加载时返回空字符串 ''（不抛错，模板不崩）
  * - level 加载完成后自动重新计算并返回正确 URL
+ * - 路由名不存在或必填参数缺失等渲染期错误：降级为 '' 保证渲染不中断，
+ *   同时以醒目的样式化 warn 输出完整错误（含堆栈）——开发期可见，生产无副作用
  * - 用户无需关心 levelLoaded 状态，直接用即可
  */
 
 import { computed, type ComputedRef, inject, onMounted, ref } from 'vue';
 import { FORGE_INJECTION_KEY } from '../plugin.js';
 import type { RouteForge } from '@route-forge/core';
+
+/** 渲染期错误降级输出：橙色加粗标签 + 完整错误对象，控制台一眼可见 */
+function warnRenderError(error: unknown): void {
+  console.warn(
+    '%c[route-forge]%c useForgeRoute 渲染期错误（已降级为空字符串，渲染未中断）',
+    'color:#e67e22;font-weight:bold',
+    'color:inherit',
+    error,
+  );
+}
 
 export function useForgeRoute(
   level: string | (() => string),
@@ -37,6 +49,11 @@ export function useForgeRoute(
     const l = typeof level === 'function' ? level() : level;
     const n = typeof name === 'function' ? name() : name;
     const p = params ? params() : undefined;
-    return forge.route(l, n, p);
+    try {
+      return forge.route(l, n, p);
+    } catch (e) {
+      warnRenderError(e);
+      return '';
+    }
   });
 }

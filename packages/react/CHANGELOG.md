@@ -4,6 +4,11 @@
 
 ## [Unreleased] v2.0.0
 
+### Fixed
+
+- `useForgeRoute` 渲染期错误不再静默吞掉：路由名不存在或必填参数缺失时降级为 `''` 之外，
+  以样式化 `console.warn` 输出完整错误（含堆栈）——开发期控制台醒目可见，生产无副作用。
+  与 Vue 版行为对齐
 ### Removed
 
 - 移除 `useForgeByPrefix` composable：与 `useForge(level, prefix)` 功能重复（前者为后者的严格子集，

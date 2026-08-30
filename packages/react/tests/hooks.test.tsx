@@ -261,6 +261,34 @@ describe('useForgeRoute', () => {
     getByText('loading');
     await waitFor(() => expect(urls).toContain('/users/42'));
   });
+
+  it('renders empty string with styled warn instead of crashing when route name does not exist', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const urls: string[] = [];
+
+    function C() {
+      const url = useForgeRoute('public', 'users.nonexistent');
+      urls.push(url);
+      return <div data-url={url || 'empty'}>{url || 'empty'}</div>;
+    }
+
+    const { getByText } = render(
+      <RouteForgeProvider options={makeOptions()}>
+        <C />
+      </RouteForgeProvider>,
+    );
+    // 等待 level 加载完成后 route() 抛错被降级：渲染不炸、值为 ''
+    await waitFor(() => expect(urls).toContain(''));
+    getByText('empty');
+    // 原实现静默吞错（catch 里无任何输出）；现在错误以醒目 warn 输出
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('[route-forge]'),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+    warn.mockRestore();
+  });
 });
 
 // ─── API trimming & levelLoaded ─────────────────────────────

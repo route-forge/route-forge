@@ -1035,7 +1035,8 @@ const url = useForgeRoute('public', 'login.show');
 - `useForge(level?, prefix?)`：获取 forge 实例。不传 level 返回完整 `RouteForge` 实例；传 level 时内部调用 `forge.use(level, prefix?)`，自动触发 load，提供同步方法 + `levelLoaded` 响应式状态 + `onLevelLoaded()` / `useRoutePrefix()` 等 BoundForge 方法。名字前缀由 `prefix` 参数承担（智能前缀消解与 `useForgeByPrefix` 相同，后者已移除）。
 - `useForgeApi()`：包装 `forge.api()`，自动管理 loading/error 状态。
 - `useForgeRoute(level, name, params?)`：响应式 URL 生成器，内部处理 level 加载状态，未加载返回 `''`
-  ，加载后自动更新。
+  ，加载后自动更新。路由名不存在或必填参数缺失等渲染期错误同样降级为 `''`（保证渲染不中断），
+  并以样式化 `console.warn` 输出完整错误（含堆栈）——开发期控制台醒目可见，生产无副作用。
 - 全局属性 `$forge` 与模板内 `{{ $forge.route('admin', 'users.show', { user: 1 }) }}` 工具函数。
 
 #### 4.1.9 初始化合时序与推荐模式

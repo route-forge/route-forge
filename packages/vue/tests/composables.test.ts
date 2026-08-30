@@ -255,6 +255,64 @@ describe('useForgeRoute', () => {
     expect(urls).toContain('/users/1');
     expect(urls).toContain('/users/2');
   });
+
+  it('returns empty string instead of crashing render when route name does not exist', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let url: string | undefined;
+    let renderCrashed = false;
+    const C = defineComponent({
+      setup() {
+        const urlRef = useForgeRoute('public', 'users.nonexistent');
+        return () => {
+          try {
+            url = urlRef.value;
+          } catch {
+            renderCrashed = true;
+          }
+          return null;
+        };
+      },
+      errorCaptured() {
+        renderCrashed = true;
+        return false;
+      },
+    });
+    mount(C, { global: { plugins: [makePlugin()] } });
+    await flushPromises();
+    await flushPromises();
+    // 渲染不炸 + 降级为空字符串
+    expect(renderCrashed).toBe(false);
+    expect(url).toBe('');
+    // 错误以醒目 warn 输出（含错误对象）
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('[route-forge]'),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+    warn.mockRestore();
+  });
+
+  it('returns empty string instead of crashing render when required param is missing', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let url: string | undefined;
+    const C = defineComponent({
+      setup() {
+        // users.show 需要 user 参数，故意不传
+        const urlRef = useForgeRoute('public', 'users.show', () => ({}));
+        return () => {
+          url = urlRef.value;
+          return null;
+        };
+      },
+    });
+    mount(C, { global: { plugins: [makePlugin()] } });
+    await flushPromises();
+    await flushPromises();
+    expect(url).toBe('');
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
 });
 
 // ─── API trimming & levelLoaded ─────────────────────────────
