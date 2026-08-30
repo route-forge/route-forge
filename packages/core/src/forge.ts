@@ -18,6 +18,7 @@ import {
   runResponseInterceptors,
 } from './interceptors.js';
 import { resolveAdapter } from './adapters/index.js';
+import { isAbortError } from './adapters/fetch-core.js';
 import { resolveRouteName, resolveRouteNameSync } from './resolveRouteName.js';
 import { defineImmutableProps } from './defineImmutableProps.js';
 import type { LoadingChangeCallback } from './loading.js';
@@ -87,21 +88,17 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   let backendHasUnassignedLevel = false;
 
   // 拉取摘要端点（用于 endpoint / levels / eager 自动发现）
-  const summaryPromise = (async (): Promise<SummaryResponse | null> => {
+  // 走 adapter 原始通道（与层级元信息拉取一致）：获得 timeout、adapter 检测/降级、
+  // 自定义 Fetcher 兼容；失败错误为 HTTPError/NetworkError（携带 status/url 详情）
+  // URL = baseURL + 显式 endpoint（此时后端权威的 endpoint 尚未获取，用用户显式配置）
+  // 注意：IIFE 延迟到 ensureAdapter/adapterResolved 声明之后才真正发起（见下方启动调用），
+  // 避免构造期 TDZ（fetchMeta → ensureAdapter → adapterResolved）
+  const fetchSummary = async (): Promise<SummaryResponse | null> => {
     try {
-      const summaryUrl = explicitEndpoint; // GET {endpoint} = 摘要端点
-      const resp = await fetch(summaryUrl, { method: 'GET' });
-      if (!resp.ok) {
-        if (explicitLevels && explicitLevels.length > 0) {
-          console.warn(
-            `[route-forge] summary endpoint ${summaryUrl} unreachable (HTTP ${resp.status}); falling back to explicit options`,
-          );
-          return null;
-        }
-        // 未传 levels 且摘要端点返回非 2xx → 无可用降级，直接抛错（ready() 将 reject）
-        throw new UnknownLevelError('(auto-discovery)');
-      }
-      return (await resp.json()) as SummaryResponse;
+      const base = baseURL.endsWith('/') ? baseURL.slice(0, -1) : baseURL;
+      const ep = explicitEndpoint.startsWith('/') ? explicitEndpoint : `/${explicitEndpoint}`;
+      const data = await fetchMeta('__forge__.summary', `${base}${ep}`);
+      return data as SummaryResponse;
     } catch (e) {
       if (explicitLevels && explicitLevels.length > 0) {
         console.warn(
@@ -109,13 +106,20 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
         );
         return null;
       }
-      // 未传 levels 且摘要端点不可达 → 抛 UnknownLevelError
+      // 未传 levels 且摘要端点不可达（网络错误 / HTTP 非 2xx / 超时）→ 无可用降级，抛错（ready() 将 reject）
       throw new UnknownLevelError('(auto-discovery)');
     }
-  })();
+  };
 
   // 自动发现异步填充（不阻塞 createRouteForge 返回）
-  const autoDiscoveryPromise = summaryPromise.then((summary) => {
+  // 摘要拉取经 adapter 通道（fetchMeta → ensureAdapter 依赖 adapterResolved 等声明），
+  // 延迟到同步声明区之后启动；autoDiscoveryPromise 通过挂起队列消费，
+  // 无论谁先就绪都能正确串联（避免微任务注册顺序竞态）
+  let summaryPromise: Promise<SummaryResponse | null> | undefined;
+  const summaryWaiters: Array<(p: Promise<SummaryResponse | null>) => void> = [];
+  const whenSummary = (): Promise<SummaryResponse | null> =>
+    summaryPromise ?? new Promise((resolve) => summaryWaiters.push(resolve));
+  const autoDiscoveryPromise = whenSummary().then((summary) => {
     if (summary === null) {
       return;
     }
@@ -235,6 +239,11 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     adapter,
     forgeInterceptors: { request: requestInterceptors, response: responseInterceptors },
   });
+  // 启动摘要拉取（微任务延迟，确保 adapterResolved 等声明已完成；fetchMeta → ensureAdapter 依赖它们）
+  Promise.resolve().then(() => {
+    summaryPromise = fetchSummary();
+    for (const resolve of summaryWaiters) resolve(summaryPromise);
+  });
   let adapterResolved = false;
   let adapterObj: Awaited<ReturnType<typeof resolveAdapter>> | null = null;
 
@@ -280,37 +289,47 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     return `${base}${ep}/${encodeURIComponent(level)}`;
   }
 
-  async function fetchLevel(level: string): Promise<LevelRoutesResponse> {
+  /**
+   * 元信息拉取统一通道：摘要端点与层级路由表共用。
+   * 走 adapter 原始通道（不走 forge.interceptors 链，避免与业务调用混淆）：
+   * builtin 提供 requestRaw（跳过拦截链）；axios/自定义 Fetcher 未提供时回退 request()。
+   * 获得 timeout、adapter 检测/降级、自定义 Fetcher 兼容。
+   * @param routeTag 请求标识（`__forge__.summary` / `__forge__.load.${level}`），用于错误信息与追踪
+   * @param url 完整请求 URL
+   * @param level 所属层级（摘要请求无层级，传 undefined）
+   */
+  async function fetchMeta(routeTag: string, url: string, level = ''): Promise<unknown> {
     const adp = await ensureAdapter();
     const config: RequestConfig = {
-      route: `__forge__.load.${level}`,
+      route: routeTag,
       level,
       method: 'GET',
-      url: buildUrl(level),
+      url,
       headers: { Accept: 'application/json' },
       params: {},
       timeout,
       meta: {
-        name: `__forge__.load.${level}`,
-        uri: buildUrl(level),
+        name: routeTag,
+        uri: url,
         methods: ['GET'],
         parameters: [],
         level,
       },
     };
-    // 拉取元信息直接走 adapter 的原始通道（不走 forge.interceptors 链，避免与业务调用混淆）：
-    // builtin 提供 requestRaw（跳过拦截链）；axios/自定义 Fetcher 未提供时回退 request()
     const doRawRequest = adp.requestRaw ?? adp.request;
     const resp = await doRawRequest(config);
     if (!resp || resp.status < 200 || resp.status >= 300) {
       throw new HTTPError(
-        `Failed to load level "${level}": HTTP ${resp?.status}`,
-        { level, status: resp?.status, url: buildUrl(level), method: 'GET' },
+        `Failed to fetch "${routeTag}": HTTP ${resp?.status}`,
+        { level, status: resp?.status, url, method: 'GET' },
       );
     }
-    const data = resp.data as LevelRoutesResponse;
+    return resp.data;
+  }
+
+  async function fetchLevel(level: string): Promise<LevelRoutesResponse> {
     // 后端可能下发 cache 字段，让 RouteCache 优先采用
-    return data;
+    return (await fetchMeta(`__forge__.load.${level}`, buildUrl(level), level)) as LevelRoutesResponse;
   }
 
   async function loadOne(level: string): Promise<void> {
@@ -863,22 +882,6 @@ function resolveApiParams(input: ApiCallParams): {
   }
 
   return { pathParams, query, body, headers, timeout: perCallTimeout };
-}
-
-/**
- * 判断错误是否为请求取消错误（AbortSignal 触发）
- * 兼容 fetch 的 DOMException AbortError 与 axios 的 CanceledError
- */
-function isAbortError(err: unknown, signal?: AbortSignal): boolean {
-  // signal 已 abort → 无论错误类型，均视为取消
-  if (signal?.aborted) return true;
-  const e = err as { name?: string; code?: string } | null;
-  if (!e) return false;
-  // fetch 取消抛 DOMException (name === 'AbortError')
-  if (e.name === 'AbortError') return true;
-  // axios 取消抛 CanceledError (code === 'ERR_CANCELED')
-  if (e.code === 'ERR_CANCELED') return true;
-  return false;
 }
 
 // 显式重导出，便于业务代码按需导入工具件

@@ -1204,6 +1204,12 @@ axios 即可工作。同时支持把宿主项目的 axios 作为 adapter，复�
 - 底层基于宿主环境 `fetch`（Node 18+ / 现代浏览器原生支持）。
 - 体积目标：min+gzip < 3KB，仅作为兜底，不追求覆盖 axios 全部 API。
 
+内部结构分两层：纯 fetch 底座（超时/取消合并、序列化、非 2xx 转换，`fetch-core.ts`，无状态可复用）
+与拦截器编排 + axios 兼容门面（`builtin-http.ts`）。**元信息拉取统一通道**：摘要端点（§3.1.6）与
+层级路由表拉取共用同一 `requestRaw` 通道（经 adapter 分发，跳过业务拦截链）——摘要请求因此获得
+timeout、adapter 检测/降级、自定义 Fetcher 兼容；摘要失败错误为 `HTTPError`/`NetworkError`
+（携带 status/url 详情），不再是无超时的裸 `fetch`。
+
 设计原则：
 
 - **API 兼容优先**：内置实现刻意保持与 axios 拦截器调用约定一致，便于业务代码在两套 adapter 间零成本切换。

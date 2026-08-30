@@ -340,6 +340,13 @@ describe('interceptor signal manipulation (L4)', () => {
     const fetcher = {
       async request(config: any) {
         seen.push(config.url);
+        // 摘要端点（重构后摘要拉取也走 adapter 通道）
+        if (config.url === '/_forge/routes') {
+          return {
+            route: config.route, level: config.level, method: 'GET', url: config.url,
+            status: 200, headers: new Headers(), data: makeSummary(), config,
+          };
+        }
         if (config.url.includes('/_forge/routes/public')) {
           return {
             route: config.route, level: config.level, method: 'GET', url: config.url,
@@ -369,8 +376,8 @@ describe('interceptor signal manipulation (L4)', () => {
     ctrl.abort();
     forge.interceptors.request.use((c) => ({ ...c, signal: ctrl.signal }));
     await expect(forge.api('public', 'users.index')).rejects.toBeInstanceOf(RequestAbortedError);
-    // fetcher 只见过层级拉取，未见过业务请求（链后短路生效）
-    expect(seen).toEqual(['/_forge/routes/public']);
+    // fetcher 见过摘要拉取与层级拉取，未见过业务请求（链后短路生效）
+    expect(seen).toEqual(['/_forge/routes', '/_forge/routes/public']);
   });
 
   it('request interceptor can remove config.signal without breaking the request', async () => {

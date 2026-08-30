@@ -4,6 +4,16 @@
 
 ## [Unreleased] v2.0.0
 
+### Changed
+
+- 摘要端点拉取改走 adapter 原始通道（与层级路由表拉取同一 `requestRaw` 通道，跳过业务拦截链），
+  原为无超时的裸 `fetch`。摘要请求因此获得 `timeout`（含 30s 兜底）、adapter 检测/降级、
+  自定义 Fetcher 兼容；端点挂起时不再永久阻塞 `ready()`/`load()`/`api()`，
+  超时后按既有失败语义处理（有显式 `levels` 降级，无则 `ready()` reject）
+- 摘要失败错误类型变为 `HTTPError`/`NetworkError`（携带 status/url 详情）；降级分支行为不变
+- 重构：内置 http 拆为纯 fetch 底座（`fetch-core.ts`：超时/取消合并、序列化、非 2xx 转换，
+  无状态可复用）+ 拦截器编排门面（`builtin-http.ts` 瘦身）；`isAbortError` 双份实现合一
+
 ### Performance
 
 - storage 模式（sessionStorage/localStorage）新增内存镜像：原 `route()`/`api()` 热路径上每次

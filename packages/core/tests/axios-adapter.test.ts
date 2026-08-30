@@ -71,6 +71,10 @@ function setupAxios(opts: {
     if (cfg.url.includes('/_forge/routes/public')) {
       return { status: 200, data: levelRoutes, headers: {} };
     }
+    // 摘要端点（重构后摘要拉取也走 adapter 通道）
+    if (cfg.url === '/_forge/routes') {
+      return { status: 200, data: summary, headers: {} };
+    }
     const status = opts.apiStatus ?? 200;
     if (status < 200 || status >= 300) {
       // axios 默认 validateStatus：非 2xx 抛带 response 的错误
@@ -198,6 +202,10 @@ describe('axios adapter — error semantics', () => {
         throw Object.assign(new Error('Request failed with status code 500'), {
           response: { status: 500, data: {}, headers: {} },
         });
+      }
+      // 摘要端点（重构后摘要拉取也走 adapter 通道）
+      if (cfg.url === '/_forge/routes') {
+        return { status: 200, data: summary, headers: {} };
       }
       return { status: 200, data: {}, headers: {} };
     });

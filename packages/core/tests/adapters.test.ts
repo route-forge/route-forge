@@ -60,6 +60,10 @@ beforeEach(() => {
     if (cfg.url.includes('/_forge/routes/public')) {
       return { status: 200, data: levelRoutes, headers: {} };
     }
+    // 摘要端点（重构后摘要拉取也走 adapter 通道，不再绕过 adapter 裸 fetch）
+    if (cfg.url === '/_forge/routes') {
+      return { status: 200, data: summary, headers: {} };
+    }
     return { status: 200, data: { ok: true }, headers: {} };
   });
 });
@@ -81,12 +85,13 @@ describe('adapter auto detection — host axios present', () => {
     await forge.load('public');
     await forge.api('public', 'users.index');
 
-    // axios 承接了层级拉取与业务请求
+    // axios 承接了摘要端点、层级拉取与业务请求（重构后摘要也走 adapter 通道）
     const urls = requestMock.mock.calls.map((c) => (c[0] as { url: string }).url);
+    expect(urls).toContain('/_forge/routes');
     expect(urls).toContain('/_forge/routes/public');
     expect(urls).toContain('/users');
-    // fetch 仅用于摘要端点（摘要发现不走 adapter）
-    expect(fetchUrls).toEqual(['/_forge/routes']);
+    // fetch 不再被使用（摘要发现也走 adapter）
+    expect(fetchUrls).toEqual([]);
   });
 });
 
@@ -108,6 +113,19 @@ describe('custom Fetcher adapter', () => {
             status: 200,
             headers: new Headers(),
             data: levelRoutes,
+            config,
+          };
+        }
+        // 摘要端点（重构后摘要拉取也走 adapter 通道）
+        if (config.url === '/_forge/routes') {
+          return {
+            route: config.route,
+            level: config.level,
+            method: 'GET',
+            url: config.url,
+            status: 200,
+            headers: new Headers(),
+            data: summary,
             config,
           };
         }
@@ -143,9 +161,9 @@ describe('custom Fetcher adapter', () => {
     expect(biz.url).toBe('/users');
     expect(biz.meta.name).toBe('users.index');
     expect(biz.level).toBe('public');
-    // 未走 axios 也未走 fetch（摘要除外）
+    // 未走 axios 也未走 fetch（摘要拉取也走自定义 Fetcher）
     expect(requestMock).not.toHaveBeenCalled();
-    expect(fetchUrls).toEqual(['/_forge/routes']);
+    expect(fetchUrls).toEqual([]);
   });
 
   it('forge request/response interceptors still run for custom fetcher', async () => {

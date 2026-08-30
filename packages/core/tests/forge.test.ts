@@ -34,7 +34,7 @@ function mockSummary(summary: SummaryResponse | null, status = 200) {
         status,
         json: async () => ({}),
         text: async () => '',
-        headers: new Headers(),
+        headers: new Headers({ 'content-type': 'application/json' }),
       } as any;
     }
     const body = summary === null ? '{}' : JSON.stringify(summary);
@@ -43,7 +43,7 @@ function mockSummary(summary: SummaryResponse | null, status = 200) {
       status: 200,
       json: async () => summary,
       text: async () => body,
-      headers: new Headers(),
+      headers: new Headers({ 'content-type': 'application/json' }),
     } as any;
   });
   return calls;
@@ -596,6 +596,35 @@ describe('createRouteForge auto-discovery', () => {
     await expect(forge.load('public')).rejects.toThrow();
   });
 
+  it('summary request times out: ready() rejects without explicit levels, degrades with them', async () => {
+    // 摘要端点挂起不响应：timeout 生效（此前裸 fetch 无 timeout 会永久挂起）
+    const summaryUrl = '/_forge/routes';
+    (globalThis as any).fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === summaryUrl) {
+        // 等待远超 timeout（timeout: 50ms）→ 触发 AbortSignal.timeout
+        await new Promise((r) => setTimeout(r, 500));
+        return {} as any;
+      }
+      throw new Error('unexpected fetch: ' + url);
+    });
+
+    // 无显式 levels → ready() reject（不再永久挂起）
+    const forge1 = createRouteForge({ endpoint: summaryUrl, adapter: 'builtin', timeout: 50 });
+    await expect(forge1.ready()).rejects.toThrow();
+
+    // 有显式 levels → warn 降级，levels 可用
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const forge2 = createRouteForge({
+      endpoint: summaryUrl,
+      levels: ['public'],
+      adapter: 'builtin',
+      timeout: 50,
+    });
+    await expect(forge2.ready()).resolves.toBe(forge2);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('unreachable'));
+    warn.mockRestore();
+  });
+
   it('writes timeout option to RequestConfig', async () => {
     // URL-aware mock：区分摘要端点与 level 拉取请求
     const calls: { url: string; init?: RequestInit }[] = [];
@@ -608,7 +637,7 @@ describe('createRouteForge auto-discovery', () => {
           status: 200,
           json: async () => summary,
           text: async () => JSON.stringify(summary),
-          headers: new Headers(),
+          headers: new Headers({ 'content-type': 'application/json' }),
         } as any;
       }
       // level fetch：返回 LevelRoutesResponse
@@ -618,7 +647,7 @@ describe('createRouteForge auto-discovery', () => {
         status: 200,
         json: async () => levelBody,
         text: async () => JSON.stringify(levelBody),
-        headers: new Headers(),
+        headers: new Headers({ 'content-type': 'application/json' }),
       } as any;
     });
 
