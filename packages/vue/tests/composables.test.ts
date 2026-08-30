@@ -191,6 +191,42 @@ describe('useForgeApi', () => {
     expect(api.error.value).toBeNull();
   });
 
+  it('concurrent calls keep pending true until all complete', async () => {
+    // 引用计数：先完成的 call 不把其他在途请求的 pending 提前清掉
+    let releaseFirst: () => void = () => {};
+    const gate = new Promise<void>((r) => { releaseFirst = r; });
+    const origFetch = (globalThis as any).fetch;
+    let usersCalls = 0;
+    (globalThis as any).fetch = vi.fn(async (url: string, ...rest: unknown[]) => {
+      // 第一个业务请求被 gate 卡住，第二个正常完成
+      if (url === '/users' && ++usersCalls === 1) await gate;
+      return origFetch(url, ...rest);
+    });
+
+    let api: any;
+    const C = defineComponent({
+      setup() {
+        api = useForgeApi('public');
+        return () => null;
+      },
+    });
+    mount(C, { global: { plugins: [makePlugin()] } });
+    await flushPromises();
+
+    const first = api.call('users.index');
+    const second = api.call('users.index');
+    await second;
+    await nextTick();
+    // 先完成的 call 不清除 pending（旧实现此处已翻 false）
+    expect(api.pending.value).toBe(true);
+    releaseFirst();
+    await first;
+    await nextTick();
+    // 全部完成才置 false
+    expect(api.pending.value).toBe(false);
+    (globalThis as any).fetch = origFetch;
+  });
+
   it('failed call sets error ref and returns it without throwing', async () => {
     backend.apiOk = false;
     let api: any;

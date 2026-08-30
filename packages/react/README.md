@@ -94,13 +94,23 @@ import {
   useForgeRoute,
 } from '@route-forge/react'
 
-// useForgeApi — 带 loading/error 状态的 API 调用
-const { call, pending, error } = useForgeApi()
-const { data } = await call('admin', 'users.show', { user: 1 })
+// useForgeApi — 带 loading/error 状态的 API 调用（事件处理器场景）
+// 不抛异常：错误作为 { data: undefined, error } 返回，同时写入 error 状态
+// 三种调用形态（选项对象，level 绑定与 useForge 一致）：
+const api = useForgeApi()                                  // 未绑定：call(level, name, params)
+const admin = useForgeApi({ level: 'admin' })              // 绑定层级：call(name, params)
+const users = useForgeApi({ level: 'admin', prefix: 'users' })  // 绑定层级 + 前缀
 
-// useForgeRoute — 响应式 URL 生成器，内部处理 level 加载状态
-// level 未加载时返回 ''，加载后自动更新
+const { data, error } = await admin.call('users.show', { user: 1 })
+// pending: boolean，并发多个 call 时全部完成才置 false（引用计数）
+// error:   unknown，最近一次失败信息
+
+// useForgeRoute — 响应式 URL 生成器（模板层场景）
+// string，内部处理 level 加载状态：
+// level 未加载时返回 ''，加载后自动更新；参数变化自动重算
 const url = useForgeRoute('public', 'login.show')
+const profile = useForgeRoute('admin', 'users.show', { user: userId })
+// 路由名错误或必填参数缺失：降级为 '' 保证渲染不中断，控制台输出完整错误（含堆栈）
 ```
 
 ## 文档

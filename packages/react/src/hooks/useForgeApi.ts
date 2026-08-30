@@ -10,11 +10,16 @@
  * 类型推断：
  *   当 ForgeRouteMap 通过 codegen 或 module augmentation 定义时，
  *   level / name / params 均自动推断，IDE 提供补全提示。
+ *
+ * pending 采用引用计数：并发多个 call 时，全部完成才置 false
+ * （先完成的 call 不再把其他在途请求的 pending 提前清掉）。
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useForge } from '../provider.js';
 import type {
+  BoundForge,
+  RouteForge,
   UseForgeApiBoundCall,
   UseForgeApiBoundReturn,
   UseForgeApiCall,
@@ -41,30 +46,38 @@ export function useForgeApi(opts?: {
   level?: string;
   prefix?: string
 }): UseForgeApiReturnReact | UseForgeApiBoundReturnReact<string> {
-  const forge = opts?.level !== undefined
+  const bound = opts?.level !== undefined
     ? useForge({ level: opts.level, prefix: opts.prefix as string })
-    : useForge();
+    : undefined;
+  const unbound = bound === undefined ? useForge() : undefined;
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  // 并发计数：渲染期不读写（纯 effect 内维护），ref 存活整个组件生命周期
+  const inflight = useRef(0);
 
   const call = useCallback(async (...args: unknown[]): Promise<{
     data: unknown;
     error: unknown
   }> => {
+    inflight.current++;
     setPending(true);
     setError(null);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const data = await (forge as any).api(...args);
+      // 按绑定形态分发：bound 走 BoundForge.api(name, params)，unbound 走 RouteForge.api(level, name, params)
+      // （窄断言替代 as any：重载签名已保证参数形状，此处仅消除联合类型/框架特化类型的分支歧义）
+      const data = bound !== undefined
+        ? await (bound as unknown as BoundForge).api(args[0] as string, args[1] as never)
+        : await (unbound as RouteForge).api(args[0] as string, args[1] as string, args[2] as never);
       setError(null);
       return { data, error: null };
     } catch (e) {
       setError(e);
       return { data: undefined, error: e };
     } finally {
-      setPending(false);
+      inflight.current--;
+      setPending(inflight.current > 0);
     }
-  }, [forge]);
+  }, [bound, unbound]);
 
-  return { pending, error, call: call as any };
+  return { pending, error, call: call as unknown as UseForgeApiCall };
 }

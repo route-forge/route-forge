@@ -6,6 +6,14 @@
 
 ### Fixed
 
+- `useForgeApi` 实现侧类型保真：`(forge as any).api(...)` 双重类型擦除改为按绑定形态分发的
+  窄断言（bound 走 `BoundForge.api`，unbound 走 `RouteForge.api`），公共重载签名不变，
+  实现不再逃过编译检查
+- `useForgeApi` 的 `pending` 改引用计数：并发多个 call 时全部完成才置 false
+  （原实现先完成的 call 会把其他在途请求的 pending 提前清掉）
+
+### Fixed
+
 - `useForgeRoute` 渲染期错误降级：路由名不存在或必填参数缺失时返回 `''` 保证渲染不中断，
   并以样式化 `console.warn` 输出完整错误（含堆栈）——开发期控制台醒目可见，生产无副作用。
   与 React 版行为对齐

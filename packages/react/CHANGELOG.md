@@ -6,6 +6,14 @@
 
 ### Fixed
 
+- `useForgeApi` 实现侧类型保真：`(forge as any).api(...)` 双重类型擦除改为按绑定形态分发的
+  窄断言（bound 走 `BoundForge.api`，unbound 走 `RouteForge.api`），公共重载签名不变，
+  实现不再逃过编译检查
+- `useForgeApi` 的 `pending` 改引用计数：并发多个 call 时全部完成才置 false
+  （原实现先完成的 call 会把其他在途请求的 pending 提前清掉）
+
+### Fixed
+
 - `useForgeRoute` 的 `params` 依赖序列化：内联对象字面量每次渲染都是新引用，
   原实现直接放进依赖数组导致 effect 每次渲染重跑。现以 JSON 序列化内容为依赖，
   内容不变则跳过

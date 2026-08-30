@@ -273,13 +273,16 @@ app.use(plugin)
 
 ```vue
 <script setup lang="ts">
-import { useForge, useForgeApi } from '@route-forge/vue'
+import { useForge, useForgeApi, useForgeRoute } from '@route-forge/vue'
 import { ref } from 'vue'
 
 // 绑定 admin 层级 + users 前缀：路由名自动补全为 admin.users.*
 const users = useForge('admin', 'users')
 // 带 loading / error 状态的调用（同样支持层级 + 前缀绑定）
 const { call: fetchOrders, pending, error } = useForgeApi('admin', 'orders')
+// 响应式 URL 生成器：模板层专用，未加载返回 ''、加载后自动更新、参数变化重算
+const userId = ref(1)
+const detailUrl = useForgeRoute('admin', 'users.show', () => ({ user: userId.value }))
 
 const user = ref(null)
 const editUrl = ref('')
@@ -298,6 +301,8 @@ async function loadOrders() {
 </script>
 
 <template>
+  <!-- useForgeRoute：响应式 URL，level 未加载时为 ''，加载后自动更新 -->
+  <a :href="detailUrl">查看用户</a>
   <a :href="editUrl">编辑用户</a>
   <p v-if="pending">订单加载中…</p>
 </template>
