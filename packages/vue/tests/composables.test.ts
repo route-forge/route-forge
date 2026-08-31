@@ -349,6 +349,46 @@ describe('useForgeRoute', () => {
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });
+
+  it('treats level as a static setup snapshot (dynamic level NOT tracked)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const urls: string[] = [];
+    let switchToAdmin: () => void = () => {};
+    const C = defineComponent({
+      setup() {
+        const levelSrc = ref('public');
+        const uid = ref(42);
+        switchToAdmin = () => {
+          levelSrc.value = 'admin';
+          uid.value = 43;
+        };
+        const urlRef = useForgeRoute(
+          () => levelSrc.value,
+          'users.show',
+          () => ({ user: uid.value }),
+        );
+        return () => {
+          urls.push(urlRef.value);
+          return null;
+        };
+      },
+    });
+    mount(C, { global: { plugins: [makePlugin()] } });
+    await flushPromises();
+    await flushPromises();
+    expect(urls[urls.length - 1]).toBe('/users/42');
+
+    // 把 getter 源切到未加载的 'admin' 并触发重算：level 是快照，应仍按 'public' 计算
+    switchToAdmin();
+    await nextTick();
+    await flushPromises();
+
+    // 层级快照为 'public'：参数变化按 public 重算 → /users/43，而非走 'admin' 抛错降级
+    expect(urls[urls.length - 1]).toBe('/users/43');
+    // 从未尝试路由未加载的 'admin'，因此不应触发渲染期错误告警
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
 });
 
 // ─── API trimming & levelLoaded ─────────────────────────────
@@ -388,6 +428,8 @@ describe('useForge API trimming', () => {
     mount(C, { global: { plugins: [makePlugin()] } });
     // levelLoaded should exist
     expect(bound.levelLoaded).toBeDefined();
+    // 覆盖后的 levelLoaded 保持可重配置（对齐 core BoundForge 与 React 适配层）
+    expect(Object.getOwnPropertyDescriptor(bound, 'levelLoaded')!.configurable).toBe(true);
     await flushPromises();
     // after auto-load, levelLoaded should be true
     expect(bound.levelLoaded.value).toBe(true);

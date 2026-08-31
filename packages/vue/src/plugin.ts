@@ -100,7 +100,7 @@ export function useForge(level?: string, prefix?: string): RouteForge | VueBound
     value: levelLoadedRef,
     writable: false,
     enumerable: true,
-    configurable: false,
+    configurable: true,
   });
 
   return bound as unknown as VueBoundForge;

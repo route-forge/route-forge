@@ -6,6 +6,8 @@
  * - level 加载完成后自动重新计算并返回正确 URL
  * - 路由名不存在或必填参数缺失等渲染期错误：降级为 '' 保证渲染不中断，
  *   同时以醒目的样式化 warn 输出完整错误（含堆栈）——开发期可见，生产无副作用
+ * - level 为静态层级绑定：即使在函数形式下也只在 setup 求值一次即固定，不支持中途动态切换 level
+ *   （需要另一个层级请在别的组件 / 别的 useForgeRoute 调用里分别使用，与 useForge 契约一致）
  * - 用户无需关心 levelLoaded 状态，直接用即可
  */
 
@@ -30,10 +32,13 @@ export function useForgeRoute(
 ): ComputedRef<string> {
   const forge = inject(FORGE_INJECTION_KEY) as RouteForge;
 
-  // 响应式追踪 level 加载状态（computed 依赖此 ref 触发重新计算）
-  const levelLoaded = ref(forge.isLoaded(typeof level === 'function' ? level() : level));
-
+  // level 静态化：setup 时求值一次即固定，之后不追踪函数形式 getter 的变化
+  //（即便调用方传入 `() => string`，也只读取一次）。name / params 仍保持响应式。
   const lvl = typeof level === 'function' ? level() : level;
+
+  // 响应式追踪该 level 的加载状态（computed 依赖此 ref 触发重算）
+  const levelLoaded = ref(forge.isLoaded(lvl));
+
   if (!levelLoaded.value) {
     onMounted(() => {
       forge.load(lvl).then(() => {
@@ -46,11 +51,11 @@ export function useForgeRoute(
   return computed(() => {
     // level 未加载 → 返回空字符串，不抛错
     if (!levelLoaded.value) return '';
-    const l = typeof level === 'function' ? level() : level;
+    // lvl 为 setup 快照（静态）；name / params 每次重算读取，保持响应式
     const n = typeof name === 'function' ? name() : name;
     const p = params ? params() : undefined;
     try {
-      return forge.route(l, n, p);
+      return forge.route(lvl, n, p);
     } catch (e) {
       warnRenderError(e);
       return '';
