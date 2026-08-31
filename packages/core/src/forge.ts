@@ -35,23 +35,21 @@ import {
 import {
   appendQuery,
   buildRequestUrl,
-  buildUrl,
   pickMethod,
   resolveApiParams,
 } from './url-builder.js';
 import {
   applySummaryToState,
   fetchSummary,
-  UNASSIGNED_LEVEL,
   type DiscoveryInputs,
   type DiscoveryState,
 } from './auto-discovery.js';
+import { RouteStore } from './route-store.js';
 import type {
   ApiCallParams,
   BoundForge,
   ForgeRequest,
   InterceptorManager,
-  LevelRoutesResponse,
   RequestConfig,
   ResponseData,
   RouteForge,
@@ -185,16 +183,6 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     return adapterObj!;
   }
 
-  const inflight = new Map<string, Promise<void>>();
-  // 每个层级的失效代数，用于检测 loadOne 期间是否发生了 invalidate
-  const invalidationGens = new Map<string, number>();
-
-  function assertLevelDeclared(level: string): void {
-    if (!discoveryState.levels.includes(level)) {
-      throw new UnknownLevelError(level);
-    }
-  }
-
   function assertDiscoveryReady(): void {
     if (!autoDiscoveryCompleted && !explicitLevels?.length) {
       throw new ForgeError(
@@ -243,55 +231,26 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     return resp.data;
   }
 
-  async function fetchLevel(level: string): Promise<LevelRoutesResponse> {
-    // 后端可能下发 cache 字段，让 RouteCache 优先采用
-    return (await fetchMeta(
-      `__forge__.load.${level}`,
-      buildUrl(level, { baseURL, endpoint: discoveryState.endpoint }),
-      level,
-    )) as LevelRoutesResponse;
-  }
-
-  async function loadOne(level: string): Promise<void> {
-    if (autoDiscoveryError) throw autoDiscoveryError;
-    assertLevelDeclared(level);
-
-    // 缓存命中直接返回
-    if (cache.get(level)) return;
-
-    // inflight 去重
-    const existing = inflight.get(level);
-    if (existing) return existing;
-
-    const gen = invalidationGens.get(level) ?? 0;
-    const p = (async () => {
-      try {
-        // 虚拟层级 unassigned：直接从摘要数据构建响应，不发 HTTP 请求（SPEC §3.1.6）
-        if (level === UNASSIGNED_LEVEL && !discoveryState.backendHasUnassignedLevel && discoveryState.summaryUnassigned) {
-          const routes: Record<string, RouteMeta> = {};
-          for (const r of discoveryState.summaryUnassigned) {
-            routes[r.name] = { ...r, level: UNASSIGNED_LEVEL };
-          }
-          cache.set({ level: UNASSIGNED_LEVEL, routes, cache: null });
-          return;
-        }
-        const resp = await fetchLevel(level);
-        // 仅在缓存未被 invalidate 清除时写入，防止旧数据回写
-        if ((invalidationGens.get(level) ?? 0) === gen) {
-          cache.set(resp);
-        }
-      } finally {
-        inflight.delete(level);
-      }
-    })();
-    inflight.set(level, p);
-    return p;
-  }
-
-  async function load(level: string | string[]): Promise<void> {
-    await autoDiscoveryPromise;
-    const list = Array.isArray(level) ? level : [level];
-    await Promise.all(list.map(loadOne));
+  // --- 层级路由存储与加载（RouteStore 封装 cache/inflight/失效代数/虚拟 unassigned 层级）---
+  const store = new RouteStore({
+    cache,
+    state: discoveryState,
+    baseURL,
+    fetchMeta,
+    autoDiscoveryPromise,
+    getAutoDiscoveryError: () => autoDiscoveryError,
+  });
+  const load = (level: string | string[]): Promise<void> => store.load(level);
+  const findRouteMeta = (level: string, name: string): RouteMeta | undefined =>
+    store.findRouteMeta(level, name);
+  const invalidate = (level?: string | string[]): void => store.invalidate(level);
+  const isLoaded = (level?: string): boolean => store.isLoaded(level);
+  function getRoutes(level: string): Record<string, RouteMeta>;
+  function getRoutes(): Record<string, Record<string, RouteMeta>>;
+  function getRoutes(
+    level?: string,
+  ): Record<string, RouteMeta> | Record<string, Record<string, RouteMeta>> {
+    return level === undefined ? store.getRoutes() : store.getRoutes(level);
   }
 
   function route(level: string, name: string, params?: Record<string, unknown>): string {
@@ -302,15 +261,6 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       throw new UnknownRouteError(name, level);
     }
     return buildRequestUrl(meta, params ?? {}, { baseURL, urlPrefix: discoveryState.urlPrefix });
-  }
-
-  function findRouteMeta(level: string, name: string): RouteMeta | undefined {
-    const entry = cache.get(level);
-    const meta = entry?.routes[name];
-    if (meta) {
-      return { ...meta, level };
-    }
-    return undefined;
   }
 
   function api(level: string, name: string, params: ApiCallParams = {}): ForgeRequest {
@@ -438,64 +388,9 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     }
   }
 
-  function invalidate(level?: string | string[]): void {
-    if (level === undefined) {
-      cache.clear();
-      // 清除所有进行中的加载，防止旧数据回写
-      inflight.clear();
-      for (const lvl of discoveryState.levels) {
-        invalidationGens.set(lvl, (invalidationGens.get(lvl) ?? 0) + 1);
-      }
-    } else if (Array.isArray(level)) {
-      for (const lvl of level) {
-        cache.del(lvl);
-        inflight.delete(lvl);
-        invalidationGens.set(lvl, (invalidationGens.get(lvl) ?? 0) + 1);
-      }
-    } else {
-      cache.del(level);
-      inflight.delete(level);
-      invalidationGens.set(level, (invalidationGens.get(level) ?? 0) + 1);
-    }
-  }
-
-  function isLoaded(level?: string): boolean {
-    if (level) return cache.get(level) !== undefined;
-    // 无任何已声明层级（如自动发现未完成）时不应谎报全部已加载
-    return discoveryState.levels.length > 0 && discoveryState.levels.every((lvl) => cache.get(lvl) !== undefined);
-  }
-
   function hasRoute(level: string, name: string): boolean {
     assertDiscoveryReady();
     return findRouteMeta(level, name) !== undefined;
-  }
-
-  function getRoutes(level: string): Record<string, RouteMeta>;
-  function getRoutes(): Record<string, Record<string, RouteMeta>>;
-  function getRoutes(level?: string): Record<string, RouteMeta> | Record<string, Record<string, RouteMeta>> {
-    if (level !== undefined) {
-      const entry = cache.get(level);
-      const routes = entry?.routes ?? {};
-      const result: Record<string, RouteMeta> = {};
-      for (const [k, v] of Object.entries(routes)) {
-        // 深拷贝：避免嵌套对象（如 parameter_defaults）与内部缓存共享引用
-        result[k] = JSON.parse(JSON.stringify(v));
-      }
-      return result;
-    }
-    const result: Record<string, Record<string, RouteMeta>> = {};
-    for (const lvl of discoveryState.levels) {
-      const entry = cache.get(lvl);
-      if (entry) {
-        const levelRoutes: Record<string, RouteMeta> = {};
-        for (const [k, v] of Object.entries(entry.routes)) {
-          // 深拷贝：避免嵌套对象（如 parameter_defaults）与内部缓存共享引用
-          levelRoutes[k] = JSON.parse(JSON.stringify(v));
-        }
-        result[lvl] = levelRoutes;
-      }
-    }
-    return result;
   }
 
   // eager 层级自动加载 + ready Promise settle
