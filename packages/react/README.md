@@ -119,6 +119,36 @@ const profile = useForgeRoute('admin', 'users.show', { user: userId })
 // 路由名错误或必填参数缺失：降级为 '' 保证渲染不中断，控制台输出完整错误（含堆栈）
 ```
 
+## JSX 内使用
+
+组件里生成链接统一用 `useForgeRoute`：返回纯 `string`（不是 ref），直接放进 `href` 即可。level
+未加载时返回 `''`（渲染不崩），加载完成或参数变化后自动更新——你不必关心 `levelLoaded`。
+
+```tsx
+import { useForgeRoute } from '@route-forge/react'
+
+function UserLinks({ userId, userName }) {
+  // 静态 URL
+  const login = useForgeRoute('public', 'login.show')
+  // 带参数：params 传普通对象，内容变化才触发重算（内联字面量不会导致每帧重算）
+  const profile = useForgeRoute('admin', 'users.show', { user: userId })
+
+  return (
+    <>
+      <a href={login}>登录</a>
+      <a href={profile}>{userName}</a>
+    </>
+  )
+}
+```
+
+> **与 Vue 版的差异**：React 的 `useForgeRoute` 返回 `string`（Vue 版返回 `ComputedRef<string>`，模板自动解包）；
+> `params` 收普通对象（Vue 版收 getter）。React 内部按 `params` 的**内容**做依赖对比，所以直接写内联对象字面量
+> 也安全，不会因引用变化而每帧重算。
+>
+> `level` 为静态层级绑定，不支持中途动态切换（要换层级请在别的组件 / 另一次 `useForgeRoute` 调用里分别使用，
+> 与 `useForge` 契约一致）。
+
 ## 文档
 
 - 仓库主页: https://github.com/route-forge/route-forge
