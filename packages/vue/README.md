@@ -119,20 +119,50 @@ const profile = useForgeRoute('admin', 'users.show', () => ({ user: userId.value
 
 ## 模板内使用
 
+模板里生成链接统一用 `useForgeRoute`：它返回 `ComputedRef<string>`，Vue 在模板中自动解包，无需写
+`.value`。level 未加载时返回 `''`（渲染不崩），加载完成或依赖变化后自动重算——你不必关心 `levelLoaded`。
+
 ```vue
 <template>
-  <!-- useForgeRoute 内部处理加载状态，可直接在模板中使用 -->
-  <a :href="url">登录</a>
+  <!-- 1. 静态 URL -->
+  <a :href="login">登录</a>
 
-  <!-- 或通过 $forge 全局属性（需确保 level 已加载） -->
-  <a :href="$forge.route('public', 'login.show')">登录</a>
+  <!-- 2. 响应式参数：userId 变化时 URL 自动重算 -->
+  <a :href="profile">用户主页</a>
+
+  <!-- 3. 响应式路由名：currentName 变化时自动重算 -->
+  <NuxtLink :to="dynamic">动态入口</NuxtLink>
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import { useForgeRoute } from '@route-forge/vue'
-const url = useForgeRoute('public', 'login.show')
+
+const userId = ref(1)
+const currentName = ref('dashboard.show')
+
+// 静态层级 + 静态路由名
+const login = useForgeRoute('public', 'login.show')
+
+// params 传 getter → 追踪响应式，userId 变了 URL 跟着变
+const profile = useForgeRoute('admin', 'users.show', () => ({ user: userId.value }))
+
+// name 传 getter → 路由名本身也可响应式切换
+const dynamic = useForgeRoute('admin', () => currentName.value)
 </script>
 ```
+
+> `level` 为实例级静态绑定：即便传函数形式也只在 setup 求值一次即固定，不支持中途切换层级
+> （要换层级请在别的组件 / 另一次 `useForgeRoute` 调用里分别使用，与 `useForge` 契约一致）。
+> `name`、`params` 的 getter 则保持响应式，变化时自动重算。
+> 路由名不存在或必填参数缺失等渲染期错误会降级为 `''` 并输出样式化 `console.warn`，不会中断渲染。
+
+### 关于 `$forge` 全局属性（不推荐在模板中用）
+
+插件安装后会注入 `app.config.globalProperties.$forge`（含 `route(level, name, params?)`）。它是**底层兜底入口**：
+只有在对应 `level` 已加载完成后才可安全调用（例如 `plugin.ready()` resolve 之后）。渲染期若层级尚未加载，
+`$forge.route()` 会因路由数据未就绪直接抛错、打断渲染——不可控。因此模板里生成链接请优先用 `useForgeRoute`
+（自动处理加载态、错误降级为 `''`），`$forge` 保留给少数已确保时序安全的命令式场景。
 
 ## 文档
 
