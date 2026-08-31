@@ -11,14 +11,8 @@
  */
 
 import { RouteCache } from './cache.js';
-import {
-  createInterceptorManager,
-  InterceptorManagerImpl,
-  runRequestInterceptors,
-  runResponseInterceptors,
-} from './interceptors.js';
+import { InterceptorManagerImpl } from './interceptors.js';
 import { resolveAdapter } from './adapters/index.js';
-import { isAbortError } from './adapters/fetch-core.js';
 import { resolveRouteName, resolveRouteNameSync } from './resolveRouteName.js';
 import { defineImmutableProps } from './defineImmutableProps.js';
 import type { LoadingChangeCallback } from './loading.js';
@@ -27,17 +21,9 @@ import {
   AdapterNotFoundError,
   ForgeError,
   HTTPError,
-  NetworkError,
-  RequestAbortedError,
-  UnknownLevelError,
   UnknownRouteError,
 } from './errors.js';
-import {
-  appendQuery,
-  buildRequestUrl,
-  pickMethod,
-  resolveApiParams,
-} from './url-builder.js';
+import { buildRequestUrl } from './url-builder.js';
 import {
   applySummaryToState,
   fetchSummary,
@@ -45,10 +31,10 @@ import {
   type DiscoveryState,
 } from './auto-discovery.js';
 import { RouteStore } from './route-store.js';
+import { createHttpRunner } from './http-runner.js';
 import type {
   ApiCallParams,
   BoundForge,
-  ForgeRequest,
   InterceptorManager,
   RequestConfig,
   ResponseData,
@@ -263,130 +249,19 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     return buildRequestUrl(meta, params ?? {}, { baseURL, urlPrefix: discoveryState.urlPrefix });
   }
 
-  function api(level: string, name: string, params: ApiCallParams = {}): ForgeRequest {
-    // 内部创建 AbortController，用户通过返回值的 abort() 方法取消请求
-    let ctrl: AbortController | undefined;
-    let abortedBeforeInit = false;
-    let abortReason: unknown;
-
-    const work = (async (): Promise<unknown> => {
-      ctrl = new AbortController();
-      if (abortedBeforeInit) {
-        ctrl.abort(abortReason);
-      }
-      await autoDiscoveryPromise;
-      await load(level);
-      const meta = findRouteMeta(level, name);
-      if (!meta) {
-        throw new UnknownRouteError(name, level);
-      }
-      return doApiCall(meta, params, ctrl.signal);
-    })();
-
-    const request = work as ForgeRequest;
-    request.abort = (): void => {
-      if (ctrl) {
-        ctrl.abort();
-      } else {
-        abortedBeforeInit = true;
-      }
-    };
-    return request;
-  }
-
-  async function doApiCall(meta: RouteMeta, params: ApiCallParams, signal?: AbortSignal): Promise<unknown> {
-    const {
-      pathParams,
-      query,
-      body,
-      headers,
-      timeout: perCallTimeout,
-    } = resolveApiParams(params);
-
-    // 请求前检查：signal 已 abort 则直接抛错，不发请求
-    if (signal?.aborted) {
-      throw new RequestAbortedError(meta.name, meta.level, signal.reason);
-    }
-
-    const method = pickMethod(meta);
-    const urlWithQuery = appendQuery(
-      buildRequestUrl(meta, pathParams, { baseURL, urlPrefix: discoveryState.urlPrefix }),
-      query,
-    );
-    const config: RequestConfig = {
-      route: meta.name,
-      level: meta.level ?? '',
-      method,
-      url: urlWithQuery,
-      headers: { Accept: 'application/json', ...(headers ?? {}) },
-      body,
-      params: pathParams,
-      timeout: perCallTimeout ?? timeout,
-      signal,
-      meta,
-    };
-
-    const adp = await ensureAdapter();
-
-    // 5. 请求拦截链（LIFO，对齐 axios）；任段抛错且 onRejected 未消化 → 进入调用方 catch，不发请求
-    // builtin.adapter 内部已执行 forge 拦截器（同一管理器对象引用，runsInterceptors=true）→ 跳过
-    const finalConfig = adp.runsInterceptors
-      ? config
-      : await runRequestInterceptors(requestInterceptors, config);
-
-    // 拦截链后再次检查：拦截器可能修改了 signal 或已 abort
-    if (finalConfig.signal?.aborted) {
-      throw new RequestAbortedError(meta.name, meta.level, finalConfig.signal.reason);
-    }
-
-    // 6. adapter 调用 → 7/8 的错误转换 + 响应拦截链
-    // HTTP 非 2xx 转 HTTPError；底层网络错误（非 ForgeError）转 NetworkError
-    // 注意：source 始终构造（含错误转换逻辑），runsInterceptors=true 时直接返回 source
-    // 加载中标识：始终跟踪，用户不监听即可
-    loadingTracker.start();
-    try {
-      const source: Promise<ResponseData> = adp.request(finalConfig).then(
-        (resp) => {
-          if (resp.status < 200 || resp.status >= 300) {
-            throw new HTTPError(
-              `HTTP ${resp.status} for route "${resp.route}" (${resp.method} ${resp.url})`,
-              {
-                route: resp.route,
-                level: resp.level,
-                status: resp.status,
-                url: resp.url,
-                method: resp.method,
-              },
-            );
-          }
-          return resp;
-        },
-        (err) => {
-          // 已经是 ForgeError（如拦截器内重新抛的）→ 原样抛
-          if (err instanceof ForgeError) throw err;
-          // 请求被取消 → 转 RequestAbortedError
-          if (isAbortError(err, signal)) {
-            throw new RequestAbortedError(meta.name, meta.level, err);
-          }
-          throw new NetworkError(
-            err instanceof Error ? err.message : String(err),
-            meta.name,
-            meta.level,
-            err,
-          );
-        },
-      );
-
-      // 响应拦截链（FIFO，对齐 axios）；末段返回值即 api() resolve 值
-      // builtin.adapter 内部已执行 forge 响应拦截器（runsInterceptors=true）→ 直接返回 source
-      const result = adp.runsInterceptors
-        ? await source
-        : await runResponseInterceptors(responseInterceptors, source);
-      return result;
-    } finally {
-      loadingTracker.stop();
-    }
-  }
+  // --- 业务请求执行（http-runner 封装：参数解析 / 拦截链 / 错误转换 / 加载跟踪 / 可 abort）---
+  const api = createHttpRunner({
+    ensureAdapter,
+    requestInterceptors,
+    responseInterceptors,
+    load,
+    findRouteMeta,
+    baseURL,
+    state: discoveryState,
+    timeout,
+    loadingTracker,
+    autoDiscoveryPromise,
+  });
 
   function hasRoute(level: string, name: string): boolean {
     assertDiscoveryReady();
