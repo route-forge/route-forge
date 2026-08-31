@@ -427,6 +427,34 @@ describe('useForge API trimming', () => {
     expect(rendered[rendered.length - 1]).toBe(true);
   });
 
+  it('levelLoaded drives re-render under StrictMode without render-phase ref writes', async () => {
+    // 回归：levelLoaded 改为 loadedRef 单一真值源 + 提交后（effect）写值，
+    // StrictMode 双渲染下首帧 false、加载完成后仍正确重渲染为 true
+    const rendered: boolean[] = [];
+
+    function C() {
+      const bound = useForge({ level: 'public' }) as any;
+      rendered.push(bound.levelLoaded);
+      return <div>{String(bound.levelLoaded)}</div>;
+    }
+
+    let view: ReturnType<typeof render> | undefined;
+    await act(async () => {
+      view = render(
+        <StrictMode>
+          <RouteForgeProvider options={makeOptions()}>
+            <C />
+          </RouteForgeProvider>
+        </StrictMode>,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    expect(rendered[0]).toBe(false);
+    expect(view!.getByText('true')).toBeTruthy();
+    expect(rendered[rendered.length - 1]).toBe(true);
+  });
+
   it('levelLoaded initializes true when level already cached in storage', async () => {
     // 回归测试：已缓存层级在新组件首帧即为 true（useState 初始化器读取 isLoaded）
     const opts = {

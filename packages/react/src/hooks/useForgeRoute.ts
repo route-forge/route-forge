@@ -6,6 +6,8 @@
  * - level 加载完成后自动更新并返回正确 URL
  * - 路由名不存在或必填参数缺失等渲染期错误：降级为 '' 保证渲染不中断，
  *   同时以醒目的样式化 warn 输出完整错误（含堆栈）——开发期可见，生产无副作用
+ * - level 为静态层级绑定：本 hook 面向固定层级使用，不支持中途动态切换 level
+ *   （需要另一个层级请在别的组件 / 别的 useForgeRoute 调用里分别使用，与 useForge 契约一致）
  * - 用户无需关心 levelLoaded 状态，直接用即可
  */
 
@@ -71,7 +73,8 @@ export function useForgeRoute(
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- params 经 paramsKey 序列化进入依赖
+    // 依赖以 paramsKey（params 的内容序列化）为准，而非 params 引用本身：
+    // 内联对象字面量每次渲染都是新引用，直接列 params 会让 effect 每帧重跑。
   }, [forge, level, name, paramsKey]);
 
   return url;

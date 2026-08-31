@@ -14,7 +14,7 @@
  *   level / name / params 均自动推断，IDE 提供补全提示。
  */
 
-import { createContext, type ReactNode, useContext, useMemo, useRef, useState, useEffect } from 'react';
+import { createContext, type ReactNode, useCallback, useContext, useMemo, useRef, useState, useEffect } from 'react';
 import {
   type BoundForge,
   createRouteForge,
@@ -158,17 +158,24 @@ export function useForge(opts?: {
   const level = opts?.level;
   const prefix = opts?.prefix;
 
-  // React 特化：levelLoaded → boolean，由 setState 驱动组件重渲染。
-  // loadedRef 作为渲染期镜像，供 bound 上的 getter 读取最新值（bound 对象本身保持稳定）。
-  const [loaded, setLoaded] = useState(() =>
-    level !== undefined ? forge.isLoaded(level) : false,
-  );
-  const loadedRef = useRef(loaded);
-  loadedRef.current = loaded;
+  // 契约：level 为实例级静态绑定——在 hook 首次调用时求值并固定，不支持动态切换。
+  // 因为层级与其前缀（prefix）/ 路由名解析语义绑定，中途换 level 会让 prefix 失去意义；
+  // 需要指向另一层级时，请新建组件 / 新建一次 useForge 调用（新建实例的开销可接受）。
+
+  // React 特化：levelLoaded → boolean，由 bound 上的 getter 读取 loadedRef 提供。
+  // loadedRef 是唯一真值源，仅在渲染提交之后（effect / 异步回调）写入，渲染阶段绝不改；
+  // state 只用于在值变化时驱动组件重渲染（getter 本身不触发渲染）。
+  const loadedRef = useRef<boolean>(level !== undefined ? forge.isLoaded(level) : false);
+  const [, setLoadedVersion] = useState(0);
+  const markLoaded = useCallback((next: boolean) => {
+    if (loadedRef.current === next) return;
+    loadedRef.current = next;
+    setLoadedVersion((v) => v + 1);
+  }, []);
 
   const bound = useMemo(() => {
     if (level === undefined) return null;
-    // 委托 core 的 use()（内部已触发 load）
+    // 委托 core 的 use()（内部已触发 load；load 经 core inflight 去重，幂等）
     const b = forge.use(level, prefix);
     Object.defineProperty(b, 'levelLoaded', {
       get() { return loadedRef.current; },
@@ -180,20 +187,20 @@ export function useForge(opts?: {
 
   useEffect(() => {
     if (level === undefined || !bound) return;
-    // level / forge 切换时先同步当前缓存状态
+    // level / forge 切换时先同步当前缓存状态（在 effect 内写 ref，渲染期无副作用）
     const current = forge.isLoaded(level);
-    if (loadedRef.current !== current) setLoaded(current);
+    markLoaded(current);
     if (current) return;
     let cancelled = false;
     // forge.load 内部有 inflight 去重，与 createBoundForge 内部触发的 load 不会重复请求
     forge.load(level).then(
-      () => { if (!cancelled) setLoaded(true); },
+      () => { if (!cancelled) markLoaded(true); },
       () => { /* 加载失败时 levelLoaded 保持 false */ },
     );
     return () => {
       cancelled = true;
     };
-  }, [bound, forge, level]);
+  }, [bound, forge, level, markLoaded]);
 
   return level === undefined ? forge : (bound as unknown as ReactBoundForge);
 }
