@@ -2,6 +2,25 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [Unreleased]
+
+### Changed
+
+- 内部重构（公共 API 与运行时行为零变更）：`createRouteForge` 单文件"大工厂函数"按职责拆为五个同目录模块，
+  `forge.ts` 从 888 行瘦身到 335 行——
+  `url-builder.ts`（URL 构建与 `ApiCallParams` 解析，纯函数）、
+  `auto-discovery.ts`（摘要端点 `fetchSummary` + `applySummaryToState` 折算）、
+  `route-store.ts`（`RouteStore`：`RouteCache` / inflight 去重 / 失效代数 / 层级加载 / 虚拟 `unassigned` 层级）、
+  `http-runner.ts`（`createHttpRunner`：`api` / `doApiCall` + 请求/响应拦截链 + HTTP/网络/取消错误转换 + 加载中标识）、
+  `bound-forge.ts`（`createBoundForgeFactory`：`use(level, prefix)` 的层级绑定 BoundForge 构造）。
+  `ensureAdapter` / `fetchMeta` 作为跨子系统共享 infra 保留在工厂；原散落的 `effective*` 可变状态收敛为
+  工厂持有的单个 `DiscoveryState` 对象，各处按属性实时读取以保留自动发现回填语义（非快照）。
+- 内部重构：理顺 `createRouteForge()` 初始化时序——摘要发现在 `fetchMeta` / `adapterResolved` 就绪后就地启动
+  （`fetchSummary` 为 async，首个 `await` 即让出，不阻塞工厂返回、无构造期 TDZ），
+  移除原 `whenSummary` 挂起队列与 `Promise.resolve().then()` 微任务延迟启动机制。
+- 内部清理：移除 `forge.ts` 底部与 `index.ts` 重复的 `createInterceptorManager` / `RouteCache` / `ForgeError`
+  死重导出（无深路径消费者）。
+
 ## 2.0.0 — 2026-08-30
 
 ### Changed
