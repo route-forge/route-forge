@@ -38,7 +38,6 @@ import type {
   RouteForge,
   RouteForgeOptions,
   RouteMeta,
-  SummaryResponse,
 } from './types.js';
 
 const DEFAULT_TIMEOUT = 30_000;
@@ -73,29 +72,6 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     backendHasUnassignedLevel: false,
   };
   const discoveryInputs: DiscoveryInputs = { explicitLevels, explicitEager, explicitEndpoint };
-
-  // 自动发现异步填充（不阻塞 createRouteForge 返回）
-  // 摘要拉取经 adapter 通道（fetchMeta → ensureAdapter 依赖 adapterResolved 等声明），
-  // 延迟到同步声明区之后启动；autoDiscoveryPromise 通过挂起队列消费，
-  // 无论谁先就绪都能正确串联（避免微任务注册顺序竞态）
-  let summaryPromise: Promise<SummaryResponse | null> | undefined;
-  const summaryWaiters: Array<(p: Promise<SummaryResponse | null>) => void> = [];
-  const whenSummary = (): Promise<SummaryResponse | null> =>
-    summaryPromise ?? new Promise((resolve) => summaryWaiters.push(resolve));
-  const autoDiscoveryPromise = whenSummary().then((summary) => {
-    // summary === null：显式 levels 降级路径，effective* 保持初值，无需折算
-    if (summary === null) {
-      return;
-    }
-    applySummaryToState(summary, discoveryState, discoveryInputs);
-  });
-
-  // 防止 autoDiscoveryPromise 未被 await 时产生 unhandled rejection
-  // 存储错误以便在 load/api 调用时重新抛出，保留原始错误信息
-  let autoDiscoveryError: unknown = null;
-  autoDiscoveryPromise.catch((e) => {
-    autoDiscoveryError = e;
-  });
 
   // --- Auto-discovery 完成状态 + ready Promise ---
   let autoDiscoveryCompleted = false;
@@ -141,11 +117,6 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   const adapterPromise = resolveAdapter({
     adapter,
     forgeInterceptors: { request: requestInterceptors, response: responseInterceptors },
-  });
-  // 启动摘要拉取（微任务延迟，确保 adapterResolved 等声明已完成；fetchMeta → ensureAdapter 依赖它们）
-  Promise.resolve().then(() => {
-    summaryPromise = fetchSummary(discoveryInputs, baseURL, fetchMeta);
-    for (const resolve of summaryWaiters) resolve(summaryPromise);
   });
   let adapterResolved = false;
   let adapterObj: Awaited<ReturnType<typeof resolveAdapter>> | null = null;
@@ -213,6 +184,22 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     }
     return resp.data;
   }
+
+  // 自动发现：摘要拉取经 adapter 通道（fetchSummary → fetchMeta → ensureAdapter 均已在上方就绪），
+  // 就地折算进 discoveryState。fetchSummary 为 async，首个 await 即让出，不阻塞 createRouteForge 返回。
+  const autoDiscoveryPromise = fetchSummary(discoveryInputs, baseURL, fetchMeta).then((summary) => {
+    // summary === null：显式 levels 降级路径，effective* 保持初值，无需折算
+    if (summary === null) {
+      return;
+    }
+    applySummaryToState(summary, discoveryState, discoveryInputs);
+  });
+  // 防止 autoDiscoveryPromise 未被 await 时产生 unhandled rejection；
+  // 存储错误以便在 load/api 调用时重新抛出，保留原始错误信息
+  let autoDiscoveryError: unknown = null;
+  autoDiscoveryPromise.catch((e) => {
+    autoDiscoveryError = e;
+  });
 
   // --- 层级路由存储与加载（RouteStore 封装 cache/inflight/失效代数/虚拟 unassigned 层级）---
   const store = new RouteStore({
