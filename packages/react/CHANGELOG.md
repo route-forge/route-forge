@@ -2,6 +2,25 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## 2.1.0 — 2026-08-31
+
+### Fixed
+
+- `useForge` 的 `levelLoaded`：由"渲染期直接写镜像 ref"改为 `loadedRef` 单一真值源 + getter，
+  仅在 effect / 异步回调（渲染提交之后）写值并驱动重渲染。消除 concurrent / StrictMode 下
+  渲染期写 ref 与已提交状态不一致（tearing）的隐患，`levelLoaded` 观感与语义不变。
+
+### Changed
+
+- `useForge` / `useForgeRoute` 明确契约：`level`（及 `prefix`）为实例级静态绑定，不支持中途
+  动态切换——换层级请新建组件 / 新建一次 hook 调用（与 Vue 一致）。
+- `useForgeRoute`：移除无效的 `eslint-disable react-hooks/exhaustive-deps`（仓库未接 eslint，
+  `pnpm lint` 实为 `tsc --noEmit`），改为普通依赖说明注释。
+
+### Docs
+
+- README / 注释补"层级静态绑定"契约说明。
+
 ## 2.0.0 — 2026-08-30
 
 ### Changed

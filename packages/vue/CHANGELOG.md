@@ -2,6 +2,20 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## 2.1.0 — 2026-08-31
+
+### Changed
+
+- `useForgeRoute`：`level` 收敛为 setup 快照静态绑定——`computed` 不再重新求值 level，消除
+  "传入函数形式的 level 变了、但 load/levelLoaded 仍跟踪初始层级"的半吊子行为。`name` /
+  `params`（getter）保持响应式。契约：换层级请新建组件 / 新建一次调用（与 React 一致）。
+- `useForge`：覆盖 `levelLoaded` 的属性描述符由 `configurable: false` 改为 `true`，对齐 core
+  `BoundForge.levelLoaded` 的挂载意图（允许适配层重配置）与 React 适配层，避免属性一旦固定不可改。
+
+### Docs
+
+- README / 注释补"层级静态绑定"契约说明。
+
 ## 2.0.0 — 2026-08-30
 
 ### Changed
