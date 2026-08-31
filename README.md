@@ -113,9 +113,9 @@ pnpm add axios
 **不使用打包工具？** core 包提供浏览器直接引入的 IIFE 构建：
 
 ```html
-<!-- 开发版（含 sourcemap，34 KB） -->
+<!-- 开发版（引用外部 sourcemap，约 41 KB） -->
 <script src="https://unpkg.com/@route-forge/core/dist/route-forge.global.js"></script>
-<!-- 生产版（压缩，15 KB） -->
+<!-- 生产版（压缩，约 19 KB / gzip 约 7 KB） -->
 <script src="https://unpkg.com/@route-forge/core/dist/route-forge.global.min.js"></script>
 
 <script>
@@ -203,6 +203,49 @@ app.mount('#app')
   <a :href="$forge.route('public', 'login.show')">登录</a>
 </template>
 ```
+
+#### React 集成
+
+```tsx
+// main.tsx
+import { createRoot } from 'react-dom/client'
+import { RouteForgeProvider } from '@route-forge/react'
+
+createRoot(document.getElementById('root')!).render(
+  <RouteForgeProvider options={{ endpoint: '/_forge/routes' }}>
+    <App />
+  </RouteForgeProvider>,
+)
+```
+
+```tsx
+// App.tsx —— 与 Vue 对等的能力，差异在 React 用选项对象、params 传普通对象
+import { useForge, useForgeApi, useForgeRoute } from '@route-forge/react'
+
+// 绑定层级 — 后续调用无需再传 level
+const forge = useForge({ level: 'admin' })
+const user = await forge('users.show', { user: 1 })
+
+// 绑定层级 + 前缀 — 路由名自动拼接
+const userForge = useForge({ level: 'admin', prefix: 'users' })
+const user2 = await userForge('show', { user: 1 })  // → admin.users.show
+
+// 带 loading / error 状态的 API 调用（同样支持层级绑定和前缀）
+const { call, pending, error } = useForgeApi({ level: 'admin' })
+const { data } = await call('users.show', { user: 1 })
+
+const { call: callUser } = useForgeApi({ level: 'admin', prefix: 'users' })
+const { data: user3 } = await callUser('show', { user: 1 })
+
+// 响应式 URL 生成器：模板层专用，未加载返回 ''、加载后自动更新、参数变化重算
+const detailUrl = useForgeRoute('admin', 'users.show', { user: 1 })
+
+return <a href={detailUrl}>查看用户</a>
+```
+
+> **层级是静态绑定**：`useForge` / `useForgeApi` / `useForgeRoute` 的 `level`（及 `prefix`）在实例创建时固定，
+> 不支持中途动态切换 level（换 level 会让 `prefix` 失去绑定意义）。需要另一个层级时，请新建组件 / 新建一次实例，
+> 开销可接受。Vue、React 两包契约一致。
 
 ### 4. 类型生成（可选）
 
@@ -366,7 +409,7 @@ pnpm build
 # 运行测试
 pnpm test
 
-# 代码检查
+# 代码检查（当前委托各包 tsc --noEmit，未接入独立 linter）
 pnpm lint
 
 # 类型检查
