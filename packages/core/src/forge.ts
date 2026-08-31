@@ -39,6 +39,13 @@ import {
   pickMethod,
   resolveApiParams,
 } from './url-builder.js';
+import {
+  applySummaryToState,
+  fetchSummary,
+  UNASSIGNED_LEVEL,
+  type DiscoveryInputs,
+  type DiscoveryState,
+} from './auto-discovery.js';
 import type {
   ApiCallParams,
   BoundForge,
@@ -55,12 +62,6 @@ import type {
 
 const DEFAULT_TIMEOUT = 30_000;
 const DEFAULT_CACHE_TTL = 3600;
-
-/**
- * 后端摘要端点返回的未分配层级路由，前端作为虚拟层级 "unassigned" 消费
- * @see .docs/SPEC.md §3.1.6
- */
-const UNASSIGNED_LEVEL = 'unassigned';
 
 export function createRouteForge(options: RouteForgeOptions): RouteForge {
   if (!options.endpoint) throw new TypeError('options.endpoint is required');
@@ -81,41 +82,16 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   const explicitEager = options.eager;
   const explicitEndpoint = options.endpoint;
 
-  // effective* 状态：在摘要端点响应到达后被填充
-  let effectiveLevels: string[] = explicitLevels ?? [];
-  let effectiveEager: string[] = explicitEager ?? [];
-  let effectiveEndpoint = explicitEndpoint;
-  let effectiveUrlPrefix = '';  // 后端下发的 URL 前缀，默认为空
-
-  // 未分配层级路由：来自摘要端点的 unassigned 字段，前端作为虚拟层级 "unassigned" 消费
-  // @see .docs/SPEC.md §3.1.6
-  let summaryUnassigned: SummaryResponse['unassigned'] | undefined;
-  // 后端是否将 unassigned 作为真实层级注册（在 levels 中）；若是则走正常 HTTP 拉取，不走虚拟层级
-  let backendHasUnassignedLevel = false;
-
-  // 拉取摘要端点（用于 endpoint / levels / eager 自动发现）
-  // 走 adapter 原始通道（与层级元信息拉取一致）：获得 timeout、adapter 检测/降级、
-  // 自定义 Fetcher 兼容；失败错误为 HTTPError/NetworkError（携带 status/url 详情）
-  // URL = baseURL + 显式 endpoint（此时后端权威的 endpoint 尚未获取，用用户显式配置）
-  // 注意：IIFE 延迟到 ensureAdapter/adapterResolved 声明之后才真正发起（见下方启动调用），
-  // 避免构造期 TDZ（fetchMeta → ensureAdapter → adapterResolved）
-  const fetchSummary = async (): Promise<SummaryResponse | null> => {
-    try {
-      const base = baseURL.endsWith('/') ? baseURL.slice(0, -1) : baseURL;
-      const ep = explicitEndpoint.startsWith('/') ? explicitEndpoint : `/${explicitEndpoint}`;
-      const data = await fetchMeta('__forge__.summary', `${base}${ep}`);
-      return data as SummaryResponse;
-    } catch (e) {
-      if (explicitLevels && explicitLevels.length > 0) {
-        console.warn(
-          `[route-forge] summary endpoint unreachable: ${(e as Error).message}; using explicit levels`,
-        );
-        return null;
-      }
-      // 未传 levels 且摘要端点不可达（网络错误 / HTTP 非 2xx / 超时）→ 无可用降级，抛错（ready() 将 reject）
-      throw new UnknownLevelError('(auto-discovery)');
-    }
+  // 自动发现有效状态：初始取用户显式配置，摘要端点响应到达后由 applySummaryToState 就地回填
+  const discoveryState: DiscoveryState = {
+    levels: explicitLevels ?? [],
+    eager: explicitEager ?? [],
+    endpoint: explicitEndpoint,
+    urlPrefix: '',
+    summaryUnassigned: undefined,
+    backendHasUnassignedLevel: false,
   };
+  const discoveryInputs: DiscoveryInputs = { explicitLevels, explicitEager, explicitEndpoint };
 
   // 自动发现异步填充（不阻塞 createRouteForge 返回）
   // 摘要拉取经 adapter 通道（fetchMeta → ensureAdapter 依赖 adapterResolved 等声明），
@@ -126,71 +102,11 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   const whenSummary = (): Promise<SummaryResponse | null> =>
     summaryPromise ?? new Promise((resolve) => summaryWaiters.push(resolve));
   const autoDiscoveryPromise = whenSummary().then((summary) => {
+    // summary === null：显式 levels 降级路径，effective* 保持初值，无需折算
     if (summary === null) {
       return;
     }
-
-    // 0. schemaVersion 向前兼容（DESIGN.md §6.3）
-    const schemaVersion = summary.schemaVersion ?? 1;
-    if (schemaVersion > 1) {
-      console.warn(
-        `[route-forge] backend schemaVersion=${schemaVersion} > client supported 1; some features may be unavailable`,
-      );
-    }
-
-    // 1. endpoint 后端权威
-    if (summary.config.endpoint_prefix && summary.config.endpoint_prefix !== explicitEndpoint) {
-      console.warn(
-        `[route-forge] backend endpoint_prefix "${summary.config.endpoint_prefix}" overrides frontend endpoint "${explicitEndpoint}"`,
-      );
-      effectiveEndpoint = summary.config.endpoint_prefix;
-    }
-
-    // 1a. url_prefix 后端权威：后端下发时覆盖
-    if (summary.config.url_prefix) {
-      effectiveUrlPrefix = summary.config.url_prefix.endsWith('/')
-        ? summary.config.url_prefix.slice(0, -1)
-        : summary.config.url_prefix;
-    }
-
-    // 2. levels 取交集或自动发现
-    const backendLevels = Object.keys(summary.levels);
-
-    // 3a. 捕获摘要端点的 unassigned 字段，作为虚拟层级 "unassigned" 消费（SPEC §3.1.6）
-    // 仅当后端未将 unassigned 作为真实层级注册时才启用虚拟层级
-    backendHasUnassignedLevel = backendLevels.includes(UNASSIGNED_LEVEL);
-    if (Array.isArray(summary.unassigned) && summary.unassigned.length > 0 && !backendHasUnassignedLevel) {
-      summaryUnassigned = summary.unassigned;
-    }
-
-    // 可用层级 = 后端真实层级 + 虚拟 unassigned 层级（若有未分配路由）
-    const availableLevels = backendLevels.slice();
-    if (summaryUnassigned && !backendHasUnassignedLevel) {
-      availableLevels.push(UNASSIGNED_LEVEL);
-    }
-
-    if (explicitLevels && explicitLevels.length > 0) {
-      const intersection = explicitLevels.filter((l) => availableLevels.includes(l));
-      const removed = explicitLevels.filter((l) => !availableLevels.includes(l));
-      if (removed.length > 0) {
-        console.warn(
-          `[route-forge] levels not in backend summary and dropped: ${removed.join(', ')}`,
-        );
-      }
-      effectiveLevels = intersection;
-    } else {
-      effectiveLevels = availableLevels;
-    }
-
-    // 4. eager：未传时取后端 load:'eager' 层级；显式传入时取并集（SPEC §5.3）
-    const backendEager = backendLevels.filter((lvl) => summary.levels[lvl]?.load === 'eager');
-    if (!explicitEager) {
-      effectiveEager = backendEager;
-    } else {
-      // 并集：后端 eager + 前端显式声明，去重
-      const union = new Set([...backendEager, ...explicitEager]);
-      effectiveEager = [...union];
-    }
+    applySummaryToState(summary, discoveryState, discoveryInputs);
   });
 
   // 防止 autoDiscoveryPromise 未被 await 时产生 unhandled rejection
@@ -247,7 +163,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   });
   // 启动摘要拉取（微任务延迟，确保 adapterResolved 等声明已完成；fetchMeta → ensureAdapter 依赖它们）
   Promise.resolve().then(() => {
-    summaryPromise = fetchSummary();
+    summaryPromise = fetchSummary(discoveryInputs, baseURL, fetchMeta);
     for (const resolve of summaryWaiters) resolve(summaryPromise);
   });
   let adapterResolved = false;
@@ -274,7 +190,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   const invalidationGens = new Map<string, number>();
 
   function assertLevelDeclared(level: string): void {
-    if (!effectiveLevels.includes(level)) {
+    if (!discoveryState.levels.includes(level)) {
       throw new UnknownLevelError(level);
     }
   }
@@ -331,7 +247,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     // 后端可能下发 cache 字段，让 RouteCache 优先采用
     return (await fetchMeta(
       `__forge__.load.${level}`,
-      buildUrl(level, { baseURL, endpoint: effectiveEndpoint }),
+      buildUrl(level, { baseURL, endpoint: discoveryState.endpoint }),
       level,
     )) as LevelRoutesResponse;
   }
@@ -351,9 +267,9 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     const p = (async () => {
       try {
         // 虚拟层级 unassigned：直接从摘要数据构建响应，不发 HTTP 请求（SPEC §3.1.6）
-        if (level === UNASSIGNED_LEVEL && !backendHasUnassignedLevel && summaryUnassigned) {
+        if (level === UNASSIGNED_LEVEL && !discoveryState.backendHasUnassignedLevel && discoveryState.summaryUnassigned) {
           const routes: Record<string, RouteMeta> = {};
-          for (const r of summaryUnassigned) {
+          for (const r of discoveryState.summaryUnassigned) {
             routes[r.name] = { ...r, level: UNASSIGNED_LEVEL };
           }
           cache.set({ level: UNASSIGNED_LEVEL, routes, cache: null });
@@ -385,7 +301,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     if (!meta) {
       throw new UnknownRouteError(name, level);
     }
-    return buildRequestUrl(meta, params ?? {}, { baseURL, urlPrefix: effectiveUrlPrefix });
+    return buildRequestUrl(meta, params ?? {}, { baseURL, urlPrefix: discoveryState.urlPrefix });
   }
 
   function findRouteMeta(level: string, name: string): RouteMeta | undefined {
@@ -444,7 +360,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
 
     const method = pickMethod(meta);
     const urlWithQuery = appendQuery(
-      buildRequestUrl(meta, pathParams, { baseURL, urlPrefix: effectiveUrlPrefix }),
+      buildRequestUrl(meta, pathParams, { baseURL, urlPrefix: discoveryState.urlPrefix }),
       query,
     );
     const config: RequestConfig = {
@@ -527,7 +443,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       cache.clear();
       // 清除所有进行中的加载，防止旧数据回写
       inflight.clear();
-      for (const lvl of effectiveLevels) {
+      for (const lvl of discoveryState.levels) {
         invalidationGens.set(lvl, (invalidationGens.get(lvl) ?? 0) + 1);
       }
     } else if (Array.isArray(level)) {
@@ -546,7 +462,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   function isLoaded(level?: string): boolean {
     if (level) return cache.get(level) !== undefined;
     // 无任何已声明层级（如自动发现未完成）时不应谎报全部已加载
-    return effectiveLevels.length > 0 && effectiveLevels.every((lvl) => cache.get(lvl) !== undefined);
+    return discoveryState.levels.length > 0 && discoveryState.levels.every((lvl) => cache.get(lvl) !== undefined);
   }
 
   function hasRoute(level: string, name: string): boolean {
@@ -568,7 +484,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       return result;
     }
     const result: Record<string, Record<string, RouteMeta>> = {};
-    for (const lvl of effectiveLevels) {
+    for (const lvl of discoveryState.levels) {
       const entry = cache.get(lvl);
       if (entry) {
         const levelRoutes: Record<string, RouteMeta> = {};
@@ -591,12 +507,12 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
       // eager load：单个层级失败不阻塞 ready（SPEC §4.1.9）。
       // 失败以完整异常（含堆栈）抛出到控制台，且不缓存失败态——
       // 后续 load()/api() 直接调用时会重试该层级，再失败时向调用方抛出
-      if (effectiveEager.length > 0) {
-        return Promise.allSettled(effectiveEager.map((lvl) => load(lvl))).then((results) => {
+      if (discoveryState.eager.length > 0) {
+        return Promise.allSettled(discoveryState.eager.map((lvl) => load(lvl))).then((results) => {
           results.forEach((r, i) => {
             if (r.status === 'rejected') {
               console.error(
-                `[route-forge] eager load failed for level "${effectiveEager[i]}":`,
+                `[route-forge] eager load failed for level "${discoveryState.eager[i]}":`,
                 r.reason,
               );
             }
