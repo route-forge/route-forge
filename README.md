@@ -172,16 +172,19 @@ import { createApp } from 'vue'
 import { createRouteForgePlugin } from '@route-forge/vue'
 
 const app = createApp(App)
-app.use(createRouteForgePlugin({
+const plugin = createRouteForgePlugin({
   endpoint: '/_forge/routes',
-}))
-app.mount('#app')
+})
+app.use(plugin)
+// 推荐：ready()（摘要 + eager 层级完成）后再挂载，失败接住避免静默白屏
+plugin.ready()
+  .then(() => app.mount('#app'))
+  .catch((err) => console.error('[route-forge] init failed', err))
 ```
 
 ```vue
-
 <script setup lang="ts">
-  import { useForge, useForgeApi } from '@route-forge/vue'
+  import { useForge, useForgeApi, useForgeRoute } from '@route-forge/vue'
 
   // 绑定层级 — 后续调用无需再传 level
   const forge = useForge('admin')
@@ -197,10 +200,13 @@ app.mount('#app')
 
   const { call: callUser } = useForgeApi('admin', 'users')
   const { data: user3 } = await callUser('show', { user: 1 })
+
+  // 模板里的响应式 URL：未加载返回 ''、加载后自动更新（优先于 $forge）
+  const loginUrl = useForgeRoute('public', 'login.show')
 </script>
 
 <template>
-  <a :href="$forge.route('public', 'login.show')">登录</a>
+  <a :href="loginUrl">登录</a>
 </template>
 ```
 
@@ -222,30 +228,38 @@ createRoot(document.getElementById('root')!).render(
 // App.tsx —— 与 Vue 对等的能力，差异在 React 用选项对象、params 传普通对象
 import { useForge, useForgeApi, useForgeRoute } from '@route-forge/react'
 
-// 绑定层级 — 后续调用无需再传 level
-const forge = useForge({ level: 'admin' })
-const user = await forge('users.show', { user: 1 })
+export default function App() {
+  // 绑定层级 — 后续调用无需再传 level
+  const forge = useForge({ level: 'admin' })
 
-// 绑定层级 + 前缀 — 路由名自动拼接
-const userForge = useForge({ level: 'admin', prefix: 'users' })
-const user2 = await userForge('show', { user: 1 })  // → admin.users.show
+  // 绑定层级 + 前缀 — 路由名自动拼接
+  const userForge = useForge({ level: 'admin', prefix: 'users' })
 
-// 带 loading / error 状态的 API 调用（同样支持层级绑定和前缀）
-const { call, pending, error } = useForgeApi({ level: 'admin' })
-const { data } = await call('users.show', { user: 1 })
+  // 带 loading / error 状态的 API 调用（同样支持层级绑定和前缀）
+  const { call, pending, error } = useForgeApi({ level: 'admin' })
+  const { call: callUser } = useForgeApi({ level: 'admin', prefix: 'users' })
 
-const { call: callUser } = useForgeApi({ level: 'admin', prefix: 'users' })
-const { data: user3 } = await callUser('show', { user: 1 })
+  // 响应式 URL 生成器：渲染期专用，未加载返回 ''、加载后自动更新、参数变化重算
+  const detailUrl = useForgeRoute('admin', 'users.show', { user: 1 })
 
-// 响应式 URL 生成器：模板层专用，未加载返回 ''、加载后自动更新、参数变化重算
-const detailUrl = useForgeRoute('admin', 'users.show', { user: 1 })
+  // 命令式调用放在事件处理里（不能在渲染期 await）
+  async function load() {
+    const user = await forge('users.show', { user: 1 })
+    const user2 = await userForge('show', { user: 1 })       // → admin.users.show
+    const { data } = await call('users.show', { user: 1 })
+    const { data: user3 } = await callUser('show', { user: 1 })
+  }
 
-return <a href={detailUrl}>查看用户</a>
+  return <a href={detailUrl}>查看用户</a>
+}
 ```
 
 > **层级是静态绑定**：`useForge` / `useForgeApi` / `useForgeRoute` 的 `level`（及 `prefix`）在实例创建时固定，
 > 不支持中途动态切换 level（换 level 会让 `prefix` 失去绑定意义）。需要另一个层级时，请新建组件 / 新建一次实例，
 > 开销可接受。Vue、React 两包契约一致。
+
+> **关于 Vue 的 `$forge` 全局属性**：插件会注入 `$forge.route()`，但它只在对应 level 加载完成后（如 `ready()` 之后）
+> 才可安全调用，渲染期层级未就绪会抛错、不可控。模板里生成链接请用 `useForgeRoute`（自动处理加载态、错误降级为 `''`）。
 
 ### 4. 类型生成（可选）
 
