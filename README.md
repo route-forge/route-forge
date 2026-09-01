@@ -1,5 +1,7 @@
 # Route Forge
 
+[English](./README_en.md) | **中文**
+
 **Laravel 命名路由的全链路解决方案** — 分级懒加载 · 类型安全 · 拦截器
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)

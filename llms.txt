@@ -1,0 +1,30 @@
+# Route Forge
+
+> Route Forge is a TypeScript client toolkit for Laravel named routes. It fetches route metadata from a backend manifest endpoint, lazy-loads route tables by level with isolated caching and request deduplication, generates URLs, and calls APIs by route name instead of hardcoded paths — with axios-compatible interceptors, request cancellation, loading-state tracking, compile-time type safety, and first-class Vue 3 and React integrations. The Laravel (PHP) backend ships separately as route-forge/route-forge-laravel.
+
+## Packages
+
+- [@route-forge/core](https://github.com/route-forge/route-forge/blob/main/packages/core/README_en.md): Framework-agnostic named-route client core — tiered lazy loading, isolated cache, request deduplication, auto-discovery, interceptors, abortable requests, codegen CLI, IIFE browser build.
+- [@route-forge/vue](https://github.com/route-forge/route-forge/blob/main/packages/vue/README_en.md): Vue 3 integration — plugin plus composables (useForge / useForgeApi / useForgeRoute), reactive levelLoaded, template-safe URL generation.
+- [@route-forge/react](https://github.com/route-forge/route-forge/blob/main/packages/react/README_en.md): React integration — RouteForgeProvider plus hooks (useForge / useForgeApi / useForgeRoute), state-driven levelLoaded, JSX-safe URL generation.
+
+## Documentation
+
+- [Repository README (English)](https://github.com/route-forge/route-forge/blob/main/README_en.md): Overview, feature matrix, quick start (Laravel backend + frontend), compatibility, development commands.
+- [Specification](https://github.com/route-forge/route-forge/blob/main/.docs/SPEC.md): Full feature specification, manifest HTTP contract, API rules.
+- [Design notes](https://github.com/route-forge/route-forge/blob/main/.docs/DESIGN.md): Architecture decisions and evolution roadmap.
+- [Contributing guide for AI agents (AGENTS.md)](https://github.com/route-forge/route-forge/blob/main/AGENTS.md): Repository layout, build/test commands, conventions, and design invariants.
+- [Backend package: route-forge/route-forge-laravel](https://github.com/route-forge/route-forge-laravel): Laravel ServiceProvider, manifest endpoints, tier macros, Artisan type generator.
+
+## Changelogs
+
+- [@route-forge/core changelog](https://github.com/route-forge/route-forge/blob/main/packages/core/CHANGELOG.md)
+- [@route-forge/vue changelog](https://github.com/route-forge/route-forge/blob/main/packages/vue/CHANGELOG.md)
+- [@route-forge/react changelog](https://github.com/route-forge/route-forge/blob/main/packages/react/CHANGELOG.md)
+
+## 中文文档
+
+- [仓库 README（中文）](https://github.com/route-forge/route-forge/blob/main/README.md)
+- [@route-forge/core（中文）](https://github.com/route-forge/route-forge/blob/main/packages/core/README.md)
+- [@route-forge/vue（中文）](https://github.com/route-forge/route-forge/blob/main/packages/vue/README.md)
+- [@route-forge/react（中文）](https://github.com/route-forge/route-forge/blob/main/packages/react/README.md)
