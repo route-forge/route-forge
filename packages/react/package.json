@@ -1,7 +1,19 @@
 {
   "name": "@route-forge/react",
   "version": "2.1.0",
-  "description": "Route Forge 的 React 集成：Provider + hooks（useForge/useForgeApi/useForgeRoute）",
+  "description": "Route Forge 的 React 集成：Provider + hooks（useForge/useForgeApi/useForgeRoute）/ React integration for Laravel named routes: Provider + hooks (useForge / useForgeApi / useForgeRoute)",
+  "keywords": [
+    "laravel",
+    "named-routes",
+    "react",
+    "react18",
+    "react19",
+    "hooks",
+    "url-generation",
+    "api-client",
+    "typescript",
+    "route-forge"
+  ],
   "license": "MIT",
   "author": "阿杰很厉害 <506907958@qq.com>",
   "homepage": "https://github.com/route-forge/route-forge",
@@ -27,7 +39,9 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "README_en.md"
   ],
   "scripts": {
     "build": "tsup",

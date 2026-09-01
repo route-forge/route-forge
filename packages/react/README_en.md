@@ -1,0 +1,207 @@
+# @route-forge/react
+
+[**中文**](./README.md) | English
+
+The React integration for Route Forge: `RouteForgeProvider` plus three hooks (`useForge` / `useForgeApi` / `useForgeRoute`) for calling APIs **by route name** and generating links inside components, with loading and error states managed for you.
+
+> All core capabilities (tiered lazy loading, isolated cache, interceptors, request cancellation, type safety) come from [@route-forge/core](../core/README.md); this package only adds React adaptation: `levelLoaded` is a plain `boolean` (state-driven re-render), `pending` / `error` are plain values, and URL generation returns a plain `string`.
+
+## Installation
+
+```bash
+pnpm add @route-forge/react @route-forge/core
+```
+
+Requires React 18+ (React 19 compatible).
+
+## Quick start
+
+```tsx
+// main.tsx
+import { createRoot } from 'react-dom/client'
+import { RouteForgeProvider } from '@route-forge/react'
+
+createRoot(document.getElementById('root')!).render(
+  <RouteForgeProvider options={{ endpoint: '/_forge/routes' }}>
+    <App />
+  </RouteForgeProvider>,
+)
+```
+
+The hooks handle async internally: `useForgeApi` / `forge.api()` await level loading automatically, and `useForgeRoute` returns `''` until the level loads, then updates on its own — no render blocking needed.
+
+**Need the whole app to wait until ready?** (e.g. the first screen calls sync methods like `route()` / `hasRoute()`) Create a forge outside the Provider as a readiness gate:
+
+```tsx
+const forge = createRouteForge({ endpoint: '/_forge/routes' })
+forge.ready()
+  .then(() => {
+    createRoot(document.getElementById('root')!).render(
+      <RouteForgeProvider options={{ endpoint: '/_forge/routes' }}>
+        <App />
+      </RouteForgeProvider>,
+    )
+  })
+  .catch((err) => {
+    // Always handle this: the summary endpoint may be unreachable
+    // (network error / non-2xx / timeout) — avoid a silent stuck initialization
+    console.error('[route-forge] init failed', err)
+  })
+```
+
+> Note: `RouteForgeProvider` only accepts `options` (not an instance), so in the gated pattern the Provider creates a second instance and the summary endpoint is requested twice. To avoid the duplicate request, prefer the direct-render pattern above and call sync methods only after `ready()`.
+
+> Provider options are exactly `createRouteForge(options)` (`levels` / `eager` / `adapter` / `cache` / `interceptors` / `timeout` / `baseURL`); full options table in the [core README](../core/README_en.md#options-createrouteforgeoptions). `options` is shallow-compared: inline literals do not rebuild the instance while the values stay the same.
+
+## useForge — the core hook
+
+Without `level` it returns the full `RouteForge` instance; with `{ level }` it delegates to `forge.use(level, prefix?)` (triggering the level load) and returns a `ReactBoundForge`:
+
+```tsx
+import { useForge } from '@route-forge/react'
+
+// Unbound — full RouteForge instance
+const forge = useForge()
+forge.api('admin', 'users.show', { user: 1 })
+forge.ready().then(f => f.use('admin'))           // bind a level once ready
+
+// Bound to a level — callable directly, load triggered automatically
+const users = useForge({ level: 'admin' })
+users.level                                       // → 'admin'
+users.levelLoaded                                 // boolean, true once loaded (triggers re-render)
+users('users.show', { user: 1 })                  // callable (= users.api() shorthand)
+users.api('users.show', { user: 1 })
+users.route('users.show', { user: 1 })
+users.url('users.show', { user: 1 })              // semantic alias of route()
+users.onLevelLoaded()                             // wait until the level is loaded
+users.useRoutePrefix('users')                     // returns a NEW BoundForge with the new prefix
+
+// Bound level + prefix — route names joined automatically (ambiguity resolved smartly)
+const userApi = useForge({ level: 'admin', prefix: 'users' })
+userApi('show', { user: 1 })                      // → forge.api('admin', 'users.show', ...)
+userApi.route('show', { user: 1 })                // → forge.route('admin', 'users.show', ...)
+
+// Generic methods: in bound form they act on the bound level (no arguments)
+users.load()                                      // load the bound level
+users.isLoaded()                                  // check the bound level's cache
+users.invalidate()                                // invalidate the bound level's cache
+// Global methods: isLoading() / onLoadingChange() / hasRoute(name) / getRoutes()
+```
+
+> **Note**: the unbound full instance may throw the guard error (`RF_FE_010`) from `route()` / `hasRoute()` before auto-discovery completes. Prefer `await forge.ready()`, or use `useForgeRoute` for links.
+
+> **Level binding is static**: `level` (and `prefix`) are fixed at first call and cannot be switched later — create another component or another `useForge` call for another level (the overhead is acceptable).
+
+## useForgeApi — event-style calls with loading/error state
+
+For imperative scenarios like click handlers (you cannot `await` during render): it never throws — errors are written to the `error` state and returned as `{ data: undefined, error }`:
+
+```tsx
+import { useForgeApi } from '@route-forge/react'
+
+// Three binding forms (options object; same level semantics as useForge)
+const api = useForgeApi()                                        // unbound: call(level, name, params)
+const admin = useForgeApi({ level: 'admin' })                    // bound: call(name, params)
+const users = useForgeApi({ level: 'admin', prefix: 'users' })   // bound + prefix: call(suffix, params)
+
+async function handleClick() {
+  const { data, error } = await admin.call('users.show', { user: 1 })
+}
+```
+
+- `pending`: `boolean` — reference-counted; concurrent `call`s keep it `true` until all settle
+- `error`: `unknown` — the latest failure (reset to `null` on success)
+
+## useForgeRoute — links in JSX
+
+Returns a plain `string` (not a ref) — drop it straight into `href`. It handles the loading state internally: returns `''` until the level loads (the render never crashes), then updates automatically when the level loads or params change — you never need to look at `levelLoaded`:
+
+```tsx
+import { useForgeRoute } from '@route-forge/react'
+
+function UserLinks({ userId, userName }) {
+  // Static URL
+  const login = useForgeRoute('public', 'login.show')
+  // With params: pass a plain object; recomputation is content-driven
+  // (inline literals are safe and won't recompute every render)
+  const profile = useForgeRoute('admin', 'users.show', { user: userId })
+
+  return (
+    <>
+      <a href={login}>Login</a>
+      <a href={profile}>{userName}</a>
+    </>
+  )
+}
+```
+
+Contract details:
+
+- **Difference vs the Vue version**: returns `string` (Vue returns `ComputedRef<string>`, auto-unwrapped in templates); `params` is a plain object (Vue takes a getter). React compares dependencies by the **content** of `params` (serialization), so inline object literals are safe — no per-render recomputation from identity changes
+- `level` is bound statically and cannot be switched later (create another component / call for another level, same contract as `useForge`)
+- Render-time errors (unknown route, missing required param…) **degrade to `''` so rendering never breaks**, while a styled `console.warn` prints the full error (with stack)
+
+## Smart parameter resolution
+
+`api()` supports the same smart resolution as core: flattened path parameters, with `query` / `body` / `headers` as fixed keys; when a path parameter name collides with a fixed key, `string|number` values are detected as path parameters, and the explicit `params` key always wins:
+
+```tsx
+// Conflict resolution: route /search/{query} — string `query` → path parameter
+users.api('search.show', { query: 'keyword' })
+
+// Explicit params: need BOTH a path param and a query string
+users.api('search.show', {
+  params: { query: 'keyword' },
+  query: { page: 1 },
+})
+```
+
+Full rules and the `timeout` override: [core README](../core/README_en.md#smart-parameter-resolution).
+
+## Type safety (optional but recommended)
+
+Once `ForgeRouteMap` is defined (codegen or module augmentation), level, route names, and params are inferred in `useForge` / `useForgeApi` / `useForgeRoute`:
+
+```bash
+npx route-forge-codegen --endpoint http://localhost/_forge/routes --out src/types/forge-routes.d.ts
+```
+
+```tsx
+// Typo'd route name / param name → compile error; correct call → autocompletion
+const users = useForge({ level: 'admin', prefix: 'users' })
+await users('show', { user: 1 })      // ✅ params checked at compile time
+```
+
+See the [core README "Type safety" section](../core/README_en.md#type-safety-optional-but-recommended).
+
+## Differences vs core / vue
+
+| Capability | @route-forge/core | @route-forge/vue | @route-forge/react |
+|------------|-------------------|------------------|--------------------|
+| `levelLoaded` | `Promise<void>` | `Ref<boolean>` | `boolean` |
+| `useForgeApi` `pending` / `error` | — (use `LoadingTracker`) | `Ref<boolean>` / `Ref<unknown>` | `boolean` / `unknown` |
+| URL generation returns | `string` (sync; throws when unready) | `ComputedRef<string>` (`''` until ready) | `string` (`''` until ready) |
+| `useForgeRoute` params | — | getter function | plain object (content-compared deps) |
+| Binding signature | `forge.use(level, prefix?)` | `useForge(level?, prefix?)` | `useForge({ level?, prefix? })` |
+
+## FAQ
+
+**`useForge()` says "must be used within a `<RouteForgeProvider>`"?**
+The hook ran outside the Provider; make sure the component tree is wrapped in `<RouteForgeProvider>`.
+
+**Do inline `options` objects rebuild the instance every render?**
+No. The Provider shallow-compares `options` (including array elements and nested plain objects) and keeps the same instance while values are unchanged; it rebuilds only when the configuration actually changes.
+
+**Where do imperative calls go?**
+Inside event handlers / `useEffect` — never `await` during render; only `useForgeRoute` (which returns a string synchronously) belongs in the render phase.
+
+## Documentation
+
+- Repository: <https://github.com/route-forge/route-forge>
+- Core package: [@route-forge/core](../core/README.md)
+- Design notes: <https://github.com/route-forge/route-forge/blob/main/.docs/DESIGN.md>
+- Specification: <https://github.com/route-forge/route-forge/blob/main/.docs/SPEC.md>
+
+## License
+
+MIT
