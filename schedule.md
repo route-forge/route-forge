@@ -1,6 +1,6 @@
 # Route Forge 进度快照
 
-> 更新于 2026-08-31（v2.0.0 已发版，处于其后维护期）。本文件是进度追踪文档，以代码实际状态为准。
+> 更新于 2026-09-01（v2.1.0 已就绪，处于其后维护期）。本文件是进度追踪文档，以代码实际状态为准。
 
 **全部测试通过：core 224 + vue 25 + react 27 = 276 tests 全绿；typecheck / lint / build 全绿。**
 
@@ -89,6 +89,21 @@
 - 契约统一：三包所有 `useForge` / `useForgeApi` / `useForgeRoute` 的 `level`（及 `prefix`）为
   实例级静态绑定，不支持中途动态切换；换层级请新建组件 / 新建实例
 - 当前基线：core 224 + vue 25 + react 27 = 276，全绿
+
+#### 8. 2026-09-01 README 中英双语化 + AI 优化
+- 通读三包完整源码比对 README，修正 4 处不一致：①core「第二参数」→ 第三参数 `params`；
+  ②vue/react 绑定形态 `load/isLoaded/invalidate` 改为无参示例（`BoundForge` 同名方法无参数）；
+  ③`useRoutePrefix` 语义改为「以新前缀返回新 BoundForge」（原「追加」不准确）；
+  ④core IIFE 引入改显式 `dist/` 路径（unpkg 裸包名解析到 CJS 主入口浏览器不可用）
+- 双语：三个包 + 根 README 均为 `README.md`（中文，默认）+ `README_en.md`（English），顶部互链；
+  英文文件间交叉链接统一指向 `_en` 版本
+- AI 优化：README 结构重组（能力自述 / 配置选项表 / API 契约 / 差异对照表 / FAQ），
+  core 补齐请求取消、codegen CLI、`ForgeRouteMap` 类型增强、`unassigned` 虚拟层级等缺口；
+  react 快速开始改「直接渲染 Provider 为主、ready 门控为辅」并如实标注门控会产生第二实例
+- 新增 AI 相关文件：`llms.txt`（全仓库文档索引）、`AGENTS.md`（AI 协作指南：命令 / 提交约定 /
+  八条设计铁律 / 测试注意事项）、`.github/copilot-instructions.md`（与 AGENTS.md 对齐的英文版）
+- 三个包 `package.json`：双语描述（中文优先）+ `keywords`，`files` 显式纳入双语 README
+- 全量验证 9/9 绿（276 例），按包分组 GPG 签名提交，未 push
 
 ---
 
