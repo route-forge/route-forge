@@ -1,204 +1,204 @@
 # @route-forge/core
 
-[English](./README_en.md) | **中文**
+**English** | [中文](./README_zh.md)
 
-框架无关的 Laravel 命名路由前端客户端核心：从后端 manifest 端点拉取路由元信息，按层级（level）懒加载与隔离缓存，用**路由名**调用 API、生成 URL，全程 TypeScript 类型保护，拦截器行为与 axios 一致。
+The framework-agnostic client core for Laravel named routes: fetches route metadata from a backend manifest endpoint, lazy-loads and caches it per level, calls APIs **by route name**, and builds URLs — all with TypeScript type safety and axios-compatible interceptors.
 
-## 它能做什么
+## What it does
 
-- **按路由名调用 API**：`forge.api('admin', 'users.show', { user: 123 })`，不再硬编码路径
-- **分级懒加载**：路由元信息按层级（如 `public` / `admin`）分组拉取，首屏只加载需要的层级
-- **隔离缓存 + 并发去重**：每层级独立缓存（memory / sessionStorage / localStorage，TTL 过期），同层级并发拉取自动合并为一次请求
-- **自动发现**：启动时拉取摘要端点，自动发现层级列表、eager 预加载层级、URL 前缀等配置
-- **拦截器**：请求 / 响应拦截链，`use` / `eject` / `clear` 与 axios API 一致（请求 LIFO、响应 FIFO）
-- **请求取消**：`forge.api()` 返回的 `ForgeRequest` 自带 `abort()`，与超时协同工作
-- **加载状态跟踪**：并发请求计数 + 订阅，可直接驱动全局加载指示
-- **类型安全**：`ForgeRouteMap` 二级映射（codegen 生成或模块增强），路由名 → 参数 → 响应编译期校验
-- **多传输适配**：内置零依赖 `fetch` 实现（默认），可复用宿主 axios，或传入自定义 `Fetcher`
-- **浏览器直接引入**：提供 IIFE 构建，`<script>` 标签即用，无需打包工具
+- **Call APIs by route name**: `forge.api('admin', 'users.show', { user: 123 })` — no hardcoded paths
+- **Tiered lazy loading**: route metadata is grouped into levels (e.g. `public` / `admin`) and fetched on demand
+- **Isolated cache + request deduplication**: per-level cache (memory / sessionStorage / localStorage with TTL); concurrent fetches of the same level are merged into one request
+- **Auto-discovery**: on startup it fetches the summary endpoint to discover levels, eager tiers, and the URL prefix
+- **Interceptors**: request / response chains with axios-compatible `use` / `eject` / `clear` (request LIFO, response FIFO)
+- **Request cancellation**: `forge.api()` returns a `ForgeRequest` with a built-in `abort()` that cooperates with timeouts
+- **Loading-state tracking**: in-flight request counter + subscriptions, ready to drive a global loading indicator
+- **Type safety**: `ForgeRouteMap` two-level mapping (codegen or module augmentation) gives compile-time checks for route names, params, and responses
+- **Pluggable transport**: zero-dependency built-in `fetch` implementation (default), host axios reuse, or a custom `Fetcher`
+- **Plain `<script>` usage**: an IIFE build is provided for direct browser inclusion, no bundler required
 
-## 安装
+## Installation
 
 ```bash
 pnpm add @route-forge/core
-# 可选：宿主安装了 axios 且 adapter 为 'auto'（默认）时会自动复用；
-# 也可显式安装以便强制使用（'axios' 模式）
+# Optional: if axios is installed in the host project and adapter is 'auto' (default),
+# it is detected and reused automatically; install it explicitly to force 'axios' mode
 pnpm add axios
 ```
 
-## 快速开始
+## Quick start
 
 ```ts
 import { createRouteForge } from '@route-forge/core'
 
 const forge = createRouteForge({
-  endpoint: '/_forge/routes',   // 后端 manifest 端点
+  endpoint: '/_forge/routes',   // backend manifest endpoint
 })
 
-// 调用 API（自动发现层级 → 自动加载层级 → 填充路径参数 → 发送请求）
+// Call an API (auto-discovers → lazy-loads the level → fills path params → sends the request)
 const user = await forge.api('admin', 'users.show', { user: 123 })
 
-// 生成 URL（仅拼路径，不发请求）
+// Build URLs only (no request is sent)
 const url = forge.route('public', 'login.show')   // → '/login'
-const url2 = forge.url('public', 'login.show')    // url() 是 route() 的语义别名
+const url2 = forge.url('public', 'login.show')    // url() is a semantic alias of route()
 
-// 检查路由是否存在 / 获取路由元信息
+// Route existence / metadata inspection
 forge.hasRoute('admin', 'users.show')             // true / false
-forge.getRoutes('admin')                          // 指定层级的路由表快照（深拷贝）
-forge.getRoutes()                                 // 全部已加载层级（按 level 分组）
+forge.getRoutes('admin')                          // snapshot of one level (deep copy)
+forge.getRoutes()                                 // all loaded levels, grouped by level
 
-// 层级加载与缓存管理
-await forge.load('admin')                         // 加载层级（并发自动去重）
-forge.isLoaded('admin')                           // 层级是否已缓存
-forge.invalidate('admin')                         // 失效指定层级
-forge.invalidate(['admin', 'manage'])             // 批量失效
-forge.invalidate()                                // 失效全部
+// Level loading & cache management
+await forge.load('admin')                         // load a level (concurrent calls deduplicated)
+forge.isLoaded('admin')                           // is the level cached?
+forge.invalidate('admin')                         // invalidate one level
+forge.invalidate(['admin', 'manage'])             // invalidate several
+forge.invalidate()                                // invalidate all
 ```
 
-## 初始化时序与 `ready()`
+## Initialization sequence & `ready()`
 
-`createRouteForge()` 返回后立即在后台启动 **auto-discovery**（拉取摘要端点），随后预加载 **eager** 层级。
-`ready()` 在两者全部完成后 resolve（resolve 值为 forge 自身，支持链式调用）：
+`createRouteForge()` immediately starts **auto-discovery** (summary endpoint) in the background, then preloads the **eager** levels. `ready()` resolves once both are done (it resolves with the forge instance itself, so chaining works):
 
 ```ts
 const forge = createRouteForge({ endpoint: '/_forge/routes' })
 
-// 推荐：ready() 后再挂载应用（此时 route()/hasRoute() 等同步方法即刻可用）
+// Recommended: mount the app after ready() — sync methods like route()/hasRoute() are then safe
 forge.ready()
   .then(() => app.mount('#app'))
   .catch((err) => {
-    // 失败必须接住：摘要端点不可达且未显式传 levels 时 ready() 会 reject，
-    // 否则用户面对静默白屏
+    // Always handle this: ready() rejects when the summary endpoint is unreachable
+    // and no explicit levels were given — otherwise users face a silent blank page
     console.error('[route-forge] init failed', err)
   })
 
-// 回调模式：onFulfilled / onRejected（仍返回 Promise）
+// Callback style: onFulfilled / onRejected (still returns a Promise)
 forge.ready(
   (f) => console.log('ready!', f),
   (err) => console.error(err),
 )
 
-// async/await 风格
+// async/await style
 await forge.ready()
 ```
 
-三种加载状态及其跟踪方式：
+The three loading phases and how to track them:
 
-| 阶段 | 说明 | 跟踪方式 |
-|------|------|----------|
-| Auto-discovery | 拉取摘要端点，发现 levels/config | `forge.ready()` |
-| Level load | 拉取某层级路由元数据 | `forge.isLoaded(level)` / `bound.onLevelLoaded()` |
-| API request | 业务接口请求 | `forge.isLoading()` / `forge.onLoadingChange()` |
+| Phase | Description | Tracking |
+|-------|-------------|----------|
+| Auto-discovery | fetch the summary endpoint, discover levels/config | `forge.ready()` |
+| Level load | fetch one level's route metadata | `forge.isLoaded(level)` / `bound.onLevelLoaded()` |
+| API request | business API calls | `forge.isLoading()` / `forge.onLoadingChange()` |
 
-**降级规则**：显式传了 `levels` 时，摘要端点不可达会 `console.warn` 并降级使用显式配置；未传 `levels` 则无降级可用，`ready()` reject（错误为 `HTTPError` / `NetworkError` / `UnknownLevelError`）。
+**Degradation rule**: if explicit `levels` were provided, an unreachable summary endpoint logs a `console.warn` and falls back to the explicit configuration; without explicit `levels` there is no fallback and `ready()` rejects (with `HTTPError` / `NetworkError` / `UnknownLevelError`).
 
-**守卫**：auto-discovery 未完成且无显式 `levels` 时，`route()` / `hasRoute()` 抛 `ForgeError (RF_FE_010)`，防止在路由数据未就绪时返回错误结果；`api()` 不受影响（内部自动等待发现完成）。
+**Guard**: while auto-discovery has not completed and no explicit `levels` exist, `route()` / `hasRoute()` throw `ForgeError (RF_FE_010)` to prevent wrong results from unready data; `api()` is unaffected (it awaits discovery internally).
 
-## 配置选项（`createRouteForge(options)`）
+## Options (`createRouteForge(options)`)
 
-| 选项 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `endpoint` | `string` | **必填** | manifest 端点路径，如 `/_forge/routes` |
-| `levels` | `string[]` | 自动发现 | 不传时从摘要端点自动发现；显式传入时取与后端摘要的**交集**（前端不能声明后端不存在的层级） |
-| `eager` | `string[]` | 后端 `load:'eager'` 层级 | 预加载层级；显式传入时与后端标记取**并集** |
-| `adapter` | `'auto' \| 'axios' \| 'builtin' \| Fetcher` | `'auto'` | 见下方「Adapter 适配」 |
-| `cache.ttl` | `number`（秒） | `3600` | 缓存 TTL 兜底；后端层级响应下发 `cache` 时取 `min(后端, 前端)`（前端只能缩短不能延长，`0` 表示永久） |
-| `cache.storage` | `'memory' \| 'sessionStorage' \| 'localStorage'` | `'memory'` | 缓存介质；storage 模式维护内存镜像并通过 `storage` 事件感知跨 tab 失效 |
-| `interceptors.request` | 数组 | 无 | 声明式请求拦截器：单函数（视为 `onFulfilled`）或 `[onFulfilled?, onRejected?]` 元组 |
-| `interceptors.response` | 数组 | 无 | 声明式响应拦截器，形式同上 |
-| `timeout` | `number`（毫秒） | `30000` | 全局超时；单次请求可用 `params.timeout` 覆盖 |
-| `baseURL` | `string` | `''` | 拼接在所有生成 URL 之前的基础地址 |
-| `strict` | `boolean` | — | **已废弃，传入无效**。前端校验始终开启（层级未声明抛 `UnknownLevelError`、路由名不存在抛 `UnknownRouteError`、必填参数缺失抛 `MissingRouteParamError`），静默忽略会掩盖拼写错误。后端的 `strict_mode` 是 manifest 生成侧语义，与前端无关 |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `endpoint` | `string` | **required** | manifest endpoint path, e.g. `/_forge/routes` |
+| `levels` | `string[]` | auto-discovered | discovered from the summary endpoint when omitted; when given, intersected with the backend summary (the frontend cannot declare levels the backend doesn't know) |
+| `eager` | `string[]` | backend `load:'eager'` levels | levels preloaded after discovery; union with the backend marks when given |
+| `adapter` | `'auto' \| 'axios' \| 'builtin' \| Fetcher` | `'auto'` | see "Adapters" below |
+| `cache.ttl` | `number` (seconds) | `3600` | TTL fallback; when the backend level response carries `cache`, the effective TTL is `min(backend, frontend)` (frontend may shorten but never extend; `0` = forever) |
+| `cache.storage` | `'memory' \| 'sessionStorage' \| 'localStorage'` | `'memory'` | cache backend; storage modes keep an in-memory mirror and invalidate cross-tab writes via `storage` events |
+| `interceptors.request` | array | none | declarative request interceptors: plain function (treated as `onFulfilled`) or `[onFulfilled?, onRejected?]` tuple |
+| `interceptors.response` | array | none | declarative response interceptors, same shapes |
+| `timeout` | `number` (ms) | `30000` | global timeout; a single call can override it via `params.timeout` |
+| `baseURL` | `string` | `''` | base prepended to every generated URL |
+| `strict` | `boolean` | — | **Deprecated, ignored.** Frontend validation is always on (unknown level → `UnknownLevelError`, unknown route → `UnknownRouteError`, missing required param → `MissingRouteParamError`); silently ignoring typos hides bugs. The backend's `strict_mode` is a manifest-generation concern and unrelated to the frontend |
 
-## 参数智能解析
+## Smart parameter resolution
 
-`forge.api(level, name, params)` 的第三个参数 `params` 支持四类数据：路径参数（平铺）、`query`（查询参数）、`body`（请求体）、`headers`（请求头），外加 `timeout`（单次超时）与 `params`（显式路径参数固定 key）：
+The third argument `params` of `forge.api(level, name, params)` carries four kinds of data — path parameters (flattened), `query`, `body`, `headers` — plus `timeout` (per-call override) and the explicit `params` key:
 
 ```ts
-// 平铺路径参数 + 查询参数
+// Flattened path params + query string
 forge.api('admin', 'users.show', { user: 1, query: { include: 'posts' } })
 
-// 冲突消解：路由 /search/{query} —— query 为 string 时自动识别为路径参数
+// Conflict resolution: route /search/{query} — a string `query` is detected as a path param
 forge.api('admin', 'search.show', { query: 'keyword' })
 // → URL: /search/keyword
 
-// 显式 params：同时需要路径参数和 query string（params 优先级最高）
+// Explicit params: need BOTH a path param and a query string (`params` wins)
 forge.api('admin', 'search.show', {
-  params: { query: 'keyword' },   // → 替换 {query} 占位符
+  params: { query: 'keyword' },   // → fills the {query} placeholder
   query: { page: 1 },             // → query string
-  body: { detailed: true },       // → 请求体
-  headers: { 'X-Trace': 'a1' },   // → 请求头
-  timeout: 120_000,               // → 单次超时覆盖（默认 30s）
+  body: { detailed: true },       // → request body
+  headers: { 'X-Trace': 'a1' },   // → request headers
+  timeout: 120_000,               // → per-call timeout override (default 30s)
 })
 ```
 
-解析规则（按优先级）：
+Resolution rules (by priority):
 
-1. `params` 显式指定 → 路径参数，优先级最高
-2. 其余平铺 key → 路径参数（不覆盖 `params` 中已有的 key）
-3. 固定 key 按值类型消解：`query` / `headers` 为对象 → 固定用途，为 `string|number` → 路径参数；`body` 为非 `string|number` → 请求体，为 `string|number` → 路径参数
-4. 可选参数（URI 中 `{param?}`）缺省时替换为空并清理多余 `/`；后端下发的 `parameter_defaults` 在参数缺省时自动兜底
+1. Explicit `params` → path parameters, highest priority
+2. Remaining flattened keys → path parameters (they never overwrite keys already present in `params`)
+3. Fixed keys resolved by value type: object `query` / `headers` → their fixed purpose; `string|number` → path parameter; `body` non-`string|number` → request body, `string|number` → path parameter
+4. Optional URI params (`{param?}`) become empty segments when missing (extra `/` cleaned up); backend-provided `parameter_defaults` fill in for missing params
 
-## URL 前缀（`url_prefix`）
+## URL prefix (`url_prefix`)
 
-后端可在摘要端点 `config.url_prefix` 中下发 URL 前缀，前端生成路由 URL 时自动拼接，无需手动配置：
+The backend may deliver a URL prefix via `config.url_prefix` in the summary endpoint; generated URLs automatically include it:
 
 ```ts
-// 1. 路径前缀 — 拼接在 baseURL 之后、路由 URI 之前
-// 后端返回 { "config": { "url_prefix": "/api/v1" } }
+// 1. Path prefix — inserted after baseURL, before the route URI
+// backend returns { "config": { "url_prefix": "/api/v1" } }
 forge.route('public', 'users.show', { user: 1 })   // → '/api/v1/users/1'
 
-// 2. 完整 URL（含协议+域名）— 直接作为基础 URL，忽略客户端 baseURL
-//    适用于前后端不同域名的场景
-// 后端返回 { "config": { "url_prefix": "https://api.example.com" } }
+// 2. Full URL (protocol + host) — used as the base URL, the client's baseURL is ignored;
+//    ideal when frontend and backend live on different origins
+// backend returns { "config": { "url_prefix": "https://api.example.com" } }
 forge.route('public', 'users.show', { user: 1 })   // → 'https://api.example.com/users/1'
 ```
 
-> `url_prefix` 为后端权威，前端不能覆盖。不下发或为空字符串时不影响 URL 生成。
+> `url_prefix` is backend-authoritative; the frontend cannot override it. An absent or empty prefix leaves URLs unchanged.
 
-## 层级绑定：`forge.use(level, prefix?)`
+## Level binding: `forge.use(level, prefix?)`
 
-`use()` 是唯一的 level 绑定入口，返回 `BoundForge`——Vue / React / IIFE 共享同一套 API 表面：
+`use()` is the single level-binding entry point and returns a `BoundForge` — Vue / React / IIFE share the exact same API surface:
 
 ```ts
-// 绑定层级 — 自动触发 load，提供快捷方法
+// Bind a level — triggers load automatically, exposes shortcuts
 const bound = forge.use('admin')
-bound('users.show', { user: 1 })      // 可直接调用（= bound.api()）
-bound.route('users.show')             // URL 生成
+bound('users.show', { user: 1 })      // callable directly (= bound.api())
+bound.route('users.show')             // URL generation
 bound.level                           // → 'admin'
-bound.levelLoaded                     // Promise<void>（core 层；Vue/React 各自特化）
+bound.levelLoaded                     // Promise<void> in core (Vue/React specialize this)
 
-// 绑定层级 + 前缀 — 路由名自动拼接（歧义时智能消解：优先 prefix.suffix，回退 suffix 本身）
+// Bind level + prefix — route names are joined automatically
+// (ambiguity is resolved smartly: prefer prefix.suffix, fall back to suffix itself)
 const users = forge.use('admin', 'users')
 users('show', { user: 1 })            // → forge.api('admin', 'users.show', ...)
 
-// BoundForge 其余方法
-await bound.onLevelLoaded()           // 等待 level 加载完成（支持回调形式）
-bound.hasRoute('users.show')          // 绑定层级内的路由检查
-bound.useRoutePrefix('posts')         // 以新前缀返回新的 BoundForge（原绑定不变）
-// 通用方法均作用于绑定层级：bound.load() / bound.invalidate() / bound.isLoaded()
-// 全局方法照常可用：bound.isLoading() / bound.onLoadingChange()
+// Other BoundForge methods
+await bound.onLevelLoaded()           // wait until the level is loaded (callback form supported)
+bound.hasRoute('users.show')          // existence check within the bound level
+bound.useRoutePrefix('posts')         // returns a NEW BoundForge with the new prefix (original unchanged)
+// Generic methods act on the bound level: bound.load() / bound.invalidate() / bound.isLoaded()
+// Global methods still work: bound.isLoading() / bound.onLoadingChange()
 ```
 
-> `use()` 每次调用都返回新的 `BoundForge`（不缓存）；`forge.use()` 不传参时返回 forge 自身。
+> Every `use()` call returns a fresh `BoundForge` (not cached); `forge.use()` without arguments returns the forge itself.
 
-## 请求取消
+## Request cancellation
 
-`forge.api()` 返回 `ForgeRequest`——继承 `Promise`，附加 `abort()` 方法，内部自动管理 `AbortController`：
+`forge.api()` returns a `ForgeRequest` — a `Promise` with an extra `abort()` method; the internal `AbortController` is managed for you:
 
 ```ts
 const req = forge.api('admin', 'reports.export', { timeout: 120_000 })
-req.abort()   // 请求被中止，Promise reject 为 RequestAbortedError（RF_FE_009）
+req.abort()   // the request is aborted; the Promise rejects with RequestAbortedError (RF_FE_009)
 ```
 
-`abort()` 与超时（`AbortSignal.timeout`）互不冲突，任一触发都会取消请求。拦截器中可通过 `config.signal` 读取 AbortSignal。
+`abort()` and the timeout (`AbortSignal.timeout`) cooperate — whichever fires first cancels the request. Interceptors can read the AbortSignal via `config.signal`.
 
-## 拦截器与认证
+## Interceptors & authentication
 
-拦截器 API 与 axios 一致（`use` / `eject` / `clear`）；请求拦截器 **LIFO**（后注册先执行），响应拦截器 **FIFO**。Route Forge 不内置登录态管理，认证通过拦截器实现：
+The interceptor API matches axios (`use` / `eject` / `clear`); request interceptors run **LIFO** (last registered, first executed), response interceptors **FIFO**. Route Forge ships no built-in session management — auth is done via interceptors:
 
 ```ts
-// 声明式（初始化时配置）
+// Declarative (at initialization)
 const forge = createRouteForge({
   endpoint: '/_forge/routes',
   interceptors: {
@@ -206,12 +206,12 @@ const forge = createRouteForge({
       (config) => {
         const token = authStore.getToken()
         if (token) config.headers.Authorization = `Bearer ${token}`
-        return config   // 必须返回 RequestConfig 对象，否则抛 RF_FE_006
+        return config   // must return a RequestConfig object, otherwise RF_FE_006 is thrown
       },
     ],
     response: [
-      (resp) => resp.data,                    // 统一解包：api() 直接 resolve 业务数据
-      [undefined, (err) => {                  // 元组形式：[onFulfilled?, onRejected?]
+      (resp) => resp.data,                    // unwrap: api() resolves with business data directly
+      [undefined, (err) => {                  // tuple form: [onFulfilled?, onRejected?]
         if (err instanceof HTTPError && err.context?.status === 401) {
           authStore.logout()
           window.location.href = '/login'
@@ -222,51 +222,51 @@ const forge = createRouteForge({
   },
 })
 
-// 运行时动态注册 / 移除 / 清空
+// Runtime registration / removal / clearing
 const id = forge.interceptors.request.use((config) => { /* ... */ return config })
 forge.interceptors.request.eject(id)
 forge.interceptors.request.clear()
 forge.interceptors.response.clear()
 ```
 
-**登出清理**示例：
+**Logout cleanup** example:
 
 ```ts
 function logout() {
   authStore.clearToken()
-  forge.invalidate()                     // 清空路由缓存
-  forge.interceptors.request.clear()     // 清空拦截器
+  forge.invalidate()                     // clear the route cache
+  forge.interceptors.request.clear()     // clear interceptors
   forge.interceptors.response.clear()
 }
 ```
 
-> `adapter: 'auto'` 复用宿主 axios 时，宿主已注册的 axios 拦截器会先执行，Route Forge 拦截器在其后执行。
-> 元信息拉取（摘要 / 层级路由表）走 adapter 原始通道，不经过业务拦截链，避免被解包类拦截器干扰。
+> With `adapter: 'auto'` reusing host axios, interceptors already registered on the host axios instance run first; Route Forge interceptors run after them.
+> Metadata fetching (summary / level tables) goes through the adapter's raw channel and never passes the business interceptor chains, so unwrapping interceptors can't corrupt it.
 
-## 加载状态跟踪
+## Loading-state tracking
 
-核心始终跟踪并发 API 请求的加载状态，无需配置；不需要时不调用相关 API 即可：
+The core always tracks concurrent API requests; there is nothing to configure — just don't subscribe if you don't need it:
 
 ```ts
-forge.isLoading()   // boolean：是否仍有在途请求
+forge.isLoading()   // boolean: any request in flight?
 
 const unsub = forge.onLoadingChange((event) => {
   console.log(event.loading)  // true / false
-  console.log(event.count)    // 当前并发请求数
+  console.log(event.count)    // current number of concurrent requests
 })
-unsub()   // 取消订阅
+unsub()   // unsubscribe
 ```
 
-Vue / React 包可基于 `onLoadingChange` 驱动组件级加载指示。
+The Vue / React packages can drive component-level loading indicators from `onLoadingChange`.
 
-## 类型安全（可选但推荐）
+## Type safety (optional but recommended)
 
-`ForgeRouteMap` 是「层级 → 路由名 → 元信息」的二级映射接口。定义后，`useForge` / `useForgeApi` / `bound()` 等调用的 **level / 路由名 / params 全部自动推断**，拼错路由名在编译期即报错。
+`ForgeRouteMap` is a two-level mapping interface: level → route name → metadata. Once defined, **level / route name / params are inferred automatically** in `useForge` / `useForgeApi` / `bound()` calls — a typo'd route name becomes a compile error.
 
-两种定义方式：
+Two ways to define it:
 
 ```bash
-# 方式一：codegen CLI（拉取后端 manifest 生成 .d.ts）
+# Option 1: codegen CLI (fetches the backend manifest, emits a .d.ts)
 npx route-forge-codegen \
   --endpoint http://localhost/_forge/routes \
   --out src/types/forge-routes.d.ts \
@@ -274,7 +274,7 @@ npx route-forge-codegen \
 ```
 
 ```ts
-// 方式二：TypeScript 模块增强（手写或配合后端 Artisan 命令 route:forge:types 的产物）
+// Option 2: TypeScript module augmentation
 declare module '@route-forge/core' {
   interface ForgeRouteMap {
     admin: {
@@ -285,34 +285,34 @@ declare module '@route-forge/core' {
 }
 ```
 
-后端 Laravel 包（[route-forge/route-forge-laravel](https://github.com/route-forge/route-forge-laravel)）另提供 `php artisan route:forge:types` 生成同一结构的类型文件。
+The backend Laravel package ([route-forge/route-forge-laravel](https://github.com/route-forge/route-forge-laravel)) also ships `php artisan route:forge:types`, which generates the same structure.
 
-## 未分配层级（`unassigned`）
+## The `unassigned` virtual level
 
-后端未标记层级的路由会出现在摘要的 `unassigned` 字段，前端作为虚拟层级 `'unassigned'` 直接消费——不发额外 HTTP 请求：
+Routes the backend did not assign to any level appear in the summary's `unassigned` field; the frontend exposes them as a virtual level `'unassigned'` — no extra HTTP request needed:
 
 ```ts
 await forge.load('unassigned')
 const data = await forge.api('unassigned', 'some.route')
 ```
 
-## Adapter 适配
+## Adapters
 
-| `adapter` 取值 | 行为 |
-|----------------|------|
-| `'auto'`（默认） | 动态 `import('axios')` 探测宿主：检测到则复用（继承宿主拦截器 / defaults 配置），否则使用内置 `builtin` |
-| `'axios'` | 强制宿主 axios，未安装抛 `AdapterNotFoundError`（RF_FE_005） |
-| `'builtin'` | 强制内置 fetch 实现（零依赖、min+gzip < 3KB、拦截器行为与 axios 一致） |
-| 自定义 `Fetcher` | 传入实现 `request(config): Promise<ResponseData>` 的对象，完全自定义 |
+| `adapter` value | Behavior |
+|-----------------|----------|
+| `'auto'` (default) | probes the host via dynamic `import('axios')`: reuses it when found (inheriting its interceptors / defaults), otherwise falls back to the built-in `builtin` implementation |
+| `'axios'` | forces host axios; throws `AdapterNotFoundError` (RF_FE_005) when not installed |
+| `'builtin'` | forces the built-in fetch implementation (zero dependencies, min+gzip < 3KB, axios-compatible interceptor behavior) |
+| custom `Fetcher` | pass any object implementing `request(config): Promise<ResponseData>` for full control |
 
-请求体为 `FormData` / `Blob` / `ArrayBuffer` / `URLSearchParams` / `ReadableStream` 时自动跳过 JSON 序列化（`string` 也原样透传）。
+Bodies of type `FormData` / `Blob` / `ArrayBuffer` / `URLSearchParams` / `ReadableStream` skip JSON serialization automatically (plain `string` bodies pass through as well).
 
-## IIFE 浏览器用法
+## IIFE browser usage
 
-通过 `<script>` 标签引入后，全局变量 `RouteForge` 可用：
+With a `<script>` tag, the `RouteForge` global becomes available:
 
 ```html
-<!-- 生产版（压缩，约 19 KB / gzip 约 7 KB） -->
+<!-- production build (minified, ~19 KB / ~7 KB gzip) -->
 <script src="https://unpkg.com/@route-forge/core/dist/route-forge.global.min.js"></script>
 <script>
   const forge = RouteForge.createRouteForge({ endpoint: '/_forge/routes' })
@@ -327,70 +327,70 @@ const data = await forge.api('unassigned', 'some.route')
 </script>
 ```
 
-> 必须引用 `dist/` 下的 IIFE 产物；unpkg 裸包名会解析到 CJS 主入口，浏览器无法直接执行。
+> Always reference the IIFE artifact under `dist/`; the bare unpkg package name resolves to the CJS entry, which browsers cannot execute directly.
 
-## 错误参考
+## Error reference
 
-所有错误均为 `ForgeError` 子类，携带稳定的 `code` 字段（`ForgeErrorCode` 字面量联合），可按 `code` 分支处理（`switch` 可获穷尽检查）：
+All errors extend `ForgeError` and carry a stable `code` field (the `ForgeErrorCode` literal union), so you can branch on `code` (with exhaustive `switch` checking):
 
-| 错误类 | code | 触发场景 |
-|--------|------|----------|
-| `UnknownRouteError` | `RF_FE_001` | 路由名不存在于已加载层级中 |
-| `UnknownLevelError` | `RF_FE_002` | 层级未在 levels 声明（前端校验始终开启） |
-| `MissingRouteParamError` | `RF_FE_003` | 必填路径参数缺失（无后端默认值）；路径参数传入对象同样报此码 |
-| `AdapterNotFoundError` | `RF_FE_005` | `adapter: 'axios'` 但宿主未安装 / 无有效 axios |
-| `InvalidInterceptorReturnError` | `RF_FE_006` | 请求拦截器未返回 RequestConfig 对象 |
-| `NetworkError` | `RF_FE_007` | 网络层失败（DNS、连接被拒等），`cause` 保留原始错误 |
-| `HTTPError` | `RF_FE_008` | HTTP 非 2xx，`context.status` 为状态码 |
-| `RequestAbortedError` | `RF_FE_009` | 请求被 `abort()` / AbortSignal 取消 |
-| `ForgeError`（守卫） | `RF_FE_010` | auto-discovery 未完成时调用 `route()` / `hasRoute()` |
+| Error class | code | Trigger |
+|-------------|------|---------|
+| `UnknownRouteError` | `RF_FE_001` | route name not found in the loaded level |
+| `UnknownLevelError` | `RF_FE_002` | level not declared (frontend validation is always on) |
+| `MissingRouteParamError` | `RF_FE_003` | required path parameter missing (no backend default); also thrown when a path parameter receives an object |
+| `AdapterNotFoundError` | `RF_FE_005` | `adapter: 'axios'` but no usable host axios |
+| `InvalidInterceptorReturnError` | `RF_FE_006` | a request interceptor did not return a RequestConfig object |
+| `NetworkError` | `RF_FE_007` | network-layer failure (DNS, refused connection…); `cause` keeps the original error |
+| `HTTPError` | `RF_FE_008` | non-2xx HTTP response; `context.status` holds the status code |
+| `RequestAbortedError` | `RF_FE_009` | request cancelled via `abort()` / AbortSignal |
+| `ForgeError` (guard) | `RF_FE_010` | `route()` / `hasRoute()` called before auto-discovery completed |
 
-错误对象结构：
+Error object shape:
 
 ```ts
 {
-  code: 'RF_FE_008',                     // 稳定错误码
-  route?: string,                        // 关联路由名
-  level?: string,                        // 关联层级
-  context?: Record<string, unknown>,     // 附加上下文（如 HTTP 状态码、url、method）
-  cause?: unknown,                       // 原始底层错误
+  code: 'RF_FE_008',                     // stable error code
+  route?: string,                        // related route name
+  level?: string,                        // related level
+  context?: Record<string, unknown>,     // extra context (HTTP status, url, method…)
+  cause?: unknown,                       // original underlying error
 }
 ```
 
-## 工具导出
+## Utility exports
 
-除 `createRouteForge` 外，core 包还导出以下工具件，供高级场景按需使用：
+Besides `createRouteForge`, the core package exports these building blocks for advanced scenarios:
 
-| 导出 | 说明 |
-|------|------|
-| `createInterceptorManager` | 创建拦截器管理器（`use`/`eject`/`clear`），供自定义 Fetcher 复用统一拦截器实现 |
-| `RouteCache` | 按层级隔离的路由缓存类（memory / sessionStorage / localStorage，TTL 过期），可独立使用 |
-| `LoadingTracker` | 加载状态跟踪器（引用计数 + 订阅），框架适配层可基于它实现全局加载指示 |
-| `resolveRouteName` | 前缀歧义异步消解（`prefix.suffix` 优先，回退后缀本身），`api()` 调用路径使用 |
-| `resolveRouteNameSync` | 前缀歧义同步消解（基于已加载缓存），`route()` / `url()` 调用路径使用 |
+| Export | Description |
+|--------|-------------|
+| `createInterceptorManager` | creates an interceptor manager (`use`/`eject`/`clear`) so custom Fetchers can reuse the same interceptor implementation |
+| `RouteCache` | per-level isolated route cache (memory / sessionStorage / localStorage, TTL expiry); usable standalone |
+| `LoadingTracker` | loading-state tracker (reference counting + subscriptions) for building global loading indicators |
+| `resolveRouteName` | async prefix-ambiguity resolution (prefer `prefix.suffix`, fall back to suffix); used by the `api()` path |
+| `resolveRouteNameSync` | sync variant based on the loaded cache; used by the `route()` / `url()` path |
 
-类型导出：`RouteForge` / `RouteForgeOptions` / `BoundForge` / `ApiCallParams` / `RequestConfig` / `ResponseData` / `ForgeRequest` / `Fetcher` / `RouteMeta` / `SummaryResponse` / `ForgeRouteMap` / `ForgeErrorCode` 等（完整清单见 `dist/index.d.ts`）。
+Type exports: `RouteForge` / `RouteForgeOptions` / `BoundForge` / `ApiCallParams` / `RequestConfig` / `ResponseData` / `ForgeRequest` / `Fetcher` / `RouteMeta` / `SummaryResponse` / `ForgeRouteMap` / `ForgeErrorCode` and more (full list in `dist/index.d.ts`).
 
-## 常见问题
+## FAQ
 
-**`route()` / `hasRoute()` 抛 `RF_FE_010`？**
-auto-discovery 尚未完成。等待 `await forge.ready()` 后再调用，或改用框架包的 `useForgeRoute`（内部处理加载态，未加载时返回 `''`）。
+**`route()` / `hasRoute()` throw `RF_FE_010`?**
+Auto-discovery hasn't completed. `await forge.ready()` first, or use the framework packages' `useForgeRoute`, which handles the loading state internally (returns `''` until ready).
 
-**`ready()` reject 了怎么办？**
-摘要端点不可达且未显式传 `levels` 时 `ready()` 会 reject。要么修复端点连通性，要么显式传 `levels` 获得降级能力（摘要失败时退回显式配置）。
+**`ready()` rejected — what now?**
+The summary endpoint is unreachable and no explicit `levels` were provided. Either fix endpoint connectivity, or pass explicit `levels` to gain the degradation path (falls back to the explicit configuration when the summary fails).
 
-**响应没有被 `resp.data` 解包？**
-解包是响应拦截器行为，需要自行注册 `(resp) => resp.data`；core 默认 resolve 完整的 `ResponseData` 经拦截链后的末段返回值。
+**Responses aren't unwrapped with `resp.data`?**
+Unwrapping is response-interceptor behavior — register `(resp) => resp.data` yourself; by default `api()` resolves with the final value of the interceptor chain over the full `ResponseData`.
 
-**跨标签页缓存不同步？**
-`storage` 模式（sessionStorage / localStorage）通过 `storage` 事件自动失效其他 tab 写入的缓存镜像；`memory` 模式仅当前页可见。
+**Cache out of sync across browser tabs?**
+Storage modes (sessionStorage / localStorage) automatically invalidate the in-memory mirror when another tab writes, via `storage` events; `memory` mode is per-tab by design.
 
-## 文档
+## Documentation
 
-- 仓库主页: <https://github.com/route-forge/route-forge>
-- 设计文档: <https://github.com/route-forge/route-forge/blob/main/.docs/DESIGN.md>
-- 规范: <https://github.com/route-forge/route-forge/blob/main/.docs/SPEC.md>
-- 后端包（Laravel）: <https://github.com/route-forge/route-forge-laravel>
+- Repository: <https://github.com/route-forge/route-forge>
+- Design notes: <https://github.com/route-forge/route-forge/blob/main/.docs/DESIGN.md>
+- Specification: <https://github.com/route-forge/route-forge/blob/main/.docs/SPEC.md>
+- Backend package (Laravel): <https://github.com/route-forge/route-forge-laravel>
 
 ## License
 

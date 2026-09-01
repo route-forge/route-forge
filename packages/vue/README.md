@@ -1,20 +1,20 @@
 # @route-forge/vue
 
-[English](./README_en.md) | **中文**
+**English** | [中文](./README_zh.md)
 
-Route Forge 的 Vue 3 集成：插件（`createRouteForgePlugin`）+ 三个 composable（`useForge` / `useForgeApi` / `useForgeRoute`），在组件里用**路由名**调用 API、生成响应式链接，加载态与错误自动管理。
+The Vue 3 integration for Route Forge: a plugin (`createRouteForgePlugin`) plus three composables (`useForge` / `useForgeApi` / `useForgeRoute`) for calling APIs **by route name** and generating reactive links inside components, with loading and error states managed for you.
 
-> 核心能力（分级懒加载、隔离缓存、拦截器、请求取消、类型安全）全部来自 [@route-forge/core](../core/README.md)，本包只做 Vue 响应式适配：`levelLoaded` 是 `Ref<boolean>`、`pending` / `error` 是 `Ref`、URL 生成返回 `ComputedRef<string>`。
+> All core capabilities (tiered lazy loading, isolated cache, interceptors, request cancellation, type safety) come from [@route-forge/core](../core/README.md); this package only adds Vue reactivity: `levelLoaded` is a `Ref<boolean>`, `pending` / `error` are `Ref`s, and URL generation returns a `ComputedRef<string>`.
 
-## 安装
+## Installation
 
 ```bash
 pnpm add @route-forge/vue @route-forge/core
 ```
 
-要求 Vue 3.3+（不支持 Vue 2）。
+Requires Vue 3.3+ (Vue 2 is not supported).
 
-## 快速开始
+## Quick start
 
 ```ts
 // main.ts
@@ -28,90 +28,91 @@ const plugin = createRouteForgePlugin({
 
 const app = createApp(App)
 app.use(plugin)
-// 推荐：ready()（摘要 + eager 层级全部完成）后再挂载应用，
-// 挂载后 route()/hasRoute() 等同步方法即刻可用
+// Recommended: mount the app after ready() (summary + eager levels fully loaded);
+// sync methods like route()/hasRoute() are then safe immediately
 plugin.ready()
   .then(() => app.mount('#app'))
   .catch((err) => {
-    // 失败必须接住：摘要端点不可达（网络错误/非 2xx/超时）时避免静默白屏
+    // Always handle this: the summary endpoint may be unreachable
+    // (network error / non-2xx / timeout) — avoid a silent blank page
     console.error('[route-forge] init failed', err)
   })
 ```
 
-> 插件选项与 `createRouteForge(options)` 完全一致（`levels` / `eager` / `adapter` / `cache` / `interceptors` / `timeout` / `baseURL`），完整选项表见 [core README](../core/README.md#配置选项createruteforgeoptions)。
+> Plugin options are exactly `createRouteForge(options)` (`levels` / `eager` / `adapter` / `cache` / `interceptors` / `timeout` / `baseURL`); full options table in the [core README](../core/README.md#options-createrouteforgeoptions).
 
-## useForge — 核心 composable
+## useForge — the core composable
 
-无 `level` 时返回完整 `RouteForge` 实例；传入 `level` 时内部调用 `forge.use(level, prefix?)`（自动触发层级加载），返回 `VueBoundForge`：
+Without `level` it returns the full `RouteForge` instance; with `level` it delegates to `forge.use(level, prefix?)` (triggering the level load) and returns a `VueBoundForge`:
 
 ```ts
 import { useForge } from '@route-forge/vue'
 
-// 不绑定层级 — 返回完整 RouteForge 实例
+// Unbound — full RouteForge instance
 const forge = useForge()
-forge.api('admin', 'users.show', { user: 1 })     // 通过层级 + 路由名调用
-forge.ready().then(f => f.use('admin'))           // 等待就绪后绑定层级
+forge.api('admin', 'users.show', { user: 1 })     // call with level + route name
+forge.ready().then(f => f.use('admin'))           // bind a level once ready
 
-// 绑定层级 — 可直接调用，自动触发 load
+// Bound to a level — callable directly, load triggered automatically
 const users = useForge('admin')
 users.level                                       // → 'admin'
-users.levelLoaded                                 // Ref<boolean>，加载完成后变为 true
-users('users.show', { user: 1 })                  // 可直接调用（= users.api() 快捷方式）
-users.api('users.show', { user: 1 })              // 同上
-users.route('users.show', { user: 1 })            // 生成 URL
-users.url('users.show', { user: 1 })              // route() 语义别名
-await users.onLevelLoaded()                       // 等待 level 加载完成
-users.useRoutePrefix('users')                     // 以新前缀返回新的 BoundForge
+users.levelLoaded                                 // Ref<boolean>, flips to true once loaded
+users('users.show', { user: 1 })                  // callable (= users.api() shorthand)
+users.api('users.show', { user: 1 })              // same thing
+users.route('users.show', { user: 1 })            // build a URL
+users.url('users.show', { user: 1 })              // semantic alias of route()
+await users.onLevelLoaded()                       // wait until the level is loaded
+users.useRoutePrefix('users')                     // returns a NEW BoundForge with the new prefix
 
-// 绑定层级 + 前缀 — 路由名自动拼接（歧义时智能消解）
+// Bound level + prefix — route names joined automatically (ambiguity resolved smartly)
 const userApi = useForge('admin', 'users')
 userApi.prefix                                    // → 'users'
 userApi('show', { user: 1 })                      // → forge.api('admin', 'users.show', ...)
 userApi.route('show', { user: 1 })                // → forge.route('admin', 'users.show', ...)
 
-// 通用方法：绑定形态下作用于绑定的层级（无参数）
-users.load()                                      // 加载绑定层级
-users.isLoaded()                                  // 检查绑定层级缓存
-users.invalidate()                                // 失效绑定层级缓存
-// 全局方法：isLoading() / onLoadingChange() / hasRoute(name) / getRoutes()
+// Generic methods: in bound form they act on the bound level (no arguments)
+users.load()                                      // load the bound level
+users.isLoaded()                                  // check the bound level's cache
+users.invalidate()                                // invalidate the bound level's cache
+// Global methods: isLoading() / onLoadingChange() / hasRoute(name) / getRoutes()
 ```
 
-> **注意**：`useForge()` 无 `level` 时返回的完整实例在 auto-discovery 未完成前调用 `route()` / `hasRoute()` 可能抛守卫错误（`RF_FE_010`）。建议 `await forge.ready()`，或生成链接直接用 `useForgeRoute`。
+> **Note**: the unbound full instance may throw the guard error (`RF_FE_010`) from `route()` / `hasRoute()` before auto-discovery completes. Prefer `await forge.ready()`, or use `useForgeRoute` for links.
 
-> **level 是静态绑定**：`level`（与 `prefix`）在调用时固定，不支持中途切换层级——换层级请另起一次 `useForge` 调用（开销可接受）。
+> **Level binding is static**: `level` (and `prefix`) are fixed at call time and cannot be switched later — create another `useForge` call for another level (the overhead is acceptable).
 
-## useForgeApi — 带 loading/error 的事件型调用
+## useForgeApi — event-style calls with loading/error state
 
-面向点击事件等命令式场景：不抛异常，错误写入 `error` 状态并作为 `{ data: undefined, error }` 返回：
+For imperative scenarios like click handlers: it never throws — errors are written to the `error` state and returned as `{ data: undefined, error }`:
 
 ```ts
 import { useForgeApi } from '@route-forge/vue'
 
-// 三种调用形态（level 绑定语义与 useForge 一致）
-const api = useForgeApi()                        // 未绑定：call(level, name, params)
-const admin = useForgeApi('admin')               // 绑定层级：call(name, params)
-const users = useForgeApi('admin', 'users')      // 绑定层级 + 前缀：call(suffix, params)
+// Three binding forms (same level semantics as useForge)
+const api = useForgeApi()                        // unbound: call(level, name, params)
+const admin = useForgeApi('admin')               // bound: call(name, params)
+const users = useForgeApi('admin', 'users')      // bound + prefix: call(suffix, params)
 
 const { data, error } = await admin.call('users.show', { user: 1 })
 ```
 
-- `pending`: `Ref<boolean>`——引用计数，并发多个 `call` 时全部完成才置 `false`
-- `error`: `Ref<unknown>`——最近一次失败信息（成功时清为 `null`）
+- `pending`: `Ref<boolean>` — reference-counted; concurrent `call`s keep it `true` until all settle
+- `error`: `Ref<unknown>` — the latest failure (reset to `null` on success)
 
-## useForgeRoute — 模板里的响应式链接
+## useForgeRoute — reactive links in templates
 
-返回 `ComputedRef<string>`，模板自动解包无需 `.value`。内部处理加载态：`level` 未加载时返回 `''`（渲染不崩），加载完成或依赖变化后自动重算——你不必关心 `levelLoaded`：
+Returns a `ComputedRef<string>` (auto-unwrapped in templates, no `.value` needed). It handles the loading state internally: returns `''` until the level loads (the render never crashes), then recomputes automatically when the level loads or dependencies change — you never need to look at `levelLoaded`:
 
 ```vue
 <template>
-  <!-- 1. 静态 URL -->
-  <a :href="login">登录</a>
+  <!-- 1. Static URL -->
+  <a :href="login">Login</a>
 
-  <!-- 2. 响应式参数：userId 变化时 URL 自动重算 -->
-  <a :href="profile">用户主页</a>
+  <!-- 2. Reactive params: URL recomputes when userId changes -->
+  <a :href="profile">User home</a>
 
-  <!-- 3. 响应式路由名：currentName 变化时自动重算 -->
-  <NuxtLink :to="dynamic">动态入口</NuxtLink>
+  <!-- 3. Reactive route name: recomputes when currentName changes -->
+  <NuxtLink :to="dynamic">Dynamic entry</NuxtLink>
 </template>
 
 <script setup>
@@ -121,86 +122,86 @@ import { useForgeRoute } from '@route-forge/vue'
 const userId = ref(1)
 const currentName = ref('dashboard.show')
 
-// 静态层级 + 静态路由名
+// Static level + static route name
 const login = useForgeRoute('public', 'login.show')
 
-// params 传 getter → 追踪响应式，userId 变了 URL 跟着变
+// params as a getter → tracked reactively; URL follows userId
 const profile = useForgeRoute('admin', 'users.show', () => ({ user: userId.value }))
 
-// name 传 getter → 路由名本身也可响应式切换
+// name as a getter → the route name itself can switch reactively
 const dynamic = useForgeRoute('admin', () => currentName.value)
 </script>
 ```
 
-契约细节：
+Contract details:
 
-- `level` 为实例级静态绑定：即便传函数形式也只在 setup 求值一次即固定（与 `useForge` 契约一致）；`name` / `params` 的 getter 保持响应式
-- 路由名不存在、必填参数缺失等渲染期错误：**降级为 `''` 保证渲染不中断**，同时以样式化 `console.warn` 输出完整错误（含堆栈），开发期一眼可见、生产无副作用
+- `level` is bound statically per instance: even in function form it is evaluated once at setup (same contract as `useForge`); the `name` / `params` getters stay reactive
+- Render-time errors (unknown route, missing required param…) **degrade to `''` so rendering never breaks**, while a styled `console.warn` prints the full error (with stack) — visible during development, harmless in production
 
-## 关于 `$forge` 全局属性（不推荐在模板中用）
+## About the `$forge` global property (not recommended in templates)
 
-插件安装后会注入 `app.config.globalProperties.$forge`（含 `route(level, name, params?)`）。它是**底层兜底入口**：只有在对应 `level` 已加载完成后才可安全调用（例如 `plugin.ready()` resolve 之后）。渲染期若层级尚未加载，`$forge.route()` 会因路由数据未就绪直接抛错、打断渲染——不可控。模板里生成链接请优先用 `useForgeRoute`，`$forge` 保留给少数已确保时序安全的命令式场景。
+Installing the plugin injects `app.config.globalProperties.$forge` (with `route(level, name, params?)`). It is a **low-level fallback entry**: safe to call only after the target `level` has loaded (e.g. after `plugin.ready()` resolves). During rendering, if the level is not ready yet, `$forge.route()` throws on unready route data and breaks the render — uncontrollable. Prefer `useForgeRoute` for template links; keep `$forge` for the rare imperative scenarios where timing is guaranteed.
 
-## 参数智能解析
+## Smart parameter resolution
 
-`api()` 的参数支持与 core 一致的智能消解：路径参数平铺传入，`query` / `body` / `headers` 为固定 key；路径参数名与固定 key 冲突时，`string|number` 值自动识别为路径参数，也可用 `params` 显式指定（优先级最高）：
+`api()` supports the same smart resolution as core: flattened path parameters, with `query` / `body` / `headers` as fixed keys; when a path parameter name collides with a fixed key, `string|number` values are detected as path parameters, and the explicit `params` key always wins:
 
 ```ts
-// 冲突消解：路由 /search/{query} —— query 为 string → 路径参数
+// Conflict resolution: route /search/{query} — string `query` → path parameter
 users.api('search.show', { query: 'keyword' })
 
-// 显式 params：同时需要路径参数和 query string
+// Explicit params: need BOTH a path param and a query string
 users.api('search.show', {
   params: { query: 'keyword' },
   query: { page: 1 },
 })
 ```
 
-完整规则与 `timeout` 覆盖见 [core README](../core/README.md#参数智能解析)。
+Full rules and the `timeout` override: [core README](../core/README.md#smart-parameter-resolution).
 
-## 类型安全（可选但推荐）
+## Type safety (optional but recommended)
 
-定义 `ForgeRouteMap`（codegen 或模块增强）后，`useForge` / `useForgeApi` / `useForgeRoute` 的 level、路由名、params 全部自动推断：
+Once `ForgeRouteMap` is defined (codegen or module augmentation), level, route names, and params are inferred in `useForge` / `useForgeApi` / `useForgeRoute`:
 
 ```bash
 npx route-forge-codegen --endpoint http://localhost/_forge/routes --out src/types/forge-routes.d.ts
 ```
 
 ```ts
-// 拼错路由名 / 参数名 → 编译期报错；正确调用 → 自动补全
+// Typo'd route name / param name → compile error; correct call → autocompletion
 const users = useForge('admin', 'users')
-await users('show', { user: 1 })      // ✅ params 类型自动校验
+await users('show', { user: 1 })      // ✅ params checked at compile time
 ```
 
-详见 [core README「类型安全」](../core/README.md#类型安全可选但推荐)。
+See the [core README "Type safety" section](../core/README.md#type-safety-optional-but-recommended).
 
-## 与 core / react 的差异
+## Differences vs core / react
 
-| 能力 | @route-forge/core | @route-forge/vue | @route-forge/react |
-|------|-------------------|------------------|--------------------|
+| Capability | @route-forge/core | @route-forge/vue | @route-forge/react |
+|------------|-------------------|------------------|--------------------|
 | `levelLoaded` | `Promise<void>` | `Ref<boolean>` | `boolean` |
-| `useForgeApi` 的 `pending` / `error` | —（用 `LoadingTracker`） | `Ref<boolean>` / `Ref<unknown>` | `boolean` / `unknown` |
-| URL 生成返回值 | `string`（同步，未就绪抛错） | `ComputedRef<string>`（未就绪为 `''`） | `string`（未就绪为 `''`） |
-| `useForgeRoute` 的 params | — | getter 函数 | 普通对象（按内容对比依赖） |
-| 绑定签名 | `forge.use(level, prefix?)` | `useForge(level?, prefix?)` | `useForge({ level?, prefix? })` |
+| `useForgeApi` `pending` / `error` | — (use `LoadingTracker`) | `Ref<boolean>` / `Ref<unknown>` | `boolean` / `unknown` |
+| URL generation returns | `string` (sync; throws when unready) | `ComputedRef<string>` (`''` until ready) | `string` (`''` until ready) |
+| `useForgeRoute` params | — | getter function | plain object (content-compared deps) |
+| Binding signature | `forge.use(level, prefix?)` | `useForge(level?, prefix?)` | `useForge({ level?, prefix? })` |
 
-## 常见问题
+## FAQ
 
-**模板里 `$forge.route()` 抛错？**
-层级尚未加载。改用 `useForgeRoute`（自动处理加载态并降级为 `''`），或确保在 `plugin.ready()` resolve 后再渲染依赖路由的组件。
+**`$forge.route()` throws in a template?**
+The level hasn't loaded yet. Use `useForgeRoute` instead (handles the loading state and degrades to `''`), or make sure the dependent components render only after `plugin.ready()` resolves.
 
-**`useForge()` 报 "must be used inside an app with createRouteForgePlugin() installed"？**
-composable 在插件安装前或插件未安装的组件树里被调用了；确认 `app.use(plugin)` 已执行。
+**`useForge()` says "must be used inside an app with createRouteForgePlugin() installed"?**
+A composable ran before the plugin was installed, or in a component tree without it; confirm `app.use(plugin)` happened first.
 
-**切换页面后想重新拉取路由表？**
-`forge.invalidate()`（或绑定形态 `users.invalidate()`）后，下次 `api()` / `load()` 会重新拉取。
+**Need to re-fetch the route table after navigating?**
+Call `forge.invalidate()` (or `users.invalidate()` in bound form); the next `api()` / `load()` refetches.
 
-## 文档
+## Documentation
 
-- 仓库主页: <https://github.com/route-forge/route-forge>
-- 核心包文档: [@route-forge/core](../core/README.md)
-- 设计文档: <https://github.com/route-forge/route-forge/blob/main/.docs/DESIGN.md>
-- 规范: <https://github.com/route-forge/route-forge/blob/main/.docs/SPEC.md>
+- Repository: <https://github.com/route-forge/route-forge>
+- Core package: [@route-forge/core](../core/README.md)
+- Design notes: <https://github.com/route-forge/route-forge/blob/main/.docs/DESIGN.md>
+- Specification: <https://github.com/route-forge/route-forge/blob/main/.docs/SPEC.md>
 
 ## License
 

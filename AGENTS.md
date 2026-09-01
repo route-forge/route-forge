@@ -1,7 +1,7 @@
 # AGENTS.md — Route Forge 仓库 AI 协作指南
 
 本文件面向 AI 编码代理（Coding Agent）与人类贡献者，说明本仓库的结构、命令、约定与不可违背的设计铁律。
-产品与 API 文档见 [README.md](./README.md)（中文）/ [README_en.md](./README_en.md)（English），`llms.txt` 提供全部文档索引。
+产品与 API 文档见 [README.md](./README.md)（English，默认）/ [README_zh.md](./README_zh.md)（中文），`llms.txt` 提供全部文档索引。
 
 ## 项目概览
 
@@ -64,7 +64,7 @@ pnpm --filter @route-forge/react test
 
 ## 文档约定
 
-- 公共文档双语：`README.md`（中文，默认）+ `README_en.md`（English），顶部互链；两份必须同步维护
+- 公共文档双语：`README.md`（English，默认——AI 可发现性优先）+ `README_zh.md`（中文），顶部互链；两份必须同步维护
 - `llms.txt` 维护全仓库文档索引；`.github/copilot-instructions.md` 与本文件保持一致
 - 差异化表述用**能力自述**，不写与竞品的对比表
 - 版本变更记录在各包 `CHANGELOG.md`（Keep a Changelog，中文）

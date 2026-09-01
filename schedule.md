@@ -95,8 +95,8 @@
   ②vue/react 绑定形态 `load/isLoaded/invalidate` 改为无参示例（`BoundForge` 同名方法无参数）；
   ③`useRoutePrefix` 语义改为「以新前缀返回新 BoundForge」（原「追加」不准确）；
   ④core IIFE 引入改显式 `dist/` 路径（unpkg 裸包名解析到 CJS 主入口浏览器不可用）
-- 双语：三个包 + 根 README 均为 `README.md`（中文，默认）+ `README_en.md`（English），顶部互链；
-  英文文件间交叉链接统一指向 `_en` 版本
+- 双语：三个包 + 根 README 均为 `README.md`（English，默认——AI 可发现性优先，同日由「中文默认」
+  调整为英文默认）+ `README_zh.md`（中文），顶部互链；同语言文件间交叉链接指向同语言版本
 - AI 优化：README 结构重组（能力自述 / 配置选项表 / API 契约 / 差异对照表 / FAQ），
   core 补齐请求取消、codegen CLI、`ForgeRouteMap` 类型增强、`unassigned` 虚拟层级等缺口；
   react 快速开始改「直接渲染 Provider 为主、ready 门控为辅」并如实标注门控会产生第二实例

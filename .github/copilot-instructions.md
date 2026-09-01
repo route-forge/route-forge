@@ -2,7 +2,7 @@
 
 Route Forge is a TypeScript client toolkit for Laravel named routes: it fetches route metadata from a backend manifest endpoint, lazy-loads route tables per level, and lets frontends call APIs / build URLs by route name. This is a pnpm + Turborepo monorepo publishing three npm packages; the Laravel backend lives in the separate repository `route-forge/route-forge-laravel` (HTTP manifest contract, independent versioning).
 
-For the full agent guide (commands, design invariants, test pitfalls), see [AGENTS.md](../AGENTS.md). User-facing docs: [README.md](../README.md) (中文) / [README_en.md](../README_en.md) (English).
+For the full agent guide (commands, design invariants, test pitfalls), see [AGENTS.md](../AGENTS.md). User-facing docs: [README.md](../README.md) (English, default) / [README_zh.md](../README_zh.md) (中文).
 
 ## Layout
 
@@ -26,7 +26,7 @@ Test baseline: 276 cases (core 224 / vue 25 / react 27) — all must pass before
 - Commit messages: `type(scope): 中文描述` (type ∈ feat/fix/test/docs/refactor/chore; scope = core|vue|react)
 - Every commit requires the full validation to pass; new features and fixes must include tests
 - Commits are GPG-signed; never `git push` without explicit instruction
-- Docs are bilingual: `README.md` (Chinese, default) + `README_en.md` (English); keep both in sync
+- Docs are bilingual: `README.md` (English, default) + `README_zh.md` (Chinese); keep both in sync
 
 ## Design invariants (do not violate)
 

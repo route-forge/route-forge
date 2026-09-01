@@ -41,7 +41,7 @@
   "files": [
     "dist",
     "README.md",
-    "README_en.md"
+    "README_zh.md"
   ],
   "scripts": {
     "build": "tsup",

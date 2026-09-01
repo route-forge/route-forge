@@ -4,13 +4,13 @@
 
 ## Packages
 
-- [@route-forge/core](https://github.com/route-forge/route-forge/blob/main/packages/core/README_en.md): Framework-agnostic named-route client core — tiered lazy loading, isolated cache, request deduplication, auto-discovery, interceptors, abortable requests, codegen CLI, IIFE browser build.
-- [@route-forge/vue](https://github.com/route-forge/route-forge/blob/main/packages/vue/README_en.md): Vue 3 integration — plugin plus composables (useForge / useForgeApi / useForgeRoute), reactive levelLoaded, template-safe URL generation.
-- [@route-forge/react](https://github.com/route-forge/route-forge/blob/main/packages/react/README_en.md): React integration — RouteForgeProvider plus hooks (useForge / useForgeApi / useForgeRoute), state-driven levelLoaded, JSX-safe URL generation.
+- [@route-forge/core](https://github.com/route-forge/route-forge/blob/main/packages/core/README.md): Framework-agnostic named-route client core — tiered lazy loading, isolated cache, request deduplication, auto-discovery, interceptors, abortable requests, codegen CLI, IIFE browser build.
+- [@route-forge/vue](https://github.com/route-forge/route-forge/blob/main/packages/vue/README.md): Vue 3 integration — plugin plus composables (useForge / useForgeApi / useForgeRoute), reactive levelLoaded, template-safe URL generation.
+- [@route-forge/react](https://github.com/route-forge/route-forge/blob/main/packages/react/README.md): React integration — RouteForgeProvider plus hooks (useForge / useForgeApi / useForgeRoute), state-driven levelLoaded, JSX-safe URL generation.
 
 ## Documentation
 
-- [Repository README (English)](https://github.com/route-forge/route-forge/blob/main/README_en.md): Overview, feature matrix, quick start (Laravel backend + frontend), compatibility, development commands.
+- [Repository README (English, default)](https://github.com/route-forge/route-forge/blob/main/README.md): Overview, feature matrix, quick start (Laravel backend + frontend), compatibility, development commands.
 - [Specification](https://github.com/route-forge/route-forge/blob/main/.docs/SPEC.md): Full feature specification, manifest HTTP contract, API rules.
 - [Design notes](https://github.com/route-forge/route-forge/blob/main/.docs/DESIGN.md): Architecture decisions and evolution roadmap.
 - [Contributing guide for AI agents (AGENTS.md)](https://github.com/route-forge/route-forge/blob/main/AGENTS.md): Repository layout, build/test commands, conventions, and design invariants.
@@ -24,7 +24,7 @@
 
 ## 中文文档
 
-- [仓库 README（中文）](https://github.com/route-forge/route-forge/blob/main/README.md)
-- [@route-forge/core（中文）](https://github.com/route-forge/route-forge/blob/main/packages/core/README.md)
-- [@route-forge/vue（中文）](https://github.com/route-forge/route-forge/blob/main/packages/vue/README.md)
-- [@route-forge/react（中文）](https://github.com/route-forge/route-forge/blob/main/packages/react/README.md)
+- [仓库 README（中文）](https://github.com/route-forge/route-forge/blob/main/README_zh.md)
+- [@route-forge/core（中文）](https://github.com/route-forge/route-forge/blob/main/packages/core/README_zh.md)
+- [@route-forge/vue（中文）](https://github.com/route-forge/route-forge/blob/main/packages/vue/README_zh.md)
+- [@route-forge/react（中文）](https://github.com/route-forge/route-forge/blob/main/packages/react/README_zh.md)
