@@ -1,6 +1,6 @@
 # Route Forge 进度快照
 
-> 更新于 2026-09-01（v2.1.0 已就绪，处于其后维护期）。本文件是进度追踪文档，以代码实际状态为准。
+> 更新于 2026-09-01（v2.1.0 已发版，处于其后维护期）。本文件是进度追踪文档，以代码实际状态为准。
 
 **全部测试通过：core 224 + vue 25 + react 27 = 276 tests 全绿；typecheck / lint / build 全绿。**
 
@@ -8,7 +8,8 @@
 > `createRouteForge` 工厂大重构（抽出 url-builder / auto-discovery / route-store / http-runner /
 > bound-forge 五模块 + 理顺初始化时序，纯内部重构、零 API/行为变更，7 个本地提交尚未 push），
 > vue/react 侧在做一轮同源维护。本轮三包锁步发 **2.1.0**（含层级静态化 / levelLoaded 收敛等
-> 行为增强，走 minor）。
+> 行为增强，走 minor）。**2.1.0 已于 2026-08-31 经 tag 触发 CI 发布完成**（Release v2.1.0，
+> npm 三包上线）。
 
 ---
 
@@ -103,7 +104,11 @@
 - 新增 AI 相关文件：`llms.txt`（全仓库文档索引）、`AGENTS.md`（AI 协作指南：命令 / 提交约定 /
   八条设计铁律 / 测试注意事项）、`.github/copilot-instructions.md`（与 AGENTS.md 对齐的英文版）
 - 三个包 `package.json`：双语描述（中文优先）+ `keywords`，`files` 显式纳入双语 README
-- 全量验证 9/9 绿（276 例），按包分组 GPG 签名提交，未 push
+- 全量验证 9/9 绿（276 例），按包分组 GPG 签名提交并已 push；远程 description（英文优先双语）
+  与 topics（15 项）经 `gh api` 设置
+- 发版状态：2.1.0 已于 2026-08-31 经 CI 发布（tag `2.1.0`、Release v2.1.0、npm 三包上线）；
+  本轮文档与元信息改进（双语 README / 英文默认 / keywords / AI 文件）在发版提交之后，
+  npm 包页展示随下一版生效
 
 ---
 
@@ -111,7 +116,6 @@
 
 | 优先级 | 项目 | 说明 |
 |--------|------|------|
-| P1 | 2.1.0 锁步发版（本地已就绪） | 版本已定 2.1.0：三包 package.json 升 2.1.0、各 CHANGELOG `Unreleased` 已转正、按包拆细提交完成，全量 276 绿；唯一剩余动作 = push origin/main + 打 tag（`2.1.0` / `core-2.1.0` / `vue-2.1.0` / `react-2.1.0`）触发 CI publish —— 等用户指示 |
 | P3 | 端到端示例项目（Laravel + Vue） | 已由根 README 完整示例章节替代；可运行示例暂缓 |
 | P3 | 可视化面板（v1.x） | 未启动，按需排期（OpenAPI 桥接、Vite 插件因无真实使用场景已砍，不再列入路线图） |
 | — | 后端侧待办 | Laravel 9/10/11 兼容矩阵实测（仅 13.x 验证过），见独立仓库 |
