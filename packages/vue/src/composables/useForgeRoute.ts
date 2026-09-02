@@ -6,7 +6,8 @@
  * - level 加载完成后自动重新计算并返回正确 URL
  * - 路由名不存在或必填参数缺失等渲染期错误：降级为 '' 保证渲染不中断，
  *   同时以醒目的样式化 warn 输出完整错误（含堆栈）——开发期可见，生产无副作用
- * - level 为静态层级绑定：即使在函数形式下也只在 setup 求值一次即固定，不支持中途动态切换 level
+ * - level 为静态字符串（层级是确定性声明，不支持 `() => string` 函数形式）：
+ *   不支持中途动态切换 level
  *   （需要另一个层级请在别的组件 / 别的 useForgeRoute 调用里分别使用，与 useForge 契约一致）
  * - 用户无需关心 levelLoaded 状态，直接用即可
  */
@@ -25,16 +26,23 @@ function warnRenderError(error: unknown): void {
   );
 }
 
+/** 降级报告钩子：组件层（ForgeRoute/ForgeLink）用它把默认 warn 升级为 error，避免双重打印 */
+export interface ForgeRouteDegradeHooks {
+  onDegrade?: (error: unknown) => void;
+}
+
 export function useForgeRoute(
-  level: string | (() => string),
+  level: string,
   name: string | (() => string),
-  params?: () => Record<string, unknown>,
+  params?: () => Record<string, unknown> | undefined,
+  hooks?: ForgeRouteDegradeHooks,
 ): ComputedRef<string> {
   const forge = inject(FORGE_INJECTION_KEY) as RouteForge;
 
-  // level 静态化：setup 时求值一次即固定，之后不追踪函数形式 getter 的变化
-  //（即便调用方传入 `() => string`，也只读取一次）。name / params 仍保持响应式。
-  const lvl = typeof level === 'function' ? level() : level;
+  // level 为静态字符串（层级是确定性声明）：绑定即固定，不支持中途动态切换
+  //（需要另一个层级请在别的组件 / 别的 useForgeRoute 调用里分别使用，与 useForge 契约一致）。
+  // name / params 仍保持响应式。
+  const lvl = level;
 
   // 响应式追踪该 level 的加载状态（computed 依赖此 ref 触发重算）
   const levelLoaded = ref(forge.isLoaded(lvl));
@@ -57,7 +65,7 @@ export function useForgeRoute(
     try {
       return forge.route(lvl, n, p);
     } catch (e) {
-      warnRenderError(e);
+      (hooks?.onDegrade ?? warnRenderError)(e);
       return '';
     }
   });

@@ -350,45 +350,8 @@ describe('useForgeRoute', () => {
     warn.mockRestore();
   });
 
-  it('treats level as a static setup snapshot (dynamic level NOT tracked)', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const urls: string[] = [];
-    let switchToAdmin: () => void = () => {};
-    const C = defineComponent({
-      setup() {
-        const levelSrc = ref('public');
-        const uid = ref(42);
-        switchToAdmin = () => {
-          levelSrc.value = 'admin';
-          uid.value = 43;
-        };
-        const urlRef = useForgeRoute(
-          () => levelSrc.value,
-          'users.show',
-          () => ({ user: uid.value }),
-        );
-        return () => {
-          urls.push(urlRef.value);
-          return null;
-        };
-      },
-    });
-    mount(C, { global: { plugins: [makePlugin()] } });
-    await flushPromises();
-    await flushPromises();
-    expect(urls[urls.length - 1]).toBe('/users/42');
-
-    // 把 getter 源切到未加载的 'admin' 并触发重算：level 是快照，应仍按 'public' 计算
-    switchToAdmin();
-    await nextTick();
-    await flushPromises();
-
-    // 层级快照为 'public'：参数变化按 public 重算 → /users/43，而非走 'admin' 抛错降级
-    expect(urls[urls.length - 1]).toBe('/users/43');
-    // 从未尝试路由未加载的 'admin'，因此不应触发渲染期错误告警
-    expect(warn).not.toHaveBeenCalled();
-    warn.mockRestore();
-  });
+  // 注：level 收窄为静态字符串后（不支持 getter 形式），原"level 快照不追踪 getter 变化"
+  // 的运行时测试随 API 一并移除——传 getter 现在是类型错误，无需运行时验证。
 });
 
 // ─── API trimming & levelLoaded ─────────────────────────────

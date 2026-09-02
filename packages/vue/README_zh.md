@@ -2,7 +2,7 @@
 
 [English](./README.md) | **中文**
 
-Route Forge 的 Vue 3 集成：插件（`createRouteForgePlugin`）+ 三个 composable（`useForge` / `useForgeApi` / `useForgeRoute`），在组件里用**路由名**调用 API、生成响应式链接，加载态与错误自动管理。
+Route Forge 的 Vue 3 集成：插件（`createRouteForgePlugin`）+ 三个 composable（`useForge` / `useForgeApi` / `useForgeRoute`）+ 两个组件（`ForgeRoute` / `ForgeLink`），在组件里用**路由名**调用 API、生成响应式链接，加载态与错误自动管理。
 
 > 核心能力（分级懒加载、隔离缓存、拦截器、请求取消、类型安全）全部来自 [@route-forge/core](../core/README_zh.md)，本包只做 Vue 响应式适配：`levelLoaded` 是 `Ref<boolean>`、`pending` / `error` 是 `Ref`、URL 生成返回 `ComputedRef<string>`。
 
@@ -134,8 +134,62 @@ const dynamic = useForgeRoute('admin', () => currentName.value)
 
 契约细节：
 
-- `level` 为实例级静态绑定：即便传函数形式也只在 setup 求值一次即固定（与 `useForge` 契约一致）；`name` / `params` 的 getter 保持响应式
+- `level` 为**静态字符串**绑定：setup 时一次固定，不支持中途切换——需要另一个层级请新建一次 `useForgeRoute` 调用（与 `useForge` 契约一致）；`name` / `params` 的 getter 保持响应式
 - 路由名不存在、必填参数缺失等渲染期错误：**降级为 `''` 保证渲染不中断**，同时以样式化 `console.warn` 输出完整错误（含堆栈），开发期一眼可见、生产无副作用
+
+## 组件 — ForgeRoute / ForgeLink
+
+两个组件封装了 `useForgeRoute`，省去模板里重复的"先空串、后更新"处理。`level` 未加载（或路由解析失败）时渲染 `loading` 插槽（默认什么都不渲染），加载完成后渲染链接。
+
+**`ForgeLink`** —— 便捷形态：加载完成后直接渲染 `<a :href>`，默认插槽内容即链接文本：
+
+```vue
+<script setup>
+import { ForgeLink } from '@route-forge/vue'
+</script>
+
+<template>
+  <!-- 层级加载完成后渲染 <a href="/login">登录</a> -->
+  <ForgeLink level="public" name="login.show">登录</ForgeLink>
+
+  <!-- 响应式参数（对象或 getter 形式）+ attrs 透传（class / target / …） -->
+  <ForgeLink level="admin" name="users.show" :params="{ user: userId }" class="btn">
+    查看用户
+  </ForgeLink>
+
+  <!-- 加载中的自定义占位 -->
+  <ForgeLink level="admin" name="users.show" :params="() => ({ user: userId })">
+    查看用户
+    <template #loading>正在准备链接…</template>
+  </ForgeLink>
+</template>
+```
+
+路由库集成**零依赖、全自动**：安装了 [vue-router](https://router.vuejs.org/)（`app.use(router)`）时，`ForgeLink` 自动渲染 `<RouterLink :to="href">` 做 SPA 内部跳转；否则渲染原生 `<a>`。无需任何配置。（仅在父组件局部注册的 `RouterLink` 探测不到——探测的是 `app.use(router)` 产生的全局注册。）
+
+**`ForgeRoute`** —— 灵活形态：通过作用域插槽暴露 `{ href, loaded }`，完全自主控制渲染：
+
+```vue
+<script setup>
+import { ForgeRoute } from '@route-forge/vue'
+</script>
+
+<template>
+  <ForgeRoute level="admin" name="users.show" :params="() => ({ user: userId })">
+    <template #default="{ href }">
+      <a :href="href">查看用户</a>
+    </template>
+    <template #loading>正在准备链接…</template>
+  </ForgeRoute>
+</template>
+```
+
+两组件共享的契约：
+
+- `level` 为**静态字符串**绑定（与 `useForgeRoute` 契约一致）；`name` / `params` 支持值与 getter 函数双形态，均保持响应式
+- `loaded` = `href !== ''`——`default` 插槽内恒为 `true`（该插槽只在加载完成后渲染），存在是为与 React render-prop API 对称
+- 控制台行为：`level` 未加载时每实例 `console.warn` **一次**（正常瞬态，不刷屏）；路由解析失败每次都 `console.error`（渲染仍不中断）
+- SSR：`level` 缓存就绪前组件只渲染 `loading` 插槽（或不渲染）——可在服务端预加载层级，或让链接在客户端 hydration 后自然出现
 
 ## 关于 `$forge` 全局属性（不推荐在模板中用）
 

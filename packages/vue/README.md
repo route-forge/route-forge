@@ -2,7 +2,7 @@
 
 **English** | [中文](./README_zh.md)
 
-The Vue 3 integration for Route Forge: a plugin (`createRouteForgePlugin`) plus three composables (`useForge` / `useForgeApi` / `useForgeRoute`) for calling APIs **by route name** and generating reactive links inside components, with loading and error states managed for you.
+The Vue 3 integration for Route Forge: a plugin (`createRouteForgePlugin`), three composables (`useForge` / `useForgeApi` / `useForgeRoute`), and two components (`ForgeRoute` / `ForgeLink`) for calling APIs **by route name** and generating reactive links inside components, with loading and error states managed for you.
 
 > All core capabilities (tiered lazy loading, isolated cache, interceptors, request cancellation, type safety) come from [@route-forge/core](../core/README.md); this package only adds Vue reactivity: `levelLoaded` is a `Ref<boolean>`, `pending` / `error` are `Ref`s, and URL generation returns a `ComputedRef<string>`.
 
@@ -135,8 +135,62 @@ const dynamic = useForgeRoute('admin', () => currentName.value)
 
 Contract details:
 
-- `level` is bound statically per instance: even in function form it is evaluated once at setup (same contract as `useForge`); the `name` / `params` getters stay reactive
+- `level` is a **static string** binding: fixed once at setup and cannot be switched later — create another `useForgeRoute` call for another level (same contract as `useForge`); the `name` / `params` getters stay reactive
 - Render-time errors (unknown route, missing required param…) **degrade to `''` so rendering never breaks**, while a styled `console.warn` prints the full error (with stack) — visible during development, harmless in production
+
+## Components — ForgeRoute / ForgeLink
+
+Both components wrap `useForgeRoute`, so templates don't repeat the "empty string first, update later" handling. While the level is not loaded (or route resolution fails), the `loading` slot renders (nothing by default); once loaded, the link renders.
+
+**`ForgeLink`** — the convenient one: renders `<a :href>` directly with slot content as the link text:
+
+```vue
+<script setup>
+import { ForgeLink } from '@route-forge/vue'
+</script>
+
+<template>
+  <!-- Renders <a href="/login">Login</a> once the level is loaded -->
+  <ForgeLink level="public" name="login.show">Login</ForgeLink>
+
+  <!-- Reactive params (object or getter form) + attrs passthrough (class / target / …) -->
+  <ForgeLink level="admin" name="users.show" :params="{ user: userId }" class="btn">
+    View user
+  </ForgeLink>
+
+  <!-- Custom placeholder while loading -->
+  <ForgeLink level="admin" name="users.show" :params="() => ({ user: userId })">
+    View user
+    <template #loading>Preparing link…</template>
+  </ForgeLink>
+</template>
+```
+
+Router integration is **zero-dependency and automatic**: if [vue-router](https://router.vuejs.org/) is installed (`app.use(router)`), `ForgeLink` renders `<RouterLink :to="href">` for in-app navigation; otherwise it renders a native `<a>`. Nothing to configure. (A `RouterLink` registered only locally in a parent component is not detected — the global registration from `app.use(router)` is what's probed.)
+
+**`ForgeRoute`** — the flexible one: exposes `{ href, loaded }` through a scoped slot for full control:
+
+```vue
+<script setup>
+import { ForgeRoute } from '@route-forge/vue'
+</script>
+
+<template>
+  <ForgeRoute level="admin" name="users.show" :params="() => ({ user: userId })">
+    <template #default="{ href }">
+      <a :href="href">View user</a>
+    </template>
+    <template #loading>Preparing link…</template>
+  </ForgeRoute>
+</template>
+```
+
+Shared contract (both components):
+
+- `level` is a **static string** binding (same contract as `useForgeRoute`); `name` / `params` accept both plain values and getter functions and stay reactive
+- `loaded` = `href !== ''` — inside the `default` slot it is always `true` (the slot only renders once loaded); it exists for symmetry with the React render-prop API
+- Console behavior: while the level is not loaded each instance `console.warn`s **once** (a normal transient state — no spam); route resolution failures log `console.error` every time (rendering still never breaks)
+- SSR: the components simply render the `loading` slot (or nothing) until the level cache is populated — preload the level on the server, or let the link appear after client hydration
 
 ## About the `$forge` global property (not recommended in templates)
 

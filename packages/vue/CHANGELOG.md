@@ -2,6 +2,21 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## Unreleased
+
+### Added
+
+- 组件 `ForgeRoute` / `ForgeLink`：封装 `useForgeRoute` 的"先空串、后更新"异步行为。
+  未加载 / 解析失败时渲染 `loading` 插槽（缺省不渲染），加载后渲染链接；
+  `ForgeLink` 探测到 vue-router 全局注册的 `RouterLink` 时自动渲染 `<RouterLink :to>`（零依赖探测）。
+  `level` 未加载时每实例 `console.warn` 一次，路由解析失败 `console.error`（渲染均不中断）。
+
+### Changed
+
+- **Breaking**：`useForgeRoute` 的 `level` 参数收窄为 `string` 静态绑定，移除 `() => string`
+  函数形式（层级是确定性声明，getter 形式从未真正支持动态切换——2.1.0 起即为 setup 快照语义，
+  本次将契约落实到类型层面）。迁移：传 `() => 'admin'` 之类改为直接传 `'admin'`。
+
 ## 2.1.0 — 2026-08-31
 
 ### Changed
