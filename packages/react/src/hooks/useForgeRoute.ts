@@ -35,6 +35,15 @@ export function useForgeRoute(
   params?: Record<string, unknown>,
   hooks?: ForgeRouteDegradeHooks,
 ): string {
+  // 运行时守卫：level 必须是静态字符串（防 JS 用户误用静默降级为空链接）
+  if (typeof level !== 'string') {
+    throw new TypeError(
+      '[route-forge/react] useForgeRoute(): level must be a static string — ' +
+      'getter form is not supported (levels are deterministic declarations; ' +
+      'create another hook call for another level)',
+    );
+  }
+
   const forge = useContext(ForgeContext);
   if (!forge) {
     throw new Error(

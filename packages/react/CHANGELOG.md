@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- `useForgeRoute`：`level` 增加运行时守卫——传非 string（如 getter 函数）直接抛 `TypeError`
+  响亮报错，不再静默降级为永远为空的链接（类型签名本就是 `string`，此为 JS 侧误用的兜底）。
+
 ### Added
 
 - 组件 `ForgeRoute` / `ForgeLink`：封装 `useForgeRoute` 的"先空串、后更新"异步行为。

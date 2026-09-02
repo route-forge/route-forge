@@ -356,6 +356,23 @@ describe('useForgeRoute', () => {
     );
     warn.mockRestore();
   });
+
+  it('throws TypeError when level is not a static string (runtime guard)', () => {
+    function Bad() {
+      useForgeRoute((() => 'public') as unknown as string, 'users.show');
+      return null;
+    }
+    // React 渲染期异常会先经 console.error 报告再抛出，静音避免噪声
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() =>
+      render(
+        <RouteForgeProvider options={makeOptions()}>
+          <Bad />
+        </RouteForgeProvider>,
+      ),
+    ).toThrow(TypeError);
+    errSpy.mockRestore();
+  });
 });
 
 // ─── API trimming & levelLoaded ─────────────────────────────

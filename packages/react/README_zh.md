@@ -136,7 +136,7 @@ function UserLinks({ userId, userName }) {
 契约细节：
 
 - **与 Vue 版的差异**：返回 `string`（Vue 版返回 `ComputedRef<string>`，模板自动解包）；`params` 收普通对象（Vue 版收 getter）。React 内部按 `params` 的**内容**做依赖对比（序列化），直接写内联对象字面量也安全，不会因引用变化而每帧重算
-- `level` 为静态绑定，不支持中途切换（要换层级请另起组件 / 另一次调用，与 `useForge` 契约一致）
+- `level` 为静态绑定，不支持中途切换（要换层级请另起组件 / 另一次调用，与 `useForge` 契约一致）；传非 string 的 `level` 运行时直接抛 `TypeError`
 - 路由名不存在、必填参数缺失等渲染期错误：**降级为 `''` 保证渲染不中断**，同时以样式化 `console.warn` 输出完整错误（含堆栈）
 
 ## 组件 — ForgeRoute / ForgeLink
@@ -179,7 +179,7 @@ import { ForgeRoute } from '@route-forge/react'
 
 两组件共享的契约：
 
-- `level` 为**静态字符串**绑定（与 `useForgeRoute` 契约一致）；`params` 收普通对象，按内容驱动重算（同 `useForgeRoute`）
+- `level` 为**静态字符串**绑定（与 `useForgeRoute` 契约一致，传非 string 运行时抛 `TypeError`）；`params` 收普通对象，按内容驱动重算（同 `useForgeRoute`）
 - `loaded` = `href !== ''`——render-prop 内恒为 `true`（children 只在加载完成后渲染），存在是为 API 对称
 - 控制台行为：`level` 未加载时每实例 `console.warn` **一次**（正常瞬态，不刷屏）；路由解析失败每次都 `console.error`（渲染仍不中断）
 - SSR：`level` 缓存就绪前组件只渲染 `loading`（或不渲染）——可在服务端预加载层级，或让链接在客户端 hydration 后自然出现

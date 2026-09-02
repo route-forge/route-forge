@@ -138,7 +138,7 @@ function UserLinks({ userId, userName }) {
 Contract details:
 
 - **Difference vs the Vue version**: returns `string` (Vue returns `ComputedRef<string>`, auto-unwrapped in templates); `params` is a plain object (Vue takes a getter). React compares dependencies by the **content** of `params` (serialization), so inline object literals are safe — no per-render recomputation from identity changes
-- `level` is bound statically and cannot be switched later (create another component / call for another level, same contract as `useForge`)
+- `level` is bound statically and cannot be switched later (create another component / call for another level, same contract as `useForge`); a non-string `level` throws `TypeError` at runtime
 - Render-time errors (unknown route, missing required param…) **degrade to `''` so rendering never breaks**, while a styled `console.warn` prints the full error (with stack)
 
 ## Components — ForgeRoute / ForgeLink
@@ -181,7 +181,7 @@ import { ForgeRoute } from '@route-forge/react'
 
 Shared contract (both components):
 
-- `level` is a **static string** binding (same contract as `useForgeRoute`); `params` is a plain object, recomputation is content-driven (same as `useForgeRoute`)
+- `level` is a **static string** binding (same contract as `useForgeRoute`; a non-string throws `TypeError` at runtime); `params` is a plain object, recomputation is content-driven (same as `useForgeRoute`)
 - `loaded` = `href !== ''` — inside the render-prop it is always `true` (children only render once loaded); it exists for API symmetry
 - Console behavior: while the level is not loaded each instance `console.warn`s **once** (a normal transient state — no spam); route resolution failures log `console.error` every time (rendering still never breaks)
 - SSR: the components simply render `loading` (or nothing) until the level cache is populated — preload the level on the server, or let the link appear after client hydration
