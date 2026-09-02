@@ -1,7 +1,7 @@
 {
   "name": "@route-forge/vue",
-  "version": "2.1.0",
-  "description": "Route Forge 的 Vue 3 集成：插件 + composable（useForge/useForgeApi/useForgeRoute）/ Vue 3 integration for Laravel named routes: plugin + composables (useForge / useForgeApi / useForgeRoute)",
+  "version": "2.2.0",
+  "description": "Route Forge 的 Vue 3 集成：插件 + composable（useForge/useForgeApi/useForgeRoute）+ 组件（ForgeRoute/ForgeLink）/ Vue 3 integration for Laravel named routes: plugin + composables (useForge / useForgeApi / useForgeRoute) + components (ForgeRoute / ForgeLink)",
   "keywords": [
     "laravel",
     "named-routes",
