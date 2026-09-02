@@ -96,32 +96,16 @@ Options:
 }
 
 /**
- * 拉取摘要端点
+ * 拉取摘要端点（仅用于自动发现层级名；unassigned 现是 levels 中的真实层级，与其余层级一样按 HTTP 懒加载拉取）
  */
 export async function fetchSummary(endpoint: string): Promise<{
   levels: Record<string, unknown>;
-  unassigned?: Array<{
-    name: string;
-    uri: string;
-    methods: string[];
-    parameters: string[];
-    parameter_defaults?: Record<string, unknown>;
-  }>;
 }> {
   const resp = await fetch(endpoint, { method: 'GET' });
   if (!resp.ok) {
     throw new Error(`summary endpoint ${endpoint} returned ${resp.status}`);
   }
-  return (await resp.json()) as {
-    levels: Record<string, unknown>;
-    unassigned?: Array<{
-      name: string;
-      uri: string;
-      methods: string[];
-      parameters: string[];
-      parameter_defaults?: Record<string, unknown>;
-    }>;
-  };
+  return (await resp.json()) as { levels: Record<string, unknown> };
 }
 
 /**
@@ -179,8 +163,9 @@ ${levelEntries.join('\n')}
 export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   const opts = parseArgs(argv);
 
+  // 未指定 --levels 时从摘要端点自动发现层级（unassigned 现是 levels 中的真实层级，一并纳入）
   let levels = opts.levels;
-  // 摘要端点数据（用于自动发现层级 + 获取 unassigned 路由）
+  // 摘要端点数据（用于自动发现层级）
   let summaryData: Awaited<ReturnType<typeof fetchSummary>> | null = null;
   if (levels.length === 0) {
     try {
@@ -193,47 +178,20 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     }
   }
 
-  // 未指定 --levels 或显式包含 unassigned 时，从摘要端点获取未分配路由
-  // @see .docs/SPEC.md §3.1.6
-  const UNASSIGNED_LEVEL = 'unassigned';
-  let unassignedRoutes: Record<string, RouteMeta> | null = null;
-  // 自动发现时检查摘要数据中是否有 unassigned 路由；显式指定 --levels 时仅当包含 unassigned 才处理
-  const needsUnassigned =
-    levels.includes(UNASSIGNED_LEVEL) || (summaryData && summaryData.unassigned && summaryData.unassigned.length > 0);
-  if (needsUnassigned) {
-    if (!summaryData) {
-      try {
-        summaryData = await fetchSummary(opts.endpoint);
-      } catch (e) {
-        console.warn(`[route-forge/codegen] failed to fetch summary for unassigned routes: ${(e as Error).message}`);
-      }
-    }
-    if (summaryData?.unassigned && summaryData.unassigned.length > 0) {
-      unassignedRoutes = {};
-      for (const r of summaryData.unassigned) {
-        unassignedRoutes[r.name] = { ...r, level: UNASSIGNED_LEVEL };
-      }
-      if (!levels.includes(UNASSIGNED_LEVEL)) {
-        levels.push(UNASSIGNED_LEVEL);
-      }
-    }
-  }
-
   if (levels.length === 0) {
     console.error('[route-forge/codegen] no levels found; pass --levels explicitly');
     process.exit(1);
   }
 
+  // 所有层级（含 unassigned 真实层级）统一按 HTTP 懒加载拉取（SPEC §3.1.6）
   const levelFetches = await Promise.allSettled(
-    levels
-      .filter((lvl) => lvl !== UNASSIGNED_LEVEL)  // unassigned 不走 HTTP 拉取
-      .map((lvl) => fetchLevel(opts.endpoint, lvl)),
+    levels.map((lvl) => fetchLevel(opts.endpoint, lvl)),
   );
 
   const routesByLevel: Record<string, Record<string, RouteMeta>> = {};
   let failedLevels = 0;
   levelFetches.forEach((res, idx) => {
-    const lvl = levels.filter((l) => l !== UNASSIGNED_LEVEL)[idx]!;
+    const lvl = levels[idx]!;
     if (res.status === 'fulfilled') {
       routesByLevel[lvl] = res.value.routes;
     } else {
@@ -241,10 +199,6 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
       console.warn(`[route-forge/codegen] failed to fetch level "${lvl}": ${(res.reason as Error).message}`);
     }
   });
-  // unassigned 路由直接从摘要数据填充
-  if (unassignedRoutes) {
-    routesByLevel[UNASSIGNED_LEVEL] = unassignedRoutes;
-  }
 
   const totalRoutes = Object.values(routesByLevel).reduce((sum, r) => sum + Object.keys(r).length, 0);
   if (totalRoutes === 0) {

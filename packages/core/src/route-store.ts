@@ -15,7 +15,7 @@
 import { RouteCache } from './cache.js';
 import { UnknownLevelError } from './errors.js';
 import { buildUrl } from './url-builder.js';
-import { UNASSIGNED_LEVEL, type DiscoveryState, type MetaFetcher } from './auto-discovery.js';
+import { type DiscoveryState, type MetaFetcher } from './auto-discovery.js';
 import type { LevelRoutesResponse, RouteMeta } from './types.js';
 
 export interface RouteStoreDeps {
@@ -57,12 +57,19 @@ export class RouteStore {
   }
 
   private async fetchLevel(level: string): Promise<LevelRoutesResponse> {
-    // 后端可能下发 cache 字段，让 RouteCache 优先采用
-    return (await this.fetchMeta(
-      `__forge__.load.${level}`,
-      buildUrl(level, { baseURL: this.baseURL, endpoint: this.state.endpoint }),
-      level,
-    )) as LevelRoutesResponse;
+    // 层级明细端点优先用摘要自描述的 route.uri（baseURL + uri）；缺省时兜底 endpoint_prefix 拼接
+    const uri = this.state.levelRoutes[level]?.uri;
+    const url = uri
+      ? this.joinBaseAndPath(this.baseURL, uri)
+      : buildUrl(level, { baseURL: this.baseURL, endpoint: this.state.endpoint });
+    return (await this.fetchMeta(`route-forge.${level}`, url, level)) as LevelRoutesResponse;
+  }
+
+  /** baseURL 与后端下发的绝对 path 拼接（规范化斜杠），与 buildUrl 的 base 处理一致 */
+  private joinBaseAndPath(baseURL: string, path: string): string {
+    const base = baseURL.endsWith('/') ? baseURL.slice(0, -1) : baseURL;
+    const p = path.startsWith('/') ? path : `/${path}`;
+    return `${base}${p}`;
   }
 
   async loadOne(level: string): Promise<void> {
@@ -70,8 +77,9 @@ export class RouteStore {
     if (autoDiscoveryError) throw autoDiscoveryError;
     this.assertLevelDeclared(level);
 
-    // 缓存命中直接返回
-    if (this.cache.get(level)) return;
+    // cacheTtl===null（后端声明"不缓存"）→ 跳过缓存命中短路，每次 load 重新拉取；否则命中即返回
+    const noCache = this.state.cacheTtl === null;
+    if (!noCache && this.cache.get(level)) return;
 
     // inflight 去重
     const existing = this.inflight.get(level);
@@ -80,19 +88,11 @@ export class RouteStore {
     const gen = this.invalidationGens.get(level) ?? 0;
     const p = (async () => {
       try {
-        // 虚拟层级 unassigned：直接从摘要数据构建响应，不发 HTTP 请求（SPEC §3.1.6）
-        if (level === UNASSIGNED_LEVEL && !this.state.backendHasUnassignedLevel && this.state.summaryUnassigned) {
-          const routes: Record<string, RouteMeta> = {};
-          for (const r of this.state.summaryUnassigned) {
-            routes[r.name] = { ...r, level: UNASSIGNED_LEVEL };
-          }
-          this.cache.set({ level: UNASSIGNED_LEVEL, routes, cache: null });
-          return;
-        }
+        // unassigned 是摘要中的真实层级，与其它层级完全一致地按 route.uri 走 HTTP 懒加载（SPEC §3.1.6）
         const resp = await this.fetchLevel(level);
         // 仅在缓存未被 invalidate 清除时写入，防止旧数据回写
         if ((this.invalidationGens.get(level) ?? 0) === gen) {
-          this.cache.set(resp);
+          this.cache.set(resp, this.state.cacheTtl);
         }
       } finally {
         this.inflight.delete(level);

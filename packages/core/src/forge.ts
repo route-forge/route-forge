@@ -28,6 +28,7 @@ import {
   type DiscoveryInputs,
   type DiscoveryState,
 } from './auto-discovery.js';
+import { readEmbeddedSummary } from './embedded-summary.js';
 import { RouteStore } from './route-store.js';
 import { createHttpRunner } from './http-runner.js';
 import { createBoundForgeFactory } from './bound-forge.js';
@@ -44,7 +45,13 @@ const DEFAULT_TIMEOUT = 30_000;
 const DEFAULT_CACHE_TTL = 3600;
 
 export function createRouteForge(options: RouteForgeOptions): RouteForge {
-  if (!options.endpoint) throw new TypeError('options.endpoint is required');
+  // 摘要数据源级联（SPEC §4.1.1）：页面内嵌 > 配置 summary 字段 > 网络拉取 endpoint。
+  const bootstrapSummary = readEmbeddedSummary() ?? options.summary ?? null;
+  if (!bootstrapSummary && !options.endpoint) {
+    throw new TypeError(
+      'createRouteForge: 需要 options.endpoint，或 options.summary，或页面内嵌 window.__ROUTE_FORGE__',
+    );
+  }
 
   const {
     adapter = 'auto',
@@ -62,14 +69,15 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
   const explicitEager = options.eager;
   const explicitEndpoint = options.endpoint;
 
-  // 自动发现有效状态：初始取用户显式配置，摘要端点响应到达后由 applySummaryToState 就地回填
+  // 自动发现有效状态：初始取用户显式配置（endpoint 缺省时用内嵌/配置摘要的 endpoint_prefix 兜底），
+  // 摘要折算（网络响应到达 / 内嵌/配置即时）后由 applySummaryToState 就地回填
   const discoveryState: DiscoveryState = {
     levels: explicitLevels ?? [],
     eager: explicitEager ?? [],
-    endpoint: explicitEndpoint,
+    endpoint: explicitEndpoint ?? bootstrapSummary?.config?.endpoint_prefix ?? '',
     urlPrefix: '',
-    summaryUnassigned: undefined,
-    backendHasUnassignedLevel: false,
+    cacheTtl: undefined,
+    levelRoutes: {},
   };
   const discoveryInputs: DiscoveryInputs = { explicitLevels, explicitEager, explicitEndpoint };
 
@@ -152,7 +160,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
    * 走 adapter 原始通道（不走 forge.interceptors 链，避免与业务调用混淆）：
    * builtin 提供 requestRaw（跳过拦截链）；axios/自定义 Fetcher 未提供时回退 request()。
    * 获得 timeout、adapter 检测/降级、自定义 Fetcher 兼容。
-   * @param routeTag 请求标识（`__forge__.summary` / `__forge__.load.${level}`），用于错误信息与追踪
+   * @param routeTag 请求标识（摘要 `__forge__.summary` / 层级 `route-forge.${level}`），用于错误信息与追踪
    * @param url 完整请求 URL
    * @param level 所属层级（摘要请求无层级，传 undefined）
    */
@@ -187,13 +195,22 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
 
   // 自动发现：摘要拉取经 adapter 通道（fetchSummary → fetchMeta → ensureAdapter 均已在上方就绪），
   // 就地折算进 discoveryState。fetchSummary 为 async，首个 await 即让出，不阻塞 createRouteForge 返回。
-  const autoDiscoveryPromise = fetchSummary(discoveryInputs, baseURL, fetchMeta).then((summary) => {
-    // summary === null：显式 levels 降级路径，effective* 保持初值，无需折算
-    if (summary === null) {
-      return;
-    }
-    applySummaryToState(summary, discoveryState, discoveryInputs);
-  });
+  // 摘要级联：内嵌/配置命中 → 同步折算、跳过网络；否则走网络 fetchSummary（就地折算）。
+  let autoDiscoveryPromise: Promise<void>;
+  if (bootstrapSummary) {
+    applySummaryToState(bootstrapSummary, discoveryState, discoveryInputs);
+    // 内嵌/配置摘要即时可用：构造返回后 route()/hasRoute() 立即可用（首屏免闪烁、SSR 直出友好）
+    autoDiscoveryCompleted = true;
+    autoDiscoveryPromise = Promise.resolve();
+  } else {
+    autoDiscoveryPromise = fetchSummary(discoveryInputs, baseURL, fetchMeta).then((summary) => {
+      // summary === null：显式 levels 降级路径，effective* 保持初值，无需折算
+      if (summary === null) {
+        return;
+      }
+      applySummaryToState(summary, discoveryState, discoveryInputs);
+    });
+  }
   // 防止 autoDiscoveryPromise 未被 await 时产生 unhandled rejection；
   // 存储错误以便在 load/api 调用时重新抛出，保留原始错误信息
   let autoDiscoveryError: unknown = null;
@@ -201,7 +218,7 @@ export function createRouteForge(options: RouteForgeOptions): RouteForge {
     autoDiscoveryError = e;
   });
 
-  // --- 层级路由存储与加载（RouteStore 封装 cache/inflight/失效代数/虚拟 unassigned 层级）---
+  // --- 层级路由存储与加载（RouteStore 封装 cache/inflight/失效代数 + 按 route.uri 层级懒加载）---
   const store = new RouteStore({
     cache,
     state: discoveryState,

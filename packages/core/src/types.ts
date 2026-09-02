@@ -22,52 +22,59 @@ export interface RouteMeta {
   /** 所属层级（前端填充，便于隔离缓存） */
   level?: string;
   /**
-   * 后端 manifest 契约字段：路由级缓存 TTL（秒）。
-   * 当前前端按层级消费 TTL（LevelRoutesResponse.cache，见 cache.ts），
-   * 路由级字段为后端契约预留——将来支持路由级缓存时无需改类型。
+   * 后端 manifest 契约预留字段：路由级缓存 TTL（秒）。
+   * 当前后端层级表响应（LevelRoutesResponse）不下发此字段，缓存 TTL 统一由摘要
+   * `config.cache_ttl`（全局，见 cache.ts / auto-discovery）驱动；保留字段位以便将来支持路由级缓存时不改类型。
    */
   cache?: number | null;
 }
 
 /**
- * 某层级下的全部路由元信息响应
+ * 某层级下的全部路由元信息响应（后端 GET {levels[level].route.uri} 返回）。
+ * 结构为 `{ level, routes }`，缓存 TTL 不在层级表内下发，统一取自摘要 config.cache_ttl。
  */
 export interface LevelRoutesResponse {
   level: string;
+  /** 路由名 → 路由元信息；后端空层级序列化为 `{}`（对象契约，非数组） */
   routes: Record<string, RouteMeta>;
-  /** 后端可选下发该层级缓存 TTL */
-  cache?: number | null;
 }
 
 /**
  * 摘要端点响应（SPEC §3.1.6）
- * GET /_forge/routes 返回此结构
+ * GET {endpoint_prefix} 返回此结构；同时是 @forgeSummary 注入 window.__ROUTE_FORGE__ 的值。
+ *
+ * unassigned 不是顶层字段，而是 `levels` 中一个恒存在的特殊层级，
+ * 前端按其 route.uri 走 HTTP 懒加载获取未分配路由明细。
  */
 export interface SummaryResponse {
-  /** manifest 协议版本号（DESIGN.md §6.3），默认 1；前端可据此做向前兼容 */
-  schemaVersion?: number;
+  /**
+   * manifest 协议版本号（拼写为 scheme「方案」而非 schema；DESIGN.md §6.3），必填，默认 1；
+   * 前端据此做向前兼容（>1 时告警）。
+   */
+  schemeVersion: number;
   levels: Record<
     string,
     {
       description: string;
       load: 'lazy' | 'eager';
-      cache: number | null;
       route_count: number;
+      /** 该层级明细端点的自描述，前端据此拼 URL 懒加载（endpoint_prefix 仅作兜底） */
+      route: {
+        /** 层级明细端点绝对路径，如 '/_forge/routes/admin' */
+        uri: string;
+        /** 恒为 ['GET','HEAD'] */
+        methods: string[];
+      };
     }
   >;
   config: {
     strict_mode: boolean;
     endpoint_prefix: string;
-    /** 后端下发的 URL 前缀，生成 URL 时自动拼接到路由 URI 前面（SPEC §3.1.6） */
-    url_prefix?: string;
+    /** 后端下发的 URL 前缀，生成业务 URL 时拼接到路由 URI 前；未配置为 null（SPEC §3.1.6） */
+    url_prefix: string | null;
+    /** 全局统一缓存 TTL（秒）：null=不缓存、0=永久、正整数=N 秒；后端已把负值归一为 null */
+    cache_ttl: number | null;
   };
-  unassigned: Array<{
-    name: string;
-    uri: string;
-    methods: string[];
-    parameters: string[];
-    parameter_defaults?: Record<string, unknown>;
-  }>;
 }
 
 /**
@@ -279,10 +286,22 @@ export interface RouteForge {
  * @see .docs/SPEC.md §5.2
  */
 export interface RouteForgeOptions {
-  endpoint: string;
   /**
-   * 层级列表。未传时从摘要端点自动发现（SPEC §4.1.1）。
-   * 显式传入时取与后端摘要响应 levels 键的交集（前端不能声明后端不存在的层级，SPEC §5.3）。
+   * 摘要端点 URL（网络拉取来源）。
+   * 摘要数据源级联（SPEC §4.1.1）：Blade 注入的 `window.__ROUTE_FORGE__` > 本 `summary` 字段 > 网络拉取 `endpoint`。
+   * 命中前两者时可省略；层级明细端点取自摘要 `levels[].route.uri`，不依赖本字段。
+   * 三者皆无（既无注入/summary、又无 endpoint）时 createRouteForge 抛 `TypeError`。
+   */
+  endpoint?: string;
+  /**
+   * 直接提供摘要数据（SummaryResponse），跳过摘要 HTTP 往返——用于测试或非 Blade 的注入式引导。
+   * 优先级低于页面内嵌的 `window.__ROUTE_FORGE__`（存在时以后端真值为准）。
+   * @see .docs/SPEC.md §4.1.1 / §3.1.8
+   */
+  summary?: SummaryResponse;
+  /**
+   * 层级列表。未传时从摘要自动发现（SPEC §4.1.1）。
+   * 显式传入时取与摘要响应 levels 键的交集（前端不能声明后端不存在的层级，SPEC §5.3）。
    */
   levels?: string[];
   eager?: string[];

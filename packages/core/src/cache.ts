@@ -4,7 +4,8 @@
  *
  * 规则：
  * - 每层级独立条目，互不污染（cache key = `route-forge:${level}`）
- * - TTL 优先用后端响应里的 cache 字段，本地 cache.ttl 仅作兜底
+ * - 后端 TTL 唯一来源为摘要 config.cache_ttl（全局，经 set 的 backendTtl 参数传入）：
+ *   null=不缓存（只留内存镜像、不落存储）、0=永久、正整数=min(后端, 前端 cache.ttl 兜底)
  * - storage: 'memory' | 'sessionStorage' | 'localStorage'
  * - storage 模式下维护内存镜像：首次读盘解析后驻留内存，后续 get 直接命中
  *   （读盘 + JSON.parse 整层路由表是同步阻塞操作，热路径重复执行代价高）；
@@ -98,15 +99,28 @@ export class RouteCache {
     return entry;
   }
 
-  set(resp: LevelRoutesResponse): void {
-    // SPEC §5.3：后端 cache 为上限，前端可缩短但不能延长
-    let ttl: number | null;
-    if (resp.cache !== undefined && resp.cache !== null) {
-      // 后端有值：取 min(后端, 前端兜底)，确保前端不能延长后端设定的 TTL
-      ttl = resp.cache > 0 ? Math.min(resp.cache, this.fallbackTtl) : resp.cache;
+  /**
+   * 写入某层级缓存。后端 TTL 唯一来源为摘要 config.cache_ttl（全局），经参数 backendTtl 传入：
+   * - null      → 后端声明"不缓存"：不写 storage，仅留内存镜像供 route() 同步读（load 层"每次重取"由调用方跳过 get 短路实现）
+   * - 0         → 永久缓存（内存 + storage）
+   * - undefined  → 后端未下发该字段：用前端兜底 TTL（options.cache.ttl）
+   * - 正整数     → min(后端, 前端兜底)：后端为上限，前端只能缩短不能延长（SPEC §5.3）
+   */
+  set(resp: LevelRoutesResponse, backendTtl: number | null | undefined): void {
+    let ttl: number;
+    let persist: boolean;
+    if (backendTtl === null) {
+      ttl = 0; // 内存镜像视为不过期，供 route() 读取；但不落 storage
+      persist = false;
+    } else if (backendTtl === undefined) {
+      ttl = this.fallbackTtl; // 后端未表态 → 前端兜底
+      persist = true;
+    } else if (backendTtl === 0) {
+      ttl = 0; // 永久
+      persist = true;
     } else {
-      // 后端未下发：使用前端兜底 TTL
-      ttl = this.fallbackTtl;
+      ttl = Math.min(backendTtl, this.fallbackTtl); // 后端上限，前端可缩短
+      persist = true;
     }
     const entry: CacheEntry = {
       level: resp.level,
@@ -116,7 +130,7 @@ export class RouteCache {
     };
     // 无条件先写内存镜像：写入方自己立刻享受内存命中（不再每次 get 重新读盘解析）
     this.memory.set(resp.level, entry);
-    if (this.storage === 'memory' || !this.backend) {
+    if (!persist || this.storage === 'memory' || !this.backend) {
       return;
     }
     try {
