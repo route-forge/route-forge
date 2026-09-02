@@ -1,6 +1,6 @@
 {
   "name": "@route-forge/core",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "框架无关的命名路由客户端核心：分级懒加载、隔离缓存、并发去重、拦截器 / Framework-agnostic named-routes client core: tiered lazy loading, isolated cache, request deduplication, interceptors",
   "keywords": [
     "laravel",
