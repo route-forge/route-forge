@@ -135,7 +135,7 @@ const dynamic = useForgeRoute('admin', () => currentName.value)
 
 Contract details:
 
-- `level` is a **static string** binding: fixed once at setup and cannot be switched later — create another `useForgeRoute` call for another level (same contract as `useForge`); the `name` / `params` getters stay reactive
+- `level` is a **static string** binding: fixed once at setup and cannot be switched later — create another `useForgeRoute` call for another level (same contract as `useForge`); the `name` / `params` getters stay reactive. A non-string `level` throws `TypeError` at runtime
 - Render-time errors (unknown route, missing required param…) **degrade to `''` so rendering never breaks**, while a styled `console.warn` prints the full error (with stack) — visible during development, harmless in production
 
 ## Components — ForgeRoute / ForgeLink
@@ -187,7 +187,7 @@ import { ForgeRoute } from '@route-forge/vue'
 
 Shared contract (both components):
 
-- `level` is a **static string** binding (same contract as `useForgeRoute`); `name` / `params` accept both plain values and getter functions and stay reactive
+- `level` is a **static string** binding (same contract as `useForgeRoute`; a non-string throws `TypeError` at runtime); `name` / `params` accept both plain values and getter functions and stay reactive
 - `loaded` = `href !== ''` — inside the `default` slot it is always `true` (the slot only renders once loaded); it exists for symmetry with the React render-prop API
 - Console behavior: while the level is not loaded each instance `console.warn`s **once** (a normal transient state — no spam); route resolution failures log `console.error` every time (rendering still never breaks)
 - SSR: the components simply render the `loading` slot (or nothing) until the level cache is populated — preload the level on the server, or let the link appear after client hydration

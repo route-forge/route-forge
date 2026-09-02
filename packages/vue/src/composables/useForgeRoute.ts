@@ -37,6 +37,15 @@ export function useForgeRoute(
   params?: () => Record<string, unknown> | undefined,
   hooks?: ForgeRouteDegradeHooks,
 ): ComputedRef<string> {
+  // 运行时守卫：level 必须是静态字符串（类型收窄后防 JS 用户误用静默降级为空链接）
+  if (typeof level !== 'string') {
+    throw new TypeError(
+      '[route-forge/vue] useForgeRoute(): level must be a static string — ' +
+      'getter form is not supported (levels are deterministic declarations; ' +
+      'create another useForgeRoute call for another level)',
+    );
+  }
+
   const forge = inject(FORGE_INJECTION_KEY) as RouteForge;
 
   // level 为静态字符串（层级是确定性声明）：绑定即固定，不支持中途动态切换

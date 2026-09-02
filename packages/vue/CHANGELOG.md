@@ -13,9 +13,10 @@
 
 ### Changed
 
-- **Breaking**：`useForgeRoute` 的 `level` 参数收窄为 `string` 静态绑定，移除 `() => string`
-  函数形式（层级是确定性声明，getter 形式从未真正支持动态切换——2.1.0 起即为 setup 快照语义，
-  本次将契约落实到类型层面）。迁移：传 `() => 'admin'` 之类改为直接传 `'admin'`。
+- `useForgeRoute` 的 `level` 参数收窄为 `string` 静态绑定，移除 `() => string` 函数形式
+  （层级是确定性声明，getter 形式从未真正支持动态切换——2.1.0 起即为 setup 快照语义，
+  本次将契约落实到类型与运行时：传非 string 直接抛 `TypeError`，不再静默降级为空链接）。
+  迁移：传 `() => 'admin'` 之类改为直接传 `'admin'`。
 
 ## 2.1.0 — 2026-08-31
 

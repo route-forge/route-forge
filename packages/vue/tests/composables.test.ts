@@ -352,6 +352,24 @@ describe('useForgeRoute', () => {
 
   // 注：level 收窄为静态字符串后（不支持 getter 形式），原"level 快照不追踪 getter 变化"
   // 的运行时测试随 API 一并移除——传 getter 现在是类型错误，无需运行时验证。
+
+  it('throws TypeError when level is not a static string (runtime guard)', () => {
+    const C = defineComponent({
+      setup() {
+        let err: unknown;
+        try {
+          useForgeRoute((() => 'public') as unknown as string, 'login.show');
+        } catch (e) {
+          err = e;
+        }
+        expect(err).toBeInstanceOf(TypeError);
+        expect(String(err)).toContain('level must be a static string');
+        return () => null;
+      },
+    });
+    // 断言在 setup 内完成，挂载本身不应再抛错
+    expect(() => mount(C, { global: { plugins: [makePlugin()] } })).not.toThrow();
+  });
 });
 
 // ─── API trimming & levelLoaded ─────────────────────────────
