@@ -30,7 +30,8 @@ Route Forge reads named routes from the Laravel route registry, groups them into
 | **Interceptors** | Request / response chains with axios-compatible behavior (LIFO / FIFO), declarative registration and runtime management |
 | **Request cancellation** | `ForgeRequest` returned by `forge.api()` ships with `abort()`, cooperating with timeouts |
 | **Type safety** | TS type declarations generated from the backend route registry — route name → params → response checked at compile time |
-| **Unassigned level** | Routes without a backend-assigned level are grouped into a virtual `unassigned` level, directly consumable by the frontend |
+| **Unassigned level** | Routes without a backend-assigned level live under an `unassigned` level the backend always exposes in the summary, lazy-loaded over HTTP like any other level |
+| **Embedded bootstrap** | On Laravel/Blade server-rendered pages the summary can be inlined as a one-shot `window.__ROUTE_FORGE__` so core skips the summary round-trip and is ready synchronously; falls back to the network summary when absent |
 | **Zero intrusion** | The backend extends Laravel via macros and a ServiceProvider — no framework core modification |
 | **Browser-ready** | The core package ships an IIFE build usable via a plain `<script>` tag, no bundler required |
 
@@ -151,7 +152,7 @@ forge.invalidate('admin')
 const req = forge.api('admin', 'users.show', { user: 123 })
 req.abort()  // cancels the request; the Promise rejects with RequestAbortedError
 
-// Unassigned level — routes without a backend tier are reachable via the 'unassigned' virtual level
+// Unassigned level — routes without a backend tier live under the always-present 'unassigned' level (lazy-loaded over HTTP)
 await forge.load('unassigned')
 const data = await forge.api('unassigned', 'some.route')
 ```

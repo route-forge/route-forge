@@ -289,75 +289,58 @@ GET /_forge/routes   # 返回所有层级摘要 + 全局配置
 
 ```json
 {
+  "schemeVersion": 1,
   "levels": {
     "public": {
       "description": "公共接口（无需登录）",
       "load": "eager",
-      "cache": 3600,
-      "route_count": 12
+      "route_count": 12,
+      "route": { "uri": "/_forge/routes/public", "methods": ["GET", "HEAD"] }
     },
     "client": {
       "description": "客户端用户接口",
       "load": "lazy",
-      "cache": null,
-      "route_count": 45
-    },
-    "manage": {
-      "description": "运营管理接口",
-      "load": "lazy",
-      "cache": null,
-      "route_count": 38
+      "route_count": 45,
+      "route": { "uri": "/_forge/routes/client", "methods": ["GET", "HEAD"] }
     },
     "admin": {
       "description": "系统管理接口",
       "load": "lazy",
-      "cache": null,
-      "route_count": 27
+      "route_count": 27,
+      "route": { "uri": "/_forge/routes/admin", "methods": ["GET", "HEAD"] }
+    },
+    "unassigned": {
+      "description": "未命中任何层级的路由",
+      "load": "lazy",
+      "route_count": 3,
+      "route": { "uri": "/_forge/routes/unassigned", "methods": ["GET", "HEAD"] }
     }
   },
   "config": {
     "strict_mode": false,
     "endpoint_prefix": "/_forge/routes",
-    "url_prefix": ""
-  },
-  "unassigned": [
-    {
-      "name": "debug.info",
-      "uri": "_debug/info",
-      "methods": [
-        "GET",
-        "HEAD"
-      ],
-      "parameters": [],
-      "parameter_defaults": {}
-    }
-  ]
+    "url_prefix": null,
+    "cache_ttl": 3600
+  }
 }
 
 ```
 
 字段说明：
 
-+ `levels`：各层级摘要。`description` 层级描述、`load` 加载策略（eager/lazy）、`cache` 缓存 TTL 秒数、`route_count` 该层级路由数量。
-+ `config`：后端全局配置摘要。前端初始化时读取此字段作为最高优先级配置源（见 §5.3 分级覆盖策略）。当前包含
-  `strict_mode`、
-  `endpoint_prefix` 和 `url_prefix`，后续版本可扩展。
-    + `url_prefix`：后端下发的 URL 前缀。支持两种形式：
-        - 路径前缀（如 `'/api/v1'`）：前端拼接在 `baseURL` 之后、路由 URI 之前。
-        - 完整 URL（含协议和域名，如 `'https://api.example.com'`）：前端直接使用此值作为基础 URL，忽略客户端
-          `baseURL` 配置。适用于前后端不同域名的场景。
-+ `unassigned`：当 `fallback_level=null`
-  时，所有未分配层级的命名路由列表。包含完整的路由元信息（name/uri/methods/parameters/parameter_defaults），前端可按需加载和调用。fallback_level
-  非 null 时此字段为空数组。
++ `schemeVersion`：摘要响应格式版本号（拼写为 **scheme**「方案」，非 schema），必填、默认 `1`。前端据此做向前兼容（`> 1` 时告警）。后续引入不兼容的格式变更时递增。
++ `levels`：各层级概览。`description` 层级描述、`load` 加载策略（eager/lazy）、`route_count` 该层级路由数量（**别名计入**，与层级端点实际返回的 routes 键数一致）、`route` 该层级明细端点的**自描述**（`uri` 绝对路径 + `methods`），前端据此拼 URL 懒加载。**缓存 TTL 不在层级项内**，统一见 `config.cache_ttl`。
++ `config`：后端全局配置摘要，前端初始化时作为最高优先级配置源（见 §5.3 分级覆盖策略）。
+    + `strict_mode`：后端生成 manifest 时未命中路由的处理方式（前端校验始终开启，不受此影响，见 §4.1.5）。
+    + `endpoint_prefix`：元信息端点前缀。层级懒加载优先用 `levels[].route.uri`，此值仅作 route.uri 缺省时的兜底拼接。
+    + `url_prefix`：`string | null`。后端下发的 URL 前缀，生成业务 URL 时拼接。支持路径前缀（`'/api/v1'`）与完整 URL（`'https://api.example.com'`，此时忽略客户端 `baseURL`）。未配置为 `null`。
+    + `cache_ttl`：`number | null`。**全局统一**缓存 TTL（秒），同时作用于所有层级与摘要：`null`=不缓存、`0`=永久、正整数=N 秒（后端已把负值归一为 `null`）。前端以此为上限，可被 `cache.ttl` 进一步缩短但不能延长。
 
-> 前端处理：前端将 `unassigned` 字段作为虚拟层级 `"unassigned"` 消费。当摘要端点返回非空的
-> `unassigned` 数组时，前端自动将其加入可用层级列表，允许通过 `forge.load('unassigned')` /
-> `forge.api('unassigned', name)` / `forge.route('unassigned', name)`
-> 调用未分配层级的路由。虚拟层级的路由数据直接来自摘要端点，无需额外的 HTTP 请求。若后端将 `unassigned`
-> 作为真实层级注册（在 `levels` 中），则前端走正常 HTTP 拉取流程，不走虚拟层级。
+> `unassigned`：未命中任何层级的命名路由归属层级。后端**恒在 `levels` 中注入该特殊层级**（`route.uri = {endpoint_prefix}/unassigned`），
+> 前端将其与已定义层级一视同仁，按 `route.uri` 走 HTTP 懒加载获取明细——**不再有"顶层 unassigned 数组 + 前端虚拟层级就地构建"**。
+> `strict_mode=true` 时后端对未命中路由直接抛错，`levels.unassigned.route_count` 为 0。
 
-摘要端点同样受 `cache_driver` 控制缓存，TTL 取所有层级中最大的 `cache` 值；若所有层级均为
-`null` 则不缓存。
+摘要与层级明细的获取来源级联见 §4.1.1 / §3.1.8：页面内嵌（`window.__ROUTE_FORGE__`）> `createRouteForge({ summary })` > 网络拉取 `endpoint`。三者投递的是同一份 `SummaryResponse`。
 
 #### 3.2 Artisan命令
 
@@ -552,8 +535,8 @@ await forge.load(['client', 'manage']);
   `route()`/`api()` 热路径上重复执行代价高。首次读取解析后条目驻留内存，后续 `get` 直接命中；
   写操作（`set`/`del`/`clear`）同步更新镜像；其他标签页修改 storage 时通过 `storage` 事件失效
   对应镜像，跨标签页新鲜度与无镜像时一致。镜像内同样执行 TTL 检查，不产生过期数据驻留。
-- 虚拟层级 `unassigned`：路由数据直接来自摘要端点（不发独立 HTTP 请求），缓存条目在
-  `forge.load('unassigned')` 时从已获取的摘要数据构建，TTL 使用前端 `cache.ttl` 兜底（摘要契约未为 unassigned 单独下发 `cache` 字段）。
+- `unassigned`：作为后端恒注入的真实层级，与其它层级完全一致——按摘要 `levels.unassigned.route.uri` 走 HTTP 懒加载，
+  缓存条目 TTL 取全局 `config.cache_ttl`（`null` 不缓存 / `0` 永久 / 正整数取 `min(后端, cache.ttl)`），不再有"从摘要数组就地构建"的特殊路径。
 
 #### 4.1.3 通过层级 + 路由名调用 API（核心 API）
 
@@ -1069,7 +1052,9 @@ const url = useForgeRoute('public', 'login.show');
 Route Forge 的初始化涉及三个独立的异步阶段，理解它们的关系对于正确挂载应用至关重要：
 
 ```
-① Auto-discovery（摘要端点）  ──  获取所有层级的元信息索引
+① Auto-discovery（摘要）      ──  获取所有层级的元信息索引
+       ·  来源级联：页面内嵌 window.__ROUTE_FORGE__ > createRouteForge({summary}) > 网络 GET {endpoint}
+       ·  命中内嵌/配置 → 同步完成、不发网络；命中网络 → 异步回填（见 §4.1.1 / §5.3）
        ↓
 ② Level load（层级加载）      ──  拉取 eager 层级的完整路由表
        ↓
@@ -1328,11 +1313,12 @@ const forge = createRouteForge({
 
 | 键                      | 类型                                         | 默认值             | 说明                                                                  |
 |-------------------------|----------------------------------------------|--------------------|-----------------------------------------------------------------------|
-| `endpoint`              | `string`                                     | `'/_forge/routes'` | 后端元信息端点前缀，与后端 `endpoint_prefix` 对齐                     |
+| `endpoint`              | `string`（可选）                            | —                  | 摘要端点 URL（网络来源）。与 `summary`、页面内嵌 `window.__ROUTE_FORGE__` 三者必有一，否则抛 `TypeError`（见 §4.1.1 级联） |
+| `summary`               | `SummaryResponse`（可选）                    | —                  | 直接提供摘要数据（如测试/非全局引导），跳过摘要 HTTP；优先级低于页面内嵌 `window.__ROUTE_FORGE__`                          |
 | `levels`                | `string[]`                                   | 自动发现           | 声明存在的层级名列表；未传时通过摘要端点（§3.1.6）自动获取            |
 | `eager`                 | `string[]`                                   | 自动发现           | 初始化时立即拉取的层级；未传时读取摘要端点返回的 `load: 'eager'` 标记 |
 | `adapter`               | `'auto'\|'axios'\|'builtin'\|Fetcher`        | `'auto'`           | 详见 §4.3.2；必须在 `createRouteForge()` 调用前确定，调用后不再切换   |
-| `cache.ttl`             | `number`                                     | `3600`             | 本地兜底缓存 TTL（秒）；后端响应 `cache` 字段优先（且为上限）         |
+| `cache.ttl`             | `number`                                     | `3600`             | 前端本地兜底缓存 TTL（秒）；后端 `config.cache_ttl` 为全局上限，前端只能缩短不能延长（`config.cache_ttl=null` 时不缓存）      |
 | `cache.storage`         | `'memory'\|'sessionStorage'\|'localStorage'` | `'memory'`         | 缓存存储介质                                                          |
 | `interceptors.request`  | `Array<Fn \| [onFulfilled?, onRejected?]>`   | `[]`               | 声明式请求拦截器列表，支持单函数或元组两种形式（见 §4.1.1）           |
 | `interceptors.response` | `Array<Fn \| [onFulfilled?, onRejected?]>`   | `[]`               | 声明式响应拦截器列表，支持单函数或元组两种形式                        |
@@ -1345,7 +1331,7 @@ const forge = createRouteForge({
 配置来源分三层，优先级从高到低：
 
 ```text
-① 后端摘要端点下发（GET /_forge/routes，§3.1.6）
+① 后端摘要下发（同一份 SummaryResponse，来源三选一：内嵌 window.__ROUTE_FORGE__ > createRouteForge.summary > GET {endpoint}）
 ↓ 可被细化
 ② 前端 createRouteForge 显式配置
 ↓ 仅限路由参数/query/body
@@ -1357,10 +1343,10 @@ const forge = createRouteForge({
 | 配置项                         | 后端摘要端点             | 前端配置                     | 覆盖规则                                                                                                                                         |
 |--------------------------------|--------------------------|------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
 | `strict_mode`                  | `config.strict_mode`     | `strict`（已废弃）           | **安全相关**：后端为权威值。strict_mode 决定后端生成 manifest 时未命中路由的处理方式（抛异常 vs 归入 fallback/unassigned）。前端校验始终开启，不受此开关影响（见 §4.1.5）         |
-| `cache`                        | `levels[name].cache`     | `cache.ttl`                  | **性能相关**：后端为上限。前端可缩短（如后端 3600 前端设 1800）但不能延长。后端 `null`（不缓存）时前端也不缓存                                   |
-| `endpoint_prefix` / `endpoint` | `config.endpoint_prefix` | `endpoint`                   | **连接相关**：前端 `endpoint` 默认值与后端 `endpoint_prefix` 对齐（默认 `'/_forge/routes'`），用户可覆盖                                         |
-| `url_prefix`                   | `config.url_prefix`      | —                            | **URL 构建相关**：后端为权威值。支持路径前缀（拼接在 `baseURL` 后）和完整 URL（含协议+域名，此时忽略 `baseURL`）。后端未下发或为空字符串时不拼接 |
-| `levels`                       | `levels` 键列表          | `levels` 数组                | **发现相关**：前端未传 `levels` 时自动从摘要端点发现；显式传入时取与后端交集（前端不能声明后端不存在的层级）                                     |
+| `cache_ttl`                    | `config.cache_ttl`（全局）| `cache.ttl`                  | **性能相关**：后端全局 TTL 为上限，前端可缩短（如后端 3600 前端设 1800）不能延长。`config.cache_ttl=null`（不缓存）时前端也不落缓存                |
+| `endpoint_prefix` / `endpoint` | `config.endpoint_prefix` | `endpoint`                   | **连接相关**：层级懒加载优先用摘要 `levels[].route.uri`，`endpoint_prefix` 仅作 route.uri 缺省时的兜底；网络来源时前端 `endpoint` 与之对齐       |
+| `url_prefix`                   | `config.url_prefix`      | —                            | **URL 构建相关**：后端为权威值。支持路径前缀（拼接在 `baseURL` 后）和完整 URL（含协议+域名，此时忽略 `baseURL`）。`null` 时不拼接               |
+| `levels`                       | `levels` 键列表          | `levels` 数组                | **发现相关**：前端未传 `levels` 时自动从摘要发现（含恒存在的 `unassigned` 层级）；显式传入时取与后端交集（前端不能声明后端不存在的层级）         |
 | `eager`                        | `levels[name].load`      | `eager` 数组                 | **加载相关**：前端未传 `eager` 时自动取后端 `load: 'eager'` 的层级；显式传入时取并集（前端可额外预加载后端标记为 lazy 的层级）                   |
 | `interceptors.*`               | —                        | `interceptors`               | **纯前端**：后端不下发拦截器配置                                                                                                                 |
 
@@ -1371,19 +1357,20 @@ const forge = createRouteForge({
   "config": {
     "strict_mode": false,
     "endpoint_prefix": "/_forge/routes",
-    "url_prefix": ""
+    "url_prefix": null,
+    "cache_ttl": 3600
   }
 }
 ```
 
-前端初始化流程：
+前端初始化流程（摘要来源级联，SPEC §4.1.1 / §3.1.8）：
 
-1. `createRouteForge()` 调用时，若 `levels` 未传或 `eager` 未传，自动请求 `GET /_forge/routes` 获取摘要。
-2. 摘要响应中的 `config` 字段作为最高优先级，覆盖前端对应配置。
-3. 摘要响应中的 `levels` 列表用于自动发现层级和 `eager` 标记。
+1. 解析摘要来源：若存在页面内嵌 `window.__ROUTE_FORGE__` → 消费它（一次性读取、自删、memo）；否则若有 `createRouteForge({ summary })` → 用它；否则若配置了 `endpoint` → 网络 `GET {endpoint}` 拉摘要；三者皆无 → 抛 `TypeError`。
+2. 命中内嵌/配置摘要时，`autoDiscovery` 同步完成（构造后 `route()`/`ready()` 立即可用）；命中网络时按响应回填。
+3. 折算出的 `config` 作为最高优先级覆盖前端配置；`levels` 用于发现层级与 `eager` 标记；各层级 `route.uri` 供懒加载拼 URL。
 
 > 设计意图：后端配置始终权威（避免前后端手动同步出错），同时保留前端灵活度（缓存可缩短、eager
-> 可扩展）。两种部署场景统一通过摘要端点获取配置：Laravel + Vue 集成项目和 Vue 独立部署项目行为一致。
+> 可扩展）。SPA 独立部署 / Vite dev 场景无内嵌 → 自动回落网络摘要；Laravel 直出首页可选内嵌加速。
 
 - 单次 `forge.api()` 调用不能覆盖全局规则（与 axios 一致），如需分支处理请用拦截器内 `config.route` 判断。
 

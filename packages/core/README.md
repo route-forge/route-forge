@@ -97,17 +97,28 @@ The three loading phases and how to track them:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `endpoint` | `string` | **required** | manifest endpoint path, e.g. `/_forge/routes` |
-| `levels` | `string[]` | auto-discovered | discovered from the summary endpoint when omitted; when given, intersected with the backend summary (the frontend cannot declare levels the backend doesn't know) |
+| `endpoint` | `string` | — | summary/manifest endpoint path (network source). Optional: at least one of `endpoint`, `summary`, or an embedded `window.__ROUTE_FORGE__` must exist, otherwise `createRouteForge` throws `TypeError` |
+| `summary` | `SummaryResponse` | — | Provide the summary directly (tests / non-global bootstrap), skipping the summary HTTP request. Takes lower priority than an embedded `window.__ROUTE_FORGE__` |
+| `levels` | `string[]` | auto-discovered | discovered from the summary when omitted; when given, intersected with the backend summary (the frontend cannot declare levels the backend doesn't know) |
 | `eager` | `string[]` | backend `load:'eager'` levels | levels preloaded after discovery; union with the backend marks when given |
 | `adapter` | `'auto' \| 'axios' \| 'builtin' \| Fetcher` | `'auto'` | see "Adapters" below |
-| `cache.ttl` | `number` (seconds) | `3600` | TTL fallback; when the backend level response carries `cache`, the effective TTL is `min(backend, frontend)` (frontend may shorten but never extend; `0` = forever) |
+| `cache.ttl` | `number` (seconds) | `3600` | frontend fallback TTL; the backend's global `config.cache_ttl` is the ceiling — the effective TTL is `min(backend, frontend)` (frontend may shorten but never extend; `0` = forever; `config.cache_ttl: null` = don't cache) |
 | `cache.storage` | `'memory' \| 'sessionStorage' \| 'localStorage'` | `'memory'` | cache backend; storage modes keep an in-memory mirror and invalidate cross-tab writes via `storage` events |
 | `interceptors.request` | array | none | declarative request interceptors: plain function (treated as `onFulfilled`) or `[onFulfilled?, onRejected?]` tuple |
 | `interceptors.response` | array | none | declarative response interceptors, same shapes |
 | `timeout` | `number` (ms) | `30000` | global timeout; a single call can override it via `params.timeout` |
 | `baseURL` | `string` | `''` | base prepended to every generated URL |
 | `strict` | `boolean` | — | **Deprecated, ignored.** Frontend validation is always on (unknown level → `UnknownLevelError`, unknown route → `UnknownRouteError`, missing required param → `MissingRouteParamError`); silently ignoring typos hides bugs. The backend's `strict_mode` is a manifest-generation concern and unrelated to the frontend |
+
+## Embedded bootstrap (optional hydration)
+
+Summary discovery reads from one source in this cascade: **embedded `window.__ROUTE_FORGE__` → `createRouteForge({ summary })` → network `GET {endpoint}`**. All three deliver the same `SummaryResponse`.
+
+For Laravel/Blade server-rendered first pages, the backend `@forgeSummary` directive inlines the summary as a one-shot, non-enumerable `window.__ROUTE_FORGE__` accessor that self-deletes on first read. When core finds it, it **skips the summary HTTP round-trip and completes discovery synchronously** — `route()` / `ready()` work immediately after `createRouteForge()` returns, eliminating the "routes not ready" first-paint flash. Level route tables are still lazy-loaded per level over HTTP (protected routes never enter the public HTML). A module-level memo lets a second instance (React StrictMode / a second provider) reuse the summary after the global is gone.
+
+If no embed exists (standalone SPA, Vite dev), core falls back to the network summary automatically. `createRouteForge({ summary })` is the explicit, test/SSR-friendly entry.
+
+> Honest scope: the one-shot self-delete only shrinks the summary's runtime footprint on `window`; the data is still present in the HTML source. This is a latency/flash optimization, **not** an XSS- or network-egavesdropping-proof boundary.
 
 ## Smart parameter resolution
 
@@ -287,9 +298,9 @@ declare module '@route-forge/core' {
 
 The backend Laravel package ([route-forge/route-forge-laravel](https://github.com/route-forge/route-forge-laravel)) also ships `php artisan route:forge:types`, which generates the same structure.
 
-## The `unassigned` virtual level
+## The `unassigned` level
 
-Routes the backend did not assign to any level appear in the summary's `unassigned` field; the frontend exposes them as a virtual level `'unassigned'` — no extra HTTP request needed:
+Routes the backend did not assign to any level live under a special `unassigned` level that the backend always injects into the summary's `levels`. The frontend treats it exactly like any other level — it lazy-loads `levels.unassigned.route.uri` over HTTP:
 
 ```ts
 await forge.load('unassigned')

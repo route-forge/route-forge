@@ -98,17 +98,28 @@ await forge.ready()
 
 | 选项 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `endpoint` | `string` | **必填** | manifest 端点路径，如 `/_forge/routes` |
-| `levels` | `string[]` | 自动发现 | 不传时从摘要端点自动发现；显式传入时取与后端摘要的**交集**（前端不能声明后端不存在的层级） |
+| `endpoint` | `string` | — | 摘要/manifest 端点路径（网络来源）。可选：`endpoint`、`summary`、页面内嵌 `window.__ROUTE_FORGE__` 三者必有一，否则 `createRouteForge` 抛 `TypeError` |
+| `summary` | `SummaryResponse` | — | 直接提供摘要数据（测试 / 非全局引导），跳过摘要 HTTP；优先级低于页面内嵌 `window.__ROUTE_FORGE__` |
+| `levels` | `string[]` | 自动发现 | 不传时从摘要自动发现；显式传入时取与后端摘要的**交集**（前端不能声明后端不存在的层级） |
 | `eager` | `string[]` | 后端 `load:'eager'` 层级 | 预加载层级；显式传入时与后端标记取**并集** |
 | `adapter` | `'auto' \| 'axios' \| 'builtin' \| Fetcher` | `'auto'` | 见下方「Adapter 适配」 |
-| `cache.ttl` | `number`（秒） | `3600` | 缓存 TTL 兜底；后端层级响应下发 `cache` 时取 `min(后端, 前端)`（前端只能缩短不能延长，`0` 表示永久） |
+| `cache.ttl` | `number`（秒） | `3600` | 前端兜底 TTL；后端全局 `config.cache_ttl` 为上限，实际取 `min(后端, 前端)`（前端只能缩短不能延长，`0` 永久，`config.cache_ttl: null` 不缓存） |
 | `cache.storage` | `'memory' \| 'sessionStorage' \| 'localStorage'` | `'memory'` | 缓存介质；storage 模式维护内存镜像并通过 `storage` 事件感知跨 tab 失效 |
 | `interceptors.request` | 数组 | 无 | 声明式请求拦截器：单函数（视为 `onFulfilled`）或 `[onFulfilled?, onRejected?]` 元组 |
 | `interceptors.response` | 数组 | 无 | 声明式响应拦截器，形式同上 |
 | `timeout` | `number`（毫秒） | `30000` | 全局超时；单次请求可用 `params.timeout` 覆盖 |
 | `baseURL` | `string` | `''` | 拼接在所有生成 URL 之前的基础地址 |
 | `strict` | `boolean` | — | **已废弃，传入无效**。前端校验始终开启（层级未声明抛 `UnknownLevelError`、路由名不存在抛 `UnknownRouteError`、必填参数缺失抛 `MissingRouteParamError`），静默忽略会掩盖拼写错误。后端的 `strict_mode` 是 manifest 生成侧语义，与前端无关 |
+
+## 内嵌引导（可选 hydration）
+
+摘要发现按级联只取一个来源：**页面内嵌 `window.__ROUTE_FORGE__` → `createRouteForge({ summary })` → 网络 `GET {endpoint}`**，三者投递的是同一份 `SummaryResponse`。
+
+对 Laravel/Blade 服务端直出的首页，后端 `@forgeSummary` 指令把摘要内联为一个一次性、不可枚举、读后自删的 `window.__ROUTE_FORGE__` 访问器。core 命中它时**跳过摘要 HTTP 往返、同步完成 discovery**——`createRouteForge()` 返回后 `route()` / `ready()` 立即可用，消除首屏"路由未就绪"闪烁。层级路由表**仍按 level 走 HTTP 懒加载**（受保护路由不进公开 HTML）。core 的 module 级 memo 让第二个实例（React StrictMode / 第二个 Provider）在全局自删后仍能复用摘要。
+
+若页面无内嵌（SPA 独立部署 / Vite dev），core 自动回落网络摘要。`createRouteForge({ summary })` 是显式、便于测试/SSR 的入口。
+
+> 诚实边界：一次性自删只缩小摘要在 `window` 上的运行时驻留面，数据仍随 HTML 源码可见；这是延迟/闪烁优化，**不是**抗 XSS 或抗网络窃取的硬边界。
 
 ## 参数智能解析
 
@@ -289,7 +300,7 @@ declare module '@route-forge/core' {
 
 ## 未分配层级（`unassigned`）
 
-后端未标记层级的路由会出现在摘要的 `unassigned` 字段，前端作为虚拟层级 `'unassigned'` 直接消费——不发额外 HTTP 请求：
+后端未标记层级的路由归属一个特殊的 `unassigned` 层级——后端**恒在摘要 `levels` 中注入它**。前端把它与普通层级一视同仁，按 `levels.unassigned.route.uri` 走 HTTP 懒加载：
 
 ```ts
 await forge.load('unassigned')

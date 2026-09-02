@@ -2,6 +2,32 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [Unreleased]
+
+### Added
+
+- **页面内嵌摘要 hydration（Blade 直出加速）**：`createRouteForge()` 初始化时优先读取后端 `@forgeSummary`
+  注入的 `window.__ROUTE_FORGE__`（一次性访问器，读后自删），命中则**跳过摘要 HTTP**、auto-discovery **同步完成**
+  （构造后 `route()` / `ready()` 立即可用）。core 侧 module 级 memo 兜住同页多实例（React StrictMode / 第二个 Provider）。
+  无内嵌时自动回落，SPA / Vite dev 行为不变。
+- `RouteForgeOptions.summary?: SummaryResponse`：直接喂入摘要数据的显式入口（测试 / 非 Blade 引导）。摘要来源级联：
+  **页面内嵌 > `summary` 字段 > 网络 `endpoint`**（对齐 SPEC §4.1.1 / §5.3）。
+
+### Changed
+
+- **对齐后端 `ForgeSummary` 契约**（`SummaryResponse` 形状变更）：`schemaVersion?` → **`schemeVersion`**（必填，拼写 scheme）；
+  各层级新增自描述 `route: { uri, methods }`；移除 per-level `cache`；`config.url_prefix` 由可选改 `string | null`；
+  `config` 新增全局 `cache_ttl`。层级懒加载 URL 优先取 `levels[].route.uri`（`endpoint_prefix` 仅兜底）。
+- **缓存 TTL 唯一来源改为全局 `config.cache_ttl`**（`null`=不缓存、只留内存不落存储、每次 `load` 重取；`0`=永久；
+  正整数=`min(后端, cache.ttl)`）。层级明细响应 `LevelRoutesResponse` 不再含 `cache` 字段。
+- `RouteForgeOptions.endpoint` 由必填改为**可选**：命中内嵌 / `summary` 时可省略；`endpoint`、`summary`、页面内嵌三者皆无时抛 `TypeError`。
+- 元信息层级拉取的请求标识由 `__forge__.load.<level>` 改为保留命名空间 **`route-forge.<level>`**（开发者不会占用，防撞名；摘要仍为 `__forge__.summary`）。
+
+### Removed
+
+- 移除"从摘要顶层 `unassigned` 数组就地构建虚拟层级"机制：后端现恒把 `unassigned` 作为 `levels` 中的真实层级注入，
+  前端与其它层级一致按 `route.uri` 走 HTTP 懒加载。顶层 `unassigned` 字段不再消费。
+
 ## 2.1.0 — 2026-08-31
 
 ### Changed

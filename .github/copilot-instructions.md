@@ -19,7 +19,7 @@ npx turbo run typecheck test build --output-logs=errors-only --force   # full va
 pnpm --filter @route-forge/core test                                   # single-package tests (vitest)
 ```
 
-Test baseline: 296 cases (core 224 / vue 34 / react 38) — all must pass before committing.
+Test baseline: 302 cases (core 230 / vue 34 / react 38) — all must pass before committing.
 
 ## Conventions
 
@@ -31,6 +31,7 @@ Test baseline: 296 cases (core 224 / vue 34 / react 38) — all must pass before
 ## Design invariants (do not violate)
 
 - Frontend validation always throws — never silently ignore: `UnknownLevelError`, `UnknownRouteError`, `MissingRouteParamError`. `RouteForgeOptions.strict` is deprecated (ignored); `strict_mode` is a backend manifest-generation concern only.
+- Summary source cascade: embedded `window.__ROUTE_FORGE__` → `options.summary` → network `GET options.endpoint`. `endpoint` is now **optional** (TypeError only if all three are absent). When embedded/config summary hits, discovery completes **synchronously** (route()/ready() usable right after construction; one-shot accessor self-deletes, core module-memo covers same-page multi-instance). `unassigned` is an always-injected real level (HTTP lazy-load via `levels.unassigned.route.uri`) — there is **no** "top-level unassigned array + virtual level" mechanism anymore. Level fetch URL comes from `levels[].route.uri` (endpoint_prefix fallback); cache TTL comes solely from the global `config.cache_ttl` (null=no cache / 0=forever / N=min(backend, cache.ttl)). `SummaryResponse` mirrors the backend `ForgeSummary` contract (`schemeVersion` — spelled "scheme"; per-level `route`; no per-level `cache`; no top-level `unassigned`).
 - Error codes are a stable contract: `ForgeErrorCode` literal union `RF_FE_001`…`RF_FE_010` (004 intentionally skipped).
 - Metadata fetching (summary / level tables) uses the adapter's raw channel (`requestRaw`) and must stay outside business interceptor chains.
 - `forge.use(level, prefix?)` returns a fresh `BoundForge` every call; `levelLoaded` is defined with `configurable: true` so Vue/React can override it — keep it configurable.

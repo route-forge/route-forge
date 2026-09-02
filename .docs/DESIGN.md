@@ -139,15 +139,19 @@ Laravel 路由定义里天然包含 HTTP 方法（GET/POST/PUT/DELETE），没�
 - 固定三级会强迫用户适配包的思维；
 - 应该让 level 体系完全可定制，从零配置到深度自定义都支持。
 
-### 6.5 为什么取消 Blade 注入，统一走摘要端点
+### 6.5 Blade 注入的取舍：从「统一摘要端点」到「可选首页加速」
 
-早期考虑过在 Blade 模板中通过 `@forgeConfig` 指令注入后端配置到 HTML 页面，前端初始化时直接读取。但发现：
+早期（见旧版本文档）曾考虑并**否决**了 Blade 注入：担心 ① Vue/SPA 独立部署 HTML 不经 Laravel、② Vite dev 无 Blade 渲染、③ 多一套机制增加条件判断。这三条**至今成立**——所以 Blade 注入**不能成为唯一路径**。
 
-1. **Vue 独立部署场景不支持**：前后端分离项目中，HTML 不经过 Laravel 渲染，注入不存在；
-2. **Vite dev 场景不支持**：开发时前端走 Vite dev server，同样没有 Blade 渲染；
-3. **单一机制更简单**：统一通过 `GET /_forge/routes` 摘要端点获取配置，两种部署场景行为一致，无需条件判断。
+后来把它重新引入，但定位变了：不是"替换摘要端点"，而是**投递同一份 `SummaryResponse` 的可选加速通道**。
 
-最终决策：取消 Blade 注入，所有后端配置下发均通过摘要端点，前端在 `createRouteForge()` 初始化时按需请求。
+- **唯一 producer 不变**：内嵌的值直接来自后端 `RouteRepository::getSummary()`（`@forgeSummary` 指令渲染），与摘要端点逐字段一致，杜绝契约漂移。
+- **解决的痛点**：省掉首屏那一次摘要 HTTP 往返，并让 auto-discovery **同步完成**——`createRouteForge()` 返回后 `route()`/`ready()` 立即可用，消除首屏"路由未就绪"闪烁。
+- **不影响其它场景**：Laravel 未书写 `@forgeSummary` 的页面（SPA 独立部署 / Vite dev）里没有该全局，前端**自动回落网络摘要**，行为与过去完全一致。
+- **懒加载与受保护价值保留**：只嵌摘要（层级概览），各层级路由明细**仍按 `levels[].route.uri` 走 HTTP 懒加载**——受保护路由的明细不预置进公开 HTML，这正是当初否决"全量内嵌"的理由，方案 A 刻意回避。
+- **消费契约**：后端用 `Object.defineProperty(window, '__ROUTE_FORGE__', { get, enumerable:false, configurable:true })` 注入一次性访问器，前端读一次即触发 `delete`（运行时不在 `window` 残留）；core 侧 module 级 memo 兜住同页多实例。**诚实边界**：一次性自删只缩小运行时 `window` 驻留面，数据仍随 HTML 源码可见，**不是抗 XSS / 抗网络窃取的硬边界**。
+
+最终口径：摘要端点仍是配置权威与默认来源；Blade 内嵌是其上叠加的可选首页加速（级联：内嵌 > `createRouteForge({summary})` > 网络），见 SPEC §3.1.6 / §3.1.8 / §4.1.1。
 
 ### 6.6 为什么类型由后端 Artisan 命令生成
 

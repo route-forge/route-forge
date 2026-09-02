@@ -31,7 +31,8 @@ TypeScript 类型保护。
 | **拦截器**     | 请求 / 响应拦截链，与 axios 行为一致（LIFO / FIFO），支持声明式注册和动态管理  |
 | **请求取消**   | `forge.api()` 返回的 `ForgeRequest` 自带 `abort()`，与 timeout 协同工作        |
 | **类型安全**   | 后端 Artisan 命令生成 TS 类型声明，路由名 → 参数 → 响应全链路编译期校验        |
-| **未分配层级** | 后端未标记层级的路由自动归入 `unassigned` 虚拟层级，前端可直接消费             |
+| **未分配层级** | 后端未标记层级的路由归入后端恒注入摘要的 `unassigned` 层级，与其它层级一样按 HTTP 懒加载          |
+| **内嵌引导**   | Laravel/Blade 直出页可把摘要内联为一次性 `window.__ROUTE_FORGE__`，core 省掉摘要网络往返、同步就绪；无内嵌时自动回落网络摘要 |
 | **零侵入**     | 后端通过 Laravel macro 和 ServiceProvider 扩展，不修改框架核心                 |
 | **浏览器可用** | core 包提供 IIFE 构建，`<script>` 标签直接引入，无需打包工具                   |
 
@@ -152,7 +153,7 @@ forge.invalidate('admin')
 const req = forge.api('admin', 'users.show', { user: 123 })
 req.abort()  // 取消请求，Promise reject 为 RequestAbortedError
 
-// 未分配层级 — 后端未标记 tier 的路由通过 'unassigned' 虚拟层级访问
+// 未分配层级 — 后端未标记 tier 的路由归入恒存在的 'unassigned' 真实层级（按 HTTP 懒加载）
 await forge.load('unassigned')
 const data = await forge.api('unassigned', 'some.route')
 ```
