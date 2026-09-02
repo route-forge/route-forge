@@ -24,10 +24,16 @@ function warnRenderError(error: unknown): void {
   );
 }
 
+/** 降级报告钩子：组件层（ForgeRoute/ForgeLink）用它把默认 warn 升级为 error，避免双重打印 */
+export interface ForgeRouteDegradeHooks {
+  onDegrade?: (error: unknown) => void;
+}
+
 export function useForgeRoute(
   level: string,
   name: string,
   params?: Record<string, unknown>,
+  hooks?: ForgeRouteDegradeHooks,
 ): string {
   const forge = useContext(ForgeContext);
   if (!forge) {
@@ -54,7 +60,7 @@ export function useForgeRoute(
           try {
             setUrl(forge.route(level, name, p));
           } catch (e) {
-            warnRenderError(e);
+            (hooks?.onDegrade ?? warnRenderError)(e);
             setUrl('');
           }
         }
@@ -65,7 +71,7 @@ export function useForgeRoute(
       try {
         setUrl(forge.route(level, name, p));
       } catch (e) {
-        warnRenderError(e);
+        (hooks?.onDegrade ?? warnRenderError)(e);
         setUrl('');
       }
     }
@@ -75,6 +81,7 @@ export function useForgeRoute(
     };
     // 依赖以 paramsKey（params 的内容序列化）为准，而非 params 引用本身：
     // 内联对象字面量每次渲染都是新引用，直接列 params 会让 effect 每帧重跑。
+    // hooks 不进依赖：报告钩子是稳定行为（console 输出），首渲染闭包即可
   }, [forge, level, name, paramsKey]);
 
   return url;

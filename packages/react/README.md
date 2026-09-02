@@ -2,7 +2,7 @@
 
 **English** | [中文](./README_zh.md)
 
-The React integration for Route Forge: `RouteForgeProvider` plus three hooks (`useForge` / `useForgeApi` / `useForgeRoute`) for calling APIs **by route name** and generating links inside components, with loading and error states managed for you.
+The React integration for Route Forge: `RouteForgeProvider`, three hooks (`useForge` / `useForgeApi` / `useForgeRoute`), and two components (`ForgeRoute` / `ForgeLink`) for calling APIs **by route name** and generating links inside components, with loading and error states managed for you.
 
 > All core capabilities (tiered lazy loading, isolated cache, interceptors, request cancellation, type safety) come from [@route-forge/core](../core/README.md); this package only adds React adaptation: `levelLoaded` is a plain `boolean` (state-driven re-render), `pending` / `error` are plain values, and URL generation returns a plain `string`.
 
@@ -140,6 +140,51 @@ Contract details:
 - **Difference vs the Vue version**: returns `string` (Vue returns `ComputedRef<string>`, auto-unwrapped in templates); `params` is a plain object (Vue takes a getter). React compares dependencies by the **content** of `params` (serialization), so inline object literals are safe — no per-render recomputation from identity changes
 - `level` is bound statically and cannot be switched later (create another component / call for another level, same contract as `useForge`)
 - Render-time errors (unknown route, missing required param…) **degrade to `''` so rendering never breaks**, while a styled `console.warn` prints the full error (with stack)
+
+## Components — ForgeRoute / ForgeLink
+
+Both components wrap `useForgeRoute`, so JSX doesn't repeat the "empty string first, update later" handling. While the level is not loaded (or route resolution fails), `loading` renders (nothing by default); once loaded, the link renders.
+
+**`ForgeLink`** — the convenient one: renders the link directly with `children` as its content:
+
+```tsx
+import { ForgeLink } from '@route-forge/react'
+
+// Native <a href="/login"> once the level is loaded
+<ForgeLink level="public" name="login.show">Login</ForgeLink>
+
+// SPA navigation: inject your router's Link via `as` (zero router dependency)
+import { Link as RouterLink } from 'react-router-dom'
+<ForgeLink as={RouterLink} level="admin" name="users.show" params={{ user: userId }} className="btn">
+  View user
+</ForgeLink>
+
+// next/link works the same way
+import Link from 'next/link'
+<ForgeLink as={Link} level="admin" name="users.show" params={{ user: userId }}>View user</ForgeLink>
+
+// Custom placeholder while loading
+<ForgeLink level="admin" name="users.show" params={{ user: userId }} loading={<span>Preparing…</span>} />
+```
+
+The injected component receives the generated URL as **both `href` and `to`** (react-router's `Link` consumes `to`, next/link consumes `href`), so popular router links work without adapters. Any other component accepting `href` works too. Without `as`, a native `<a>` is rendered.
+
+**`ForgeRoute`** — the flexible one: pass a function as `children` (render-prop) to receive `{ href, loaded }`:
+
+```tsx
+import { ForgeRoute } from '@route-forge/react'
+
+<ForgeRoute level="admin" name="users.show" params={{ user: userId }} loading={<span>Preparing…</span>}>
+  {({ href }) => <a href={href}>View user</a>}
+</ForgeRoute>
+```
+
+Shared contract (both components):
+
+- `level` is a **static string** binding (same contract as `useForgeRoute`); `params` is a plain object, recomputation is content-driven (same as `useForgeRoute`)
+- `loaded` = `href !== ''` — inside the render-prop it is always `true` (children only render once loaded); it exists for API symmetry
+- Console behavior: while the level is not loaded each instance `console.warn`s **once** (a normal transient state — no spam); route resolution failures log `console.error` every time (rendering still never breaks)
+- SSR: the components simply render `loading` (or nothing) until the level cache is populated — preload the level on the server, or let the link appear after client hydration
 
 ## Smart parameter resolution
 

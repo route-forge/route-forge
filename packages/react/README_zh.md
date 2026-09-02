@@ -2,7 +2,7 @@
 
 [English](./README.md) | **中文**
 
-Route Forge 的 React 集成：`RouteForgeProvider` + 三个 hooks（`useForge` / `useForgeApi` / `useForgeRoute`），在组件里用**路由名**调用 API、生成链接，加载态与错误自动管理。
+Route Forge 的 React 集成：`RouteForgeProvider` + 三个 hooks（`useForge` / `useForgeApi` / `useForgeRoute`）+ 两个组件（`ForgeRoute` / `ForgeLink`），在组件里用**路由名**调用 API、生成链接，加载态与错误自动管理。
 
 > 核心能力（分级懒加载、隔离缓存、拦截器、请求取消、类型安全）全部来自 [@route-forge/core](../core/README_zh.md)，本包只做 React 适配：`levelLoaded` 是 `boolean`（状态驱动重渲染）、`pending` / `error` 是普通值、URL 生成返回纯 `string`。
 
@@ -138,6 +138,51 @@ function UserLinks({ userId, userName }) {
 - **与 Vue 版的差异**：返回 `string`（Vue 版返回 `ComputedRef<string>`，模板自动解包）；`params` 收普通对象（Vue 版收 getter）。React 内部按 `params` 的**内容**做依赖对比（序列化），直接写内联对象字面量也安全，不会因引用变化而每帧重算
 - `level` 为静态绑定，不支持中途切换（要换层级请另起组件 / 另一次调用，与 `useForge` 契约一致）
 - 路由名不存在、必填参数缺失等渲染期错误：**降级为 `''` 保证渲染不中断**，同时以样式化 `console.warn` 输出完整错误（含堆栈）
+
+## 组件 — ForgeRoute / ForgeLink
+
+两个组件封装了 `useForgeRoute`，省去 JSX 里重复的"先空串、后更新"处理。`level` 未加载（或路由解析失败）时渲染 `loading`（默认什么都不渲染），加载完成后渲染链接。
+
+**`ForgeLink`** —— 便捷形态：加载完成后直接渲染链接，`children` 即链接内容：
+
+```tsx
+import { ForgeLink } from '@route-forge/react'
+
+// 层级加载完成后渲染原生 <a href="/login">
+<ForgeLink level="public" name="login.show">登录</ForgeLink>
+
+// SPA 跳转：通过 as 注入路由库的 Link（零路由库依赖）
+import { Link as RouterLink } from 'react-router-dom'
+<ForgeLink as={RouterLink} level="admin" name="users.show" params={{ user: userId }} className="btn">
+  查看用户
+</ForgeLink>
+
+// next/link 同理
+import Link from 'next/link'
+<ForgeLink as={Link} level="admin" name="users.show" params={{ user: userId }}>查看用户</ForgeLink>
+
+// 加载中的自定义占位
+<ForgeLink level="admin" name="users.show" params={{ user: userId }} loading={<span>正在准备…</span>} />
+```
+
+注入的组件会同时收到生成的 URL 作为 **`href` 和 `to` 两个 prop**（react-router 的 `Link` 消费 `to`，next/link 消费 `href`），主流路由库的 Link 无需适配直接可用；其他任何接受 `href` 的组件也可以。不传 `as` 时渲染原生 `<a>`。
+
+**`ForgeRoute`** —— 灵活形态：`children` 传函数（render-prop），拿到 `{ href, loaded }` 自主渲染：
+
+```tsx
+import { ForgeRoute } from '@route-forge/react'
+
+<ForgeRoute level="admin" name="users.show" params={{ user: userId }} loading={<span>正在准备…</span>}>
+  {({ href }) => <a href={href}>查看用户</a>}
+</ForgeRoute>
+```
+
+两组件共享的契约：
+
+- `level` 为**静态字符串**绑定（与 `useForgeRoute` 契约一致）；`params` 收普通对象，按内容驱动重算（同 `useForgeRoute`）
+- `loaded` = `href !== ''`——render-prop 内恒为 `true`（children 只在加载完成后渲染），存在是为 API 对称
+- 控制台行为：`level` 未加载时每实例 `console.warn` **一次**（正常瞬态，不刷屏）；路由解析失败每次都 `console.error`（渲染仍不中断）
+- SSR：`level` 缓存就绪前组件只渲染 `loading`（或不渲染）——可在服务端预加载层级，或让链接在客户端 hydration 后自然出现
 
 ## 参数智能解析
 

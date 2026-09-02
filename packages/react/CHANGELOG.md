@@ -2,6 +2,16 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## Unreleased
+
+### Added
+
+- 组件 `ForgeRoute` / `ForgeLink`：封装 `useForgeRoute` 的"先空串、后更新"异步行为。
+  未加载 / 解析失败时渲染 `loading` prop（缺省不渲染），加载后渲染链接；
+  `ForgeLink` 支持 `as` prop 注入任意 Link 组件（react-router `Link` / next/link 等，
+  注入组件同时收到 `href` 与 `to` 两个 prop），零路由库依赖。
+  `level` 未加载时每实例 `console.warn` 一次，路由解析失败 `console.error`（渲染均不中断）。
+
 ## 2.1.0 — 2026-08-31
 
 ### Fixed
