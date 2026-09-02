@@ -42,8 +42,8 @@ This repository ([route-forge/route-forge](https://github.com/route-forge/route-
 route-forge/
 ├── packages/
 │   ├── core/       # @route-forge/core — framework-agnostic named-route client core
-│   ├── vue/        # @route-forge/vue — Vue 3 integration (plugin + composables)
-│   └── react/      # @route-forge/react — React integration (Provider + hooks)
+│   ├── vue/        # @route-forge/vue — Vue 3 integration (plugin + composables + components)
+│   └── react/      # @route-forge/react — React integration (Provider + hooks + components)
 ├── .docs/
 │   ├── SPEC.md     # feature specification
 │   └── DESIGN.md   # design notes
@@ -207,8 +207,15 @@ plugin.ready()
 
 <template>
   <a :href="loginUrl">Login</a>
+
+  <!-- Or the ready-made link component: renders the loading slot (or nothing) while the level
+       loads, then the link (auto-upgraded to <RouterLink> when vue-router is installed) -->
+  <ForgeLink level="public" name="login.show">Login</ForgeLink>
 </template>
 ```
+
+> The Vue / React packages also ship `ForgeRoute` / `ForgeLink` components that wrap `useForgeRoute`
+> (loading slot / render-prop, console hints, router-link integration) — see the package READMEs.
 
 #### React integration
 
@@ -241,6 +248,10 @@ export default function App() {
 
   // Reactive URL generator: render-phase only; '' until loaded, auto-updates, recomputes on param change
   const detailUrl = useForgeRoute('admin', 'users.show', { user: 1 })
+
+  // Or the ready-made link component: renders `loading` (or nothing) while the level loads,
+  // then the link; `as` injects any router Link (react-router, next/link) for SPA navigation
+  // <ForgeLink as={RouterLink} level="admin" name="users.show" params={{ user: 1 }}>View user</ForgeLink>
 
   // Imperative calls belong in event handlers (no await during render)
   async function load() {

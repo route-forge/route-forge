@@ -43,8 +43,8 @@ TypeScript 类型保护。
 route-forge/
 ├── packages/
 │   ├── core/       # @route-forge/core — 框架无关的命名路由客户端核心
-│   ├── vue/        # @route-forge/vue — Vue 3 集成（插件 + composable）
-│   └── react/      # @route-forge/react — React 集成（Provider + hooks）
+│   ├── vue/        # @route-forge/vue — Vue 3 集成（插件 + composable + 组件）
+│   └── react/      # @route-forge/react — React 集成（Provider + hooks + 组件）
 ├── .docs/
 │   ├── SPEC.md     # 功能规格说明书
 │   └── DESIGN.md   # 设计思路
@@ -209,8 +209,15 @@ plugin.ready()
 
 <template>
   <a :href="loginUrl">登录</a>
+
+  <!-- 或现成的链接组件：层级加载中渲染 loading 插槽（或不渲染），加载后渲染链接
+       （安装了 vue-router 时自动升级为 <RouterLink>） -->
+  <ForgeLink level="public" name="login.show">登录</ForgeLink>
 </template>
 ```
+
+> Vue / React 包还提供封装 `useForgeRoute` 的 `ForgeRoute` / `ForgeLink` 组件
+> （loading 插槽 / render-prop、控制台提示、路由库链接集成）——详见各包 README。
 
 #### React 集成
 
@@ -243,6 +250,10 @@ export default function App() {
 
   // 响应式 URL 生成器：渲染期专用，未加载返回 ''、加载后自动更新、参数变化重算
   const detailUrl = useForgeRoute('admin', 'users.show', { user: 1 })
+
+  // 或现成的链接组件：层级加载中渲染 loading（或不渲染），加载后渲染链接；
+  // as 可注入任意路由库 Link（react-router / next/link）做 SPA 跳转
+  // <ForgeLink as={RouterLink} level="admin" name="users.show" params={{ user: 1 }}>查看用户</ForgeLink>
 
   // 命令式调用放在事件处理里（不能在渲染期 await）
   async function load() {

@@ -1043,9 +1043,26 @@ const url = useForgeRoute('public', 'login.show');
 - `useForge(level?, prefix?)`：获取 forge 实例。不传 level 返回完整 `RouteForge` 实例；传 level 时内部调用 `forge.use(level, prefix?)`，自动触发 load，提供同步方法 + `levelLoaded` 响应式状态 + `onLevelLoaded()` / `useRoutePrefix()` 等 BoundForge 方法。名字前缀由 `prefix` 参数承担（智能前缀消解与 `useForgeByPrefix` 相同，后者已移除）。
 - `useForgeApi()`：包装 `forge.api()`，自动管理 loading/error 状态。
 - `useForgeRoute(level, name, params?)`：响应式 URL 生成器，内部处理 level 加载状态，未加载返回 `''`
-  ，加载后自动更新。路由名不存在或必填参数缺失等渲染期错误同样降级为 `''`（保证渲染不中断），
+  ，加载后自动更新。`level` 为静态字符串绑定（不支持 getter 形式）。路由名不存在或必填参数缺失等渲染期错误同样降级为 `''`（保证渲染不中断），
   并以样式化 `console.warn` 输出完整错误（含堆栈）——开发期控制台醒目可见，生产无副作用。
+- 组件 `ForgeRoute` / `ForgeLink`：封装 `useForgeRoute` 的"先空串、后更新"行为（§4.1.7a）。
 - 全局属性 `$forge` 与模板内 `{{ $forge.route('admin', 'users.show', { user: 1 }) }}` 工具函数。
+
+##### 4.1.7a 组件 ForgeRoute / ForgeLink（vue / react）
+
+两包对称提供 `ForgeRoute`（通用形态）与 `ForgeLink`（便捷形态），内部复用各自的 `useForgeRoute`：
+`loaded = href !== ''`（level 未加载与渲染期错误都降级为 `''`，复用该哨兵值）。
+
+- `ForgeLink`：加载完成后直接渲染链接。Vue 侧渲染 `<a :href>`，并在探测到 `app.use(router)`
+  全局注册的 `RouterLink` 时自动改渲染 `<RouterLink :to="href">`（零依赖探测，不 import vue-router）；
+  React 侧默认渲染 `<a href>`，通过 `as` prop 注入任意 Link 组件（react-router `Link` / next/link 等，
+  注入组件同时收到 `href` 与 `to` 两个 prop）。attrs 透传到链接元素，生成的 `href` / `to` 优先于同名 attr。
+- `ForgeRoute`：Vue 作用域插槽暴露 `{ href, loaded }`；React `children` 为函数时收到 `{ href, loaded }`（render-prop）。
+- 未加载 / 解析失败时渲染 `loading` 插槽（Vue）/ `loading` prop（React），缺省不渲染；
+  `level` 未加载时每实例 `console.warn` 一次（正常瞬态不刷屏），路由解析失败每次 `console.error`（渲染不中断）。
+- `level` 为静态字符串绑定（与 `useForgeRoute` 契约一致）；`name` / `params` 保持响应式
+  （Vue 支持值与 getter 双形态，React `params` 收普通对象按内容比较）。
+- SSR：level 缓存就绪前组件只渲染 loading（或不渲染），链接在客户端 hydration 后自然出现。
 
 #### 4.1.9 初始化合时序与推荐模式
 

@@ -10,8 +10,8 @@ Route Forge 是 Laravel 命名路由的前端客户端方案：从后端 manifes
 ```
 packages/
 ├── core/    @route-forge/core   框架无关核心（工厂/缓存/拦截器/adapter/codegen CLI/IIFE）
-├── vue/     @route-forge/vue    Vue 3 集成（插件 + useForge/useForgeApi/useForgeRoute）
-└── react/   @route-forge/react  React 集成（Provider + 同名 hooks）
+├── vue/     @route-forge/vue    Vue 3 集成（插件 + useForge/useForgeApi/useForgeRoute + ForgeRoute/ForgeLink 组件）
+└── react/   @route-forge/react  React 集成（Provider + 同名 hooks + ForgeRoute/ForgeLink 组件）
 .docs/       SPEC.md（功能规格 + manifest 契约）、DESIGN.md（设计思路）
 ```
 
@@ -33,7 +33,7 @@ pnpm --filter @route-forge/vue test
 pnpm --filter @route-forge/react test
 ```
 
-当前测试基线：**276 例**（core 224 / vue 25 / react 27），全部通过是提交前置条件。
+当前测试基线：**295 例**（core 224 / vue 33 / react 37），全部通过是提交前置条件。
 
 ## 提交与协作约定
 
