@@ -8,11 +8,16 @@ import type { LevelRoutesResponse, SummaryResponse } from '@route-forge/core';
 
 function makeSummary(overrides: Partial<SummaryResponse> = {}): SummaryResponse {
   return {
+    schemeVersion: 1,
     levels: {
-      admin: { description: 'admin', load: 'eager', cache: 60, route_count: 0 },
+      admin: {
+        description: 'admin',
+        load: 'eager',
+        route_count: 0,
+        route: { uri: '/_forge/routes/admin', methods: ['GET', 'HEAD'] },
+      },
     },
-    config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
-    unassigned: [],
+    config: { strict_mode: false, endpoint_prefix: '/_forge/routes', url_prefix: null, cache_ttl: 3600 },
     ...overrides,
   };
 }

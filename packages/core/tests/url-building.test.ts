@@ -1,18 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRouteForge, UnknownRouteError } from '../src/index.js';
 import type { LevelRoutesResponse, RequestConfig, SummaryResponse } from '../src/types.js';
+import { makeSummary as normalizeSummary, type SummaryOverrides } from './fixtures.js';
 
 // ─── mock helpers ───────────────────────────────────────────
 
-function makeSummary(overrides: Partial<SummaryResponse> = {}): SummaryResponse {
-  return {
-    levels: {
-      public: { description: 'public', load: 'lazy', cache: 300, route_count: 1 },
-    },
-    config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
-    unassigned: [],
+function makeSummary(overrides: SummaryOverrides = {}): SummaryResponse {
+  return normalizeSummary({
+    levels: { public: { description: 'public', load: 'lazy', route_count: 1 } },
     ...overrides,
-  };
+  });
 }
 
 /** URL 感知 mock：摘要 / 层级拉取 / 业务请求分别处理，并记录全部调用 */

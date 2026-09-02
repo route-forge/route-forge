@@ -4,6 +4,7 @@ import type { LoadingChangeEvent } from '../src/loading.js';
 import { LoadingTracker } from '../src/loading.js';
 import { createRouteForge } from '../src/index.js';
 import type { LevelRoutesResponse, SummaryResponse } from '../src/types.js';
+import { makeSummary as normalizeSummary, type SummaryOverrides } from './fixtures.js';
 
 // ─── LoadingTracker 单元测试 ────────────────────────────────────────────────────
 
@@ -95,15 +96,13 @@ describe('LoadingTracker', () => {
 // ─── forge 集成测试 ─────────────────────────────────────────────────────────────
 
 // Helper: 模拟摘要端点响应
-function makeSummary(overrides: Partial<SummaryResponse> = {}): SummaryResponse {
-  return {
+function makeSummary(overrides: SummaryOverrides = {}): SummaryResponse {
+  return normalizeSummary({
     levels: {
-      public: { description: 'public', load: 'lazy', cache: 300, route_count: 1 },
+      public: { description: 'public', load: 'lazy', route_count: 1 },
     },
-    config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
-    unassigned: [],
     ...overrides,
-  };
+  });
 }
 
 // Helper: 同时 mock 摘要端点与层级路由拉取 + api 调用

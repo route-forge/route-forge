@@ -5,7 +5,8 @@ import {
   NetworkError,
   RequestAbortedError,
 } from '../src/index.js';
-import type { LevelRoutesResponse, SummaryResponse } from '../src/types.js';
+import type { LevelRoutesResponse } from '../src/types.js';
+import { makeSummary } from './fixtures.js';
 
 // ─── axios mock（vi.hoisted 保证工厂提升前即可引用 mock 函数） ───
 
@@ -17,13 +18,11 @@ vi.mock('axios', () => ({
 
 // ─── 摘要端点走全局 fetch，层级/业务请求走 axios ─────────────
 
-const summary: SummaryResponse = {
+const summary = makeSummary({
   levels: {
-    public: { description: 'public', load: 'lazy', cache: 300, route_count: 2 },
+    public: { description: 'public', load: 'lazy', route_count: 2 },
   },
-  config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
-  unassigned: [],
-};
+});
 
 const levelRoutes: LevelRoutesResponse = {
   level: 'public',

@@ -8,7 +8,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRouteForge } from '../src/index.js';
-import type { LevelRoutesResponse, SummaryResponse } from '../src/types.js';
+import type { LevelRoutesResponse } from '../src/types.js';
+import { makeSummary } from './fixtures.js';
 
 // 模拟 axios 包装层抛出非预期错误（如宿主 axios 初始化异常）
 vi.mock('../src/adapters/axios.js', () => ({
@@ -17,13 +18,11 @@ vi.mock('../src/adapters/axios.js', () => ({
   }),
 }));
 
-const summary: SummaryResponse = {
+const summary = makeSummary({
   levels: {
-    public: { description: 'public', load: 'lazy', cache: 300, route_count: 1 },
+    public: { description: 'public', load: 'lazy', route_count: 1 },
   },
-  config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
-  unassigned: [],
-};
+});
 
 const levelRoutes: LevelRoutesResponse = {
   level: 'public',

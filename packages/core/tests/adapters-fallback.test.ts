@@ -7,19 +7,18 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdapterNotFoundError, createRouteForge } from '../src/index.js';
-import type { LevelRoutesResponse, SummaryResponse } from '../src/types.js';
+import type { LevelRoutesResponse } from '../src/types.js';
+import { makeSummary } from './fixtures.js';
 
 // 模拟宿主未安装（或无效）的 axios：模块存在但没有 request 函数
 // → wrapAxiosAdapter 判定无效并返回 null
 vi.mock('axios', () => ({}));
 
-const summary: SummaryResponse = {
+const summary = makeSummary({
   levels: {
-    public: { description: 'public', load: 'lazy', cache: 300, route_count: 1 },
+    public: { description: 'public', load: 'lazy', route_count: 1 },
   },
-  config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
-  unassigned: [],
-};
+});
 
 const levelRoutes: LevelRoutesResponse = {
   level: 'public',

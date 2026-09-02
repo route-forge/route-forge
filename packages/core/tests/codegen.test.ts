@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateRouteTypes, main as codegenMain, parseArgs } from '../src/codegen/index.js';
-import type { RouteMeta, SummaryResponse } from '../src/types.js';
+import type { RouteMeta } from '../src/types.js';
+import { makeSummary } from './fixtures.js';
 
 // Mock fs for codegen main tests
 let fsWrittenContent = '';
@@ -134,7 +135,7 @@ describe('parseArgs', () => {
   });
 });
 
-describe('codegen main with unassigned routes', () => {
+describe('codegen main with unassigned real level', () => {
   let originalFetch: typeof globalThis.fetch;
   let errSpy: ReturnType<typeof vi.spyOn>;
   let logSpy: ReturnType<typeof vi.spyOn>;
@@ -164,61 +165,35 @@ describe('codegen main with unassigned routes', () => {
     vi.restoreAllMocks();
   });
 
-  it('includes unassigned routes in generated types', async () => {
-    const summary: SummaryResponse = {
+  it('includes unassigned real level routes in generated types (fetched via HTTP)', async () => {
+    const summary = makeSummary({
       levels: {
-        public: { description: 'public', load: 'lazy', cache: 300, route_count: 1 },
+        public: { description: 'public', load: 'lazy', route_count: 1 },
+        unassigned: { description: 'unassigned', load: 'lazy', route_count: 1 },
       },
-      config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
-      unassigned: [
-        {
-          name: 'debug.info',
-          uri: '_debug/info',
-          methods: ['GET', 'HEAD'],
-          parameters: [],
-        },
-      ],
-    };
+    });
+    const okJson = (data: unknown) => ({
+      ok: true,
+      status: 200,
+      json: async () => data,
+      text: async () => JSON.stringify(data),
+      headers: new Headers({ 'content-type': 'application/json' }),
+    });
     (globalThis as any).fetch = vi.fn(async (url: string) => {
-      if (url === '/_forge/routes') {
-        const body = JSON.stringify(summary);
-        return {
-          ok: true, status: 200,
-          json: async () => summary,
-          text: async () => body,
-          headers: new Headers({ 'content-type': 'application/json' }),
-        } as any;
+      if (url === '/_forge/routes') return okJson(summary) as any;
+      if (url === '/_forge/routes/public') {
+        return okJson({
+          level: 'public',
+          routes: { 'user.show': { name: 'user.show', uri: 'users/{user}', methods: ['GET'], parameters: ['user'] } },
+        }) as any;
       }
-      if (url.startsWith('/_forge/routes/')) {
-        const level = url.slice('/_forge/routes/'.length);
-        if (level === 'public') {
-          const lr = {
-            level: 'public',
-            routes: {
-              'user.show': {
-                name: 'user.show',
-                uri: 'users/{user}',
-                methods: ['GET'],
-                parameters: ['user'],
-              },
-            },
-          };
-          const body = JSON.stringify(lr);
-          return {
-            ok: true, status: 200,
-            json: async () => lr,
-            text: async () => body,
-            headers: new Headers({ 'content-type': 'application/json' }),
-          } as any;
-        }
+      if (url === '/_forge/routes/unassigned') {
+        return okJson({
+          level: 'unassigned',
+          routes: { 'debug.info': { name: 'debug.info', uri: '_debug/info', methods: ['GET', 'HEAD'], parameters: [] } },
+        }) as any;
       }
-      return {
-        ok: false,
-        status: 404,
-        json: async () => ({}),
-        text: async () => '',
-        headers: new Headers(),
-      } as any;
+      return { ok: false, status: 404, json: async () => ({}), text: async () => '', headers: new Headers() } as any;
     });
 
     await codegenMain(['--endpoint', '/_forge/routes', '--out', 'test.d.ts']);

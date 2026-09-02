@@ -1,17 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRouteForge, HTTPError, NetworkError, RequestAbortedError } from '../src/index.js';
 import type { LevelRoutesResponse, ResponseData, SummaryResponse } from '../src/types.js';
+import { makeSummary as normalizeSummary } from './fixtures.js';
 
 // ─── mock helpers ───────────────────────────────────────────
 
 function makeSummary(): SummaryResponse {
-  return {
-    levels: {
-      public: { description: 'public', load: 'lazy', cache: 300, route_count: 1 },
-    },
-    config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
-    unassigned: [],
-  };
+  return normalizeSummary({
+    levels: { public: { description: 'public', load: 'lazy', route_count: 1 } },
+  });
 }
 
 interface MockOpts {

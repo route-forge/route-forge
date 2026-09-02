@@ -7,11 +7,16 @@ import type { LevelRoutesResponse, SummaryResponse } from '@route-forge/core';
 // ─── mock backend ───────────────────────────────────────────
 
 const summary: SummaryResponse = {
+  schemeVersion: 1,
   levels: {
-    public: { description: 'public', load: 'lazy', cache: 300, route_count: 2 },
+    public: {
+      description: 'public',
+      load: 'lazy',
+      route_count: 2,
+      route: { uri: '/_forge/routes/public', methods: ['GET', 'HEAD'] },
+    },
   },
-  config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
-  unassigned: [],
+  config: { strict_mode: false, endpoint_prefix: '/_forge/routes', url_prefix: null, cache_ttl: 3600 },
 };
 
 const levelRoutes: LevelRoutesResponse = {

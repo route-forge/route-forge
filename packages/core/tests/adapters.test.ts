@@ -11,8 +11,8 @@ import type {
   LevelRoutesResponse,
   RequestConfig,
   ResponseData,
-  SummaryResponse,
 } from '../src/types.js';
+import { makeSummary } from './fixtures.js';
 
 // ─── axios mock：宿主已安装 axios ───────────────────────────
 
@@ -22,13 +22,11 @@ vi.mock('axios', () => ({
   default: { request: requestMock },
 }));
 
-const summary: SummaryResponse = {
+const summary = makeSummary({
   levels: {
-    public: { description: 'public', load: 'lazy', cache: 300, route_count: 2 },
+    public: { description: 'public', load: 'lazy', route_count: 2 },
   },
-  config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
-  unassigned: [],
-};
+});
 
 const levelRoutes: LevelRoutesResponse = {
   level: 'public',

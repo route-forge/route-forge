@@ -24,17 +24,16 @@ import {
   RequestAbortedError,
 } from '../src/index.js';
 import type { LevelRoutesResponse, SummaryResponse } from '../src/types.js';
+import { makeSummary as normalizeSummary, type SummaryOverrides } from './fixtures.js';
 
-function makeSummary(overrides: Partial<SummaryResponse> = {}): SummaryResponse {
-  return {
+function makeSummary(overrides: SummaryOverrides = {}): SummaryResponse {
+  return normalizeSummary({
     levels: {
-      public: { description: 'public', load: 'lazy', cache: 300, route_count: 2 },
-      admin: { description: 'admin', load: 'eager', cache: 60, route_count: 1 },
+      public: { description: 'public', load: 'lazy', route_count: 2 },
+      admin: { description: 'admin', load: 'eager', route_count: 1 },
     },
-    config: { strict_mode: false, endpoint_prefix: '/_forge/routes' },
-    unassigned: [],
     ...overrides,
-  };
+  });
 }
 
 const publicRoutes: LevelRoutesResponse = {
@@ -356,7 +355,7 @@ describe('ready() timing (H7)', () => {
 // ─── M4 / M9：schemaVersion 告警与 eager 并集 ───────────────
 
 describe('summary edge behaviors (M4 / M9)', () => {
-  it('schemaVersion > 1 warns about forward compatibility', async () => {
+  it('schemeVersion > 1 warns about forward compatibility', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     mockBackend(makeSummary({ schemaVersion: 2 }), { public: publicRoutes, admin: adminRoutes });
     const forge = createRouteForge({
@@ -365,7 +364,7 @@ describe('summary edge behaviors (M4 / M9)', () => {
       adapter: 'builtin',
     });
     await forge.ready();
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('schemaVersion=2'));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('schemeVersion=2'));
     warn.mockRestore();
   });
 
@@ -503,27 +502,40 @@ describe('discovery guard exemptions (L8)', () => {
   });
 });
 
-// ─── L10：unassigned 虚拟层级 TTL ───────────────────────────
+// ─── L10：层级缓存 TTL 来自摘要 config.cache_ttl ────────────
 
-describe('unassigned virtual level cache (L10)', () => {
-  it('virtual unassigned cache entry uses frontend cache.ttl fallback', async () => {
+describe('level cache TTL from summary config.cache_ttl (L10)', () => {
+  it('positive cache_ttl writes storage ttl = min(backend, frontend fallback)', async () => {
     const summary = makeSummary({
-      unassigned: [
-        { name: 'misc.page', uri: 'misc', methods: ['GET'], parameters: [] },
-      ],
+      config: { strict_mode: false, endpoint_prefix: '/_forge/routes', cache_ttl: 5000 },
     });
     mockBackend(summary, { public: publicRoutes });
     const forge = createRouteForge({
       endpoint: '/_forge/routes',
-      levels: ['public', 'unassigned'],
+      levels: ['public'],
       adapter: 'builtin',
       cache: { storage: 'localStorage', ttl: 1234 },
     });
-    await forge.load('unassigned');
-    expect(forge.hasRoute('unassigned', 'misc.page')).toBe(true);
-    // 摘要契约无独立 cache 字段 → 使用前端兜底 TTL
-    const raw = JSON.parse(localStorage.getItem('route-forge:unassigned')!);
+    await forge.load('public');
+    // 后端为上限，前端兜底更短 → 取前端 1234
+    const raw = JSON.parse(localStorage.getItem('route-forge:public')!);
     expect(raw.ttl).toBe(1234);
-    expect(raw.routes['misc.page']).toBeDefined();
+    expect(raw.routes['users.index']).toBeDefined();
+  });
+
+  it('cache_ttl=null（不缓存）只留内存镜像、不写 storage', async () => {
+    const summary = makeSummary({
+      config: { strict_mode: false, endpoint_prefix: '/_forge/routes', cache_ttl: null },
+    });
+    mockBackend(summary, { public: publicRoutes });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+      cache: { storage: 'localStorage', ttl: 1234 },
+    });
+    await forge.load('public');
+    expect(forge.hasRoute('public', 'users.index')).toBe(true); // 内存可读
+    expect(localStorage.getItem('route-forge:public')).toBeNull(); // 不落存储
   });
 });
