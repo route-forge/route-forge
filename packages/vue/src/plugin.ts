@@ -32,7 +32,7 @@ export interface RouteForgePluginOptions extends RouteForgeOptions {}
 /** Vue 特化类型：levelLoaded 为 Ref<boolean> */
 export type VueBoundForge = BoundForge<Ref<boolean>>;
 
-export function createRouteForgePlugin(options: RouteForgePluginOptions): Plugin<[]> & {
+export function createRouteForgePlugin(options: RouteForgePluginOptions = {}): Plugin<[]> & {
   ready: RouteForge['ready']
 } {
   const forge = createRouteForge(options);

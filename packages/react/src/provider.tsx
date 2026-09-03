@@ -27,7 +27,8 @@ import {
 const ForgeContext = createContext<RouteForge | null>(null);
 
 export interface RouteForgeProviderProps {
-  options: RouteForgeOptions;
+  /** 可省略：页面内嵌 window.__ROUTE_FORGE__ 提供摘要时，<RouteForgeProvider> 可不传 options */
+  options?: RouteForgeOptions;
   children?: ReactNode;
 }
 
@@ -56,15 +57,18 @@ export function RouteForgeProvider({ options, children }: RouteForgeProviderProp
   // lazy init（React 官方认可的幂等初始化模式）：首次渲染建实例。
   // 渲染期只做 null 检查 + 赋值，重复执行幂等（StrictMode 双渲染也只有一个实例）；
   // createRouteForge 内部立即发起摘要 fetch，但 core 层有缓存/inflight 去重兜底。
+  // options 省略时归一为 {}：完全靠页面内嵌 window.__ROUTE_FORGE__ 提供摘要。
   if (ref.current === null) {
-    ref.current = { options, forge: createRouteForge(options) };
+    const init = options ?? {};
+    ref.current = { options: init, forge: createRouteForge(init) };
   }
 
   // options 变化检测移到 effect（渲染期不换实例）：
   // 换实例延后一帧（渲染完成后），换取 concurrent/StrictMode 下渲染热路径无副作用。
   useEffect(() => {
-    if (!optionsEqual(ref.current!.options, options)) {
-      ref.current = { options, forge: createRouteForge(options) };
+    const next = options ?? {};
+    if (!optionsEqual(ref.current!.options, next)) {
+      ref.current = { options: next, forge: createRouteForge(next) };
       setVersion((v) => v + 1);
     }
   }, [options]);
