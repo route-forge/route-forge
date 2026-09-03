@@ -342,6 +342,16 @@ GET /_forge/routes   # 返回所有层级摘要 + 全局配置
 
 摘要与层级明细的获取来源级联见 §4.1.1 / §3.1.8：页面内嵌（`window.__ROUTE_FORGE__`）> `createRouteForge({ summary })` > 网络拉取 `endpoint`。三者投递的是同一份 `SummaryResponse`。
 
+#### 3.1.8 摘要的页面内嵌投递（hydration）
+
+针对 Laravel/Blade **服务端直出的首页**，后端提供 `@forgeSummary` 指令，把与摘要端点**逐字段一致**的 `SummaryResponse` 内联进 HTML `<head>`，让前端 core 初始化时直接消费、跳过首屏的一次摘要 HTTP 往返。
+
+- **投递形态**：`Object.defineProperty(window, '__ROUTE_FORGE__', { configurable:true, enumerable:false, get(){ const v = <摘要 JSON>; delete window.__ROUTE_FORGE__; return v; } })`——一次性、不可枚举、读后自删的访问器。值经 `Js::from` 做 script-safe 编码（`</script>` 无法逃逸）。
+- **前端消费**：core 按 §4.1.1 级联优先读该全局；命中则 **discovery 同步完成**（构造后 `route()`/`ready()` 立即可用，消除首屏"路由未就绪"闪烁），并 **module 级 memo** 兜住同页多实例（React StrictMode / 第二个 Provider）。
+- **只嵌摘要，不嵌层级明细**：各层级路由表仍按 `levels[].route.uri` 走 HTTP 懒加载，受保护路由的明细不预置进公开 HTML。
+- **不改变默认路径**：SPA 独立部署 / Vite dev 等未书写 `@forgeSummary` 的页面没有该全局，core 自动回落网络摘要，行为与过去一致。摘要端点仍是唯一 producer 与默认来源。
+- **诚实安全边界**：一次性自删只缩小摘要在 `window` 上的运行时驻留面；数据仍随 HTML 源码可见，**不是**抗 XSS / 抗网络窃取的硬边界。
+
 #### 3.2 Artisan命令
 
 #### `php artisan route:forge:list`
@@ -1365,7 +1375,7 @@ const forge = createRouteForge({
 
 前端初始化流程（摘要来源级联，SPEC §4.1.1 / §3.1.8）：
 
-1. 解析摘要来源：若存在页面内嵌 `window.__ROUTE_FORGE__` → 消费它（一次性读取、自删、memo）；否则若有 `createRouteForge({ summary })` → 用它；否则若配置了 `endpoint` → 网络 `GET {endpoint}` 拉摘要；三者皆无 → 抛 `TypeError`。
+1. 解析摘要来源：若存在页面内嵌 `window.__ROUTE_FORGE__` → 消费它（一次性读取、自删、memo）；否则若有 `createRouteForge({ summary })` → 用它；否则若配置了 `endpoint` → 网络 `GET {endpoint}` 拉摘要；三者皆无 → 抛 `TypeError`。`options` 参数本身可省略（`createRouteForge()` 等价 `createRouteForge({})`），摘要全来自内嵌时可直接无参调用。
 2. 命中内嵌/配置摘要时，`autoDiscovery` 同步完成（构造后 `route()`/`ready()` 立即可用）；命中网络时按响应回填。
 3. 折算出的 `config` 作为最高优先级覆盖前端配置；`levels` 用于发现层级与 `eager` 标记；各层级 `route.uri` 供懒加载拼 URL。
 

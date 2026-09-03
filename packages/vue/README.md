@@ -39,7 +39,7 @@ plugin.ready()
   })
 ```
 
-> Plugin options are exactly `createRouteForge(options)` (`levels` / `eager` / `adapter` / `cache` / `interceptors` / `timeout` / `baseURL`); full options table in the [core README](../core/README.md#options-createrouteforgeoptions).
+> Plugin options are exactly `createRouteForge(options)` (`endpoint` / `summary` / `levels` / `eager` / `adapter` / `cache` / `interceptors` / `timeout` / `baseURL`); full options table in the [core README](../core/README.md#options-createrouteforgeoptions). `options` itself is optional — when the summary is embedded in the page via `@forgeSummary` (`window.__ROUTE_FORGE__`), install with a bare `createRouteForgePlugin()`.
 
 ## useForge — the core composable
 

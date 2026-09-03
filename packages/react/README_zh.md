@@ -50,7 +50,7 @@ forge.ready()
 
 > 注意：`RouteForgeProvider` 只接收 `options`（不接收实例），门控写法里 Provider 内部会创建第二个实例，摘要端点会被请求两次。若不想重复请求，优先使用上面的直接渲染写法，把同步方法的调用放在 `ready()` 之后。
 
-> Provider 选项与 `createRouteForge(options)` 完全一致（`levels` / `eager` / `adapter` / `cache` / `interceptors` / `timeout` / `baseURL`），完整选项表见 [core README](../core/README_zh.md#配置选项createruteforgeoptions)。`options` 做浅比较：内联字面量在值不变时不会重建实例。
+> Provider 选项与 `createRouteForge(options)` 完全一致（`endpoint` / `summary` / `levels` / `eager` / `adapter` / `cache` / `interceptors` / `timeout` / `baseURL`），完整选项表见 [core README](../core/README_zh.md#配置选项createruteforgeoptions)。`options` 做浅比较：内联字面量在值不变时不会重建实例。`options` 属性本身可省略——摘要由页面内嵌 `@forgeSummary`（`window.__ROUTE_FORGE__`）提供时，可直接 `<RouteForgeProvider>` 不带 `options`。
 
 ## useForge — 核心 hook
 

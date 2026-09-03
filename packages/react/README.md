@@ -51,7 +51,7 @@ forge.ready()
 
 > Note: `RouteForgeProvider` only accepts `options` (not an instance), so in the gated pattern the Provider creates a second instance and the summary endpoint is requested twice. To avoid the duplicate request, prefer the direct-render pattern above and call sync methods only after `ready()`.
 
-> Provider options are exactly `createRouteForge(options)` (`levels` / `eager` / `adapter` / `cache` / `interceptors` / `timeout` / `baseURL`); full options table in the [core README](../core/README.md#options-createrouteforgeoptions). `options` is shallow-compared: inline literals do not rebuild the instance while the values stay the same.
+> Provider options are exactly `createRouteForge(options)` (`endpoint` / `summary` / `levels` / `eager` / `adapter` / `cache` / `interceptors` / `timeout` / `baseURL`); full options table in the [core README](../core/README.md#options-createrouteforgeoptions). `options` is shallow-compared: inline literals do not rebuild the instance while the values stay the same. The `options` prop itself is optional — when the summary is embedded via `@forgeSummary` (`window.__ROUTE_FORGE__`), render `<RouteForgeProvider>` without any `options`.
 
 ## useForge — the core hook
 

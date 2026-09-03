@@ -4,7 +4,7 @@
 
 ## Packages
 
-- [@route-forge/core](https://github.com/route-forge/route-forge/blob/main/packages/core/README.md): Framework-agnostic named-route client core — tiered lazy loading, isolated cache, request deduplication, auto-discovery, interceptors, abortable requests, codegen CLI, IIFE browser build.
+- [@route-forge/core](https://github.com/route-forge/route-forge/blob/main/packages/core/README.md): Framework-agnostic named-route client core — tiered lazy loading, isolated cache, request deduplication, auto-discovery, optional page-embedded hydration (Blade `@forgeSummary` / `window.__ROUTE_FORGE__`), interceptors, abortable requests, codegen CLI, IIFE browser build.
 - [@route-forge/vue](https://github.com/route-forge/route-forge/blob/main/packages/vue/README.md): Vue 3 integration — plugin plus composables (useForge / useForgeApi / useForgeRoute) and components (ForgeRoute / ForgeLink), reactive levelLoaded, template-safe URL generation.
 - [@route-forge/react](https://github.com/route-forge/route-forge/blob/main/packages/react/README.md): React integration — RouteForgeProvider plus hooks (useForge / useForgeApi / useForgeRoute) and components (ForgeRoute / ForgeLink), state-driven levelLoaded, JSX-safe URL generation.
 
