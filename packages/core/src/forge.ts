@@ -44,7 +44,7 @@ import type {
 const DEFAULT_TIMEOUT = 30_000;
 const DEFAULT_CACHE_TTL = 3600;
 
-export function createRouteForge(options: RouteForgeOptions): RouteForge {
+export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
   // 摘要数据源级联（SPEC §4.1.1）：页面内嵌 > 配置 summary 字段 > 网络拉取 endpoint。
   const bootstrapSummary = readEmbeddedSummary() ?? options.summary ?? null;
   if (!bootstrapSummary && !options.endpoint) {

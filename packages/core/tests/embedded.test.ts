@@ -134,8 +134,24 @@ describe('embedded summary hydration (window.__ROUTE_FORGE__)', () => {
     expect(calls).not.toContain('/_forge/routes/admin');
   });
 
+  it('bare createRouteForge() consumes embedded summary with no argument at all', async () => {
+    injectEmbedded(
+      makeSummary({ levels: { public: { description: 'public', load: 'lazy', route_count: 1 } } }),
+    );
+    let summaryRequested = false;
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url === '/_forge/routes') summaryRequested = true;
+      return jsonResponse(publicTable);
+    });
+    // 完全省参：一切来自 window.__ROUTE_FORGE__；不抛、不发摘要请求、ready 立即 settle（内嵌同步发现）
+    const forge = createRouteForge();
+    await forge.ready();
+    expect(summaryRequested).toBe(false);
+  });
+
   it('throws TypeError when embedded, summary option, and endpoint are all absent', () => {
-    // 无 window 内嵌、无 summary、无 endpoint
+    // 无 window 内嵌、无 summary、无 endpoint —— 传对象与零参都应给出友好 TypeError（而非读 undefined 崩溃）
     expect(() => createRouteForge({ adapter: 'builtin' })).toThrow(TypeError);
+    expect(() => createRouteForge()).toThrow(TypeError);
   });
 });
