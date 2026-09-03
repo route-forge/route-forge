@@ -117,7 +117,7 @@ await forge.ready()
 
 对 Laravel/Blade 服务端直出的首页，后端 `@forgeSummary` 指令把摘要内联为一个一次性、不可枚举、读后自删的 `window.__ROUTE_FORGE__` 访问器。core 命中它时**跳过摘要 HTTP 往返、同步完成 discovery**——`createRouteForge()` 返回后 `route()` / `ready()` 立即可用，消除首屏"路由未就绪"闪烁。层级路由表**仍按 level 走 HTTP 懒加载**（受保护路由不进公开 HTML）。core 的 module 级 memo 让第二个实例（React StrictMode / 第二个 Provider）在全局自删后仍能复用摘要。
 
-若页面无内嵌（SPA 独立部署 / Vite dev），core 自动回落网络摘要。`createRouteForge({ summary })` 是显式、便于测试/SSR 的入口。
+若页面无内嵌（SPA 独立部署 / Vite dev），core 自动回落网络摘要。`createRouteForge({ summary })` 是显式、便于测试/SSR 的入口。当摘要完全来自内嵌时，`options` 参数本身也可省略——直接 `createRouteForge()` 无参调用。
 
 > 诚实边界：一次性自删只缩小摘要在 `window` 上的运行时驻留面，数据仍随 HTML 源码可见；这是延迟/闪烁优化，**不是**抗 XSS 或抗网络窃取的硬边界。
 

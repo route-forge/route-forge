@@ -2,6 +2,13 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [Unreleased]
+
+### Changed
+
+- `createRouteForge` 的 `options` 参数改为**可选**（默认 `{}`）：摘要完全来自页面内嵌 `window.__ROUTE_FORGE__`
+  时可直接 `createRouteForge()` 无参调用；此前不传参会在读取阶段抛 `Cannot read properties of undefined`。
+
 ## 2.2.0 — 2026-09-03
 
 ### Added

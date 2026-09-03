@@ -2,6 +2,13 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [Unreleased]
+
+### Changed
+
+- `<RouteForgeProvider options?>`：`options` 改为可选。摘要来自页面内嵌 `window.__ROUTE_FORGE__` 时
+  可直接 `<RouteForgeProvider>` 省略 `options`，内部归一为 `{}` 透传 core，对齐 `createRouteForge()` 的参数可选化。
+
 ## 2.2.0 — 2026-09-02
 
 ### Fixed

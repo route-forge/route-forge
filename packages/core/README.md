@@ -116,7 +116,7 @@ Summary discovery reads from one source in this cascade: **embedded `window.__RO
 
 For Laravel/Blade server-rendered first pages, the backend `@forgeSummary` directive inlines the summary as a one-shot, non-enumerable `window.__ROUTE_FORGE__` accessor that self-deletes on first read. When core finds it, it **skips the summary HTTP round-trip and completes discovery synchronously** — `route()` / `ready()` work immediately after `createRouteForge()` returns, eliminating the "routes not ready" first-paint flash. Level route tables are still lazy-loaded per level over HTTP (protected routes never enter the public HTML). A module-level memo lets a second instance (React StrictMode / a second provider) reuse the summary after the global is gone.
 
-If no embed exists (standalone SPA, Vite dev), core falls back to the network summary automatically. `createRouteForge({ summary })` is the explicit, test/SSR-friendly entry.
+If no embed exists (standalone SPA, Vite dev), core falls back to the network summary automatically. `createRouteForge({ summary })` is the explicit, test/SSR-friendly entry. When the summary comes entirely from the embed, the `options` argument itself may be omitted — call `createRouteForge()` bare.
 
 > Honest scope: the one-shot self-delete only shrinks the summary's runtime footprint on `window`; the data is still present in the HTML source. This is a latency/flash optimization, **not** an XSS- or network-egavesdropping-proof boundary.
 

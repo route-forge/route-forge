@@ -2,6 +2,13 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [Unreleased]
+
+### Changed
+
+- `createRouteForgePlugin(options?)`：`options` 改为可选。摘要来自页面内嵌 `window.__ROUTE_FORGE__`
+  时可 `createRouteForgePlugin()` 无参安装，对齐 core `createRouteForge()` 的参数可选化。
+
 ## 2.2.0 — 2026-09-02
 
 ### Added
