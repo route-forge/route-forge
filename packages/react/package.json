@@ -1,6 +1,6 @@
 {
   "name": "@route-forge/react",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Route Forge 的 React 集成：Provider + hooks（useForge/useForgeApi/useForgeRoute）+ 组件（ForgeRoute/ForgeLink）/ React integration for Laravel named routes: Provider + hooks (useForge / useForgeApi / useForgeRoute) + components (ForgeRoute / ForgeLink)",
   "keywords": [
     "laravel",
