@@ -26,6 +26,11 @@ const plugin = createRouteForgePlugin({
   endpoint: '/_forge/routes',
 })
 
+// plugin.interceptors is exposed synchronously — register one or more interceptors
+// here without awaiting ready() (they only affect later api() calls).
+plugin.interceptors.request.use((config) => { /* … */ return config })
+plugin.interceptors.response.use((resp) => resp.data, (err) => Promise.reject(err))
+
 const app = createApp(App)
 app.use(plugin)
 // Recommended: mount the app after ready() (summary + eager levels fully loaded);

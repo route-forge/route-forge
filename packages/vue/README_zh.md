@@ -26,6 +26,11 @@ const plugin = createRouteForgePlugin({
   endpoint: '/_forge/routes',
 })
 
+// plugin.interceptors 工厂返回即同步可用——在这里注册一个或多个拦截器，无需 await ready()
+// （拦截链只影响后续 api() 调用）
+plugin.interceptors.request.use((config) => { /* … */ return config })
+plugin.interceptors.response.use((resp) => resp.data, (err) => Promise.reject(err))
+
 const app = createApp(App)
 app.use(plugin)
 // 推荐：ready()（摘要 + eager 层级全部完成）后再挂载应用，

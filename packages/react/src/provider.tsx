@@ -29,6 +29,13 @@ const ForgeContext = createContext<RouteForge | null>(null);
 export interface RouteForgeProviderProps {
   /** 可省略：页面内嵌 window.__ROUTE_FORGE__ 提供摘要时，<RouteForgeProvider> 可不传 options */
   options?: RouteForgeOptions;
+  /**
+   * 创建期拦截器钩子：每个 forge 实例触发**一次**（首次创建 + options 变更重建时），
+   * 用于在挂载前同步注册请求/响应拦截器，无需钻到子组件 useForge() 里挂。
+   * 属"初始化"语义而非响应式 effect——仅回调 identity 变化而 options 不变时不会重跑。
+   * 请求/响应拦截链只影响后续 api() 调用，eager 元信息预加载走 requestRaw 不受影响，故无需等待就绪。
+   */
+  onInterceptors?: (interceptors: RouteForge['interceptors']) => void;
   children?: ReactNode;
 }
 
@@ -48,8 +55,22 @@ export interface RouteForgeProviderProps {
  *   </RouteForgeProvider>,
  * )
  * ```
+ *
+ * @example
+ * ```tsx
+ * // 创建期注册拦截器（每实例一次）——无需钻到子组件 useForge() 里挂
+ * <RouteForgeProvider
+ *   options={{ endpoint: '/_forge/routes' }}
+ *   onInterceptors={(i) => {
+ *     i.request.use((c) => ({ ...c, headers: { ...c.headers, Authorization: token() } }))
+ *     i.response.use((r) => r.data, (e) => { reportError(e); return Promise.reject(e) })
+ *   }}
+ * >
+ *   <App />
+ * </RouteForgeProvider>
+ * ```
  */
-export function RouteForgeProvider({ options, children }: RouteForgeProviderProps) {
+export function RouteForgeProvider({ options, onInterceptors, children }: RouteForgeProviderProps) {
   const ref = useRef<{ options: RouteForgeOptions; forge: RouteForge } | null>(null);
   // 实例版本：options 实际变化重建 forge 后递增，驱动 context value 更新
   const [version, setVersion] = useState(0);
@@ -61,6 +82,8 @@ export function RouteForgeProvider({ options, children }: RouteForgeProviderProp
   if (ref.current === null) {
     const init = options ?? {};
     ref.current = { options: init, forge: createRouteForge(init) };
+    // 创建期钩子：null 守卫使其在 StrictMode 双渲染下也只触发一次（第二次 ref.current 已非空跳过）
+    onInterceptors?.(ref.current.forge.interceptors);
   }
 
   // options 变化检测移到 effect（渲染期不换实例）：
@@ -70,7 +93,10 @@ export function RouteForgeProvider({ options, children }: RouteForgeProviderProp
     if (!optionsEqual(ref.current!.options, next)) {
       ref.current = { options: next, forge: createRouteForge(next) };
       setVersion((v) => v + 1);
+      // 实例重建 → 拦截器随新实例重新注册一次（与 effect 同步的当前闭包回调）
+      onInterceptors?.(ref.current.forge.interceptors);
     }
+    // 依赖刻意仅含 options：这是"每实例一次"的初始化钩子，回调 identity 单独变化不应重跑
   }, [options]);
 
   // version 仅用于触发重渲染（读取 ref.current.forge 保证最新实例）；

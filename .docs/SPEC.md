@@ -751,6 +751,9 @@ forge.interceptors.response:InterceptorManager<ResponseData>;
   token 刷新）。
 - **声明式配置 vs 运行时 API**：`createRouteForge({ interceptors: {...} })` 等价于创建后立即调用
   `forge.interceptors.request.use(...)` / `response.use(...)`，二者可混用，运行时 API 用于需要按条件注册或动态移除的场景。
+- **框架集成的创建期入口**：运行时 `use()` 需要拿到实例，Vue/React 各自开了同步可达的口子，**无需 `await ready()`**（拦截链只作用于后续 `api()`，eager 元信息预加载走 `requestRaw` 旁路、不受影响）：
+    - Vue：`createRouteForgePlugin()` 返回对象上的 `interceptors` 即实例 `forge.interceptors` 的转发引用，工厂返回后直接 `plugin.interceptors.request.use(...)` 注册多个。
+    - React：`<RouteForgeProvider onInterceptors={(i) => i.request.use(...)}>`，回调**每个实例触发一次**（首次创建 + options 变更重建时）。StrictMode 模拟 remount 会重建全新实例并各自注册一次，存活实例只会挂到一个 handler，不会重复执行。
 - **每调用方独立需求**：与 axios 一致， **不提供调用级拦截器覆盖**。如需按路由分支处理，请在拦截器内部用 `config.route` /
   `res.route` 判断；如需一次性后处理，请在 `forge.api()` 返回后再做。
 
@@ -1024,6 +1027,7 @@ const url = useForgeRoute('public', 'login.show');
 
 插件提供的完整能力清单：
 
+- `createRouteForgePlugin(options?)` 返回的插件对象：除 Vue `install` 外还挂 `ready`（挂载闸门）与 `interceptors`（转发实例 `forge.interceptors` 引用）。工厂返回后即可 `plugin.interceptors.request/response.use(...)` 同步注册多个拦截器，无需 `await ready()`（详见 §4.1.3a「框架集成的创建期入口」）。
 - `useForge(level?, prefix?)`：获取 forge 实例。不传 level 返回完整 `RouteForge` 实例；传 level 时内部调用 `forge.use(level, prefix?)`，自动触发 load，提供同步方法 + `levelLoaded` 响应式状态 + `onLevelLoaded()` / `useRoutePrefix()` 等 BoundForge 方法。名字前缀由 `prefix` 参数承担（智能前缀消解与 `useForgeByPrefix` 相同，后者已移除）。
 - `useForgeApi()`：包装 `forge.api()`，自动管理 loading/error 状态。
 - `useForgeRoute(level, name, params?)`：响应式 URL 生成器，内部处理 level 加载状态，未加载返回 `''`

@@ -22,11 +22,21 @@ import { createRoot } from 'react-dom/client'
 import { RouteForgeProvider } from '@route-forge/react'
 
 createRoot(document.getElementById('root')!).render(
-  <RouteForgeProvider options={{ endpoint: '/_forge/routes' }}>
+  <RouteForgeProvider
+    options={{ endpoint: '/_forge/routes' }}
+    // onInterceptors fires once per forge instance — register interceptors before mount,
+    // without reaching into a child's useForge().
+    onInterceptors={(i) => {
+      i.request.use((config) => { /* … */ return config })
+      i.response.use((resp) => resp.data, (err) => Promise.reject(err))
+    }}
+  >
     <App />
   </RouteForgeProvider>,
 )
 ```
+
+> `onInterceptors` is the create-time registration entry (fires once per instance); `options.interceptors` still declaratively describes a single request + single response interceptor. Both are independent of `ready()`.
 
 The hooks handle async internally: `useForgeApi` / `forge.api()` await level loading automatically, and `useForgeRoute` returns `''` until the level loads, then updates on its own — no render blocking needed.
 

@@ -228,7 +228,14 @@ import { createRoot } from 'react-dom/client'
 import { RouteForgeProvider } from '@route-forge/react'
 
 createRoot(document.getElementById('root')!).render(
-  <RouteForgeProvider options={{ endpoint: '/_forge/routes' }}>
+  <RouteForgeProvider
+    options={{ endpoint: '/_forge/routes' }}
+    // onInterceptors 每个 forge 实例触发一次——挂载前即可注册拦截器，无需钻到子组件 useForge() 里挂
+    onInterceptors={(i) => {
+      i.request.use((config) => { /* … */ return config })
+      i.response.use((resp) => resp.data, (err) => Promise.reject(err))
+    }}
+  >
     <App />
   </RouteForgeProvider>,
 )
@@ -313,7 +320,7 @@ const plugin = createRouteForgePlugin({
   // levels 不传 → 从摘要端点自动发现；eager 不传 → 取后端标记为 load:'eager' 的层级
   interceptors: {
     // 声明式配置每个键只描述「一个」拦截器：函数（→ resolve）、[resolve?, reject?] 元组、或 { resolve?, reject? } 对象。
-    // 需要注册多个？改用运行时 forge.interceptors.*.use()。
+    // 需要注册多个？用工厂返回后即同步可用的 plugin.interceptors.*.use()，无需等 ready()（见下）。
     request: (config) => {
       // 登录态注入：业务请求自动携带 Token
       const token = tokenStore.get()
@@ -333,6 +340,11 @@ const plugin = createRouteForgePlugin({
     },
   },
 })
+
+// plugin.interceptors 工厂返回即同步可用——在这里追加注册拦截器，无需 await ready()
+// （请求/响应拦截链只影响后续 api() 调用；eager 元信息预加载走旁路通道，不受影响）
+plugin.interceptors.request.use((config) => { /* … */ return config })
+plugin.interceptors.response.use((resp) => resp.data, (err) => Promise.reject(err))
 
 app.use(plugin)
 // 推荐：摘要发现 + eager 层级全部完成后挂载应用，route()/hasRoute() 等同步方法即刻可用

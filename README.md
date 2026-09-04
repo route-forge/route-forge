@@ -226,7 +226,15 @@ import { createRoot } from 'react-dom/client'
 import { RouteForgeProvider } from '@route-forge/react'
 
 createRoot(document.getElementById('root')!).render(
-  <RouteForgeProvider options={{ endpoint: '/_forge/routes' }}>
+  <RouteForgeProvider
+    options={{ endpoint: '/_forge/routes' }}
+    // onInterceptors fires once per forge instance — register interceptors before mount,
+    // no need to reach into a child's useForge().
+    onInterceptors={(i) => {
+      i.request.use((config) => { /* … */ return config })
+      i.response.use((resp) => resp.data, (err) => Promise.reject(err))
+    }}
+  >
     <App />
   </RouteForgeProvider>,
 )
@@ -313,7 +321,8 @@ const plugin = createRouteForgePlugin({
   interceptors: {
     // Declarative config describes ONE interceptor each: a function (→ resolve),
     // a [resolve?, reject?] tuple, or a { resolve?, reject? } object.
-    // Need several? Register them at runtime via forge.interceptors.*.use().
+    // Need several? Register them via plugin.interceptors.*.use() right after
+    // createRouteForgePlugin() — no need to await ready() (see below).
     request: (config) => {
       // Token injection: business requests carry the token automatically
       const token = tokenStore.get()
@@ -333,6 +342,12 @@ const plugin = createRouteForgePlugin({
     },
   },
 })
+
+// plugin.interceptors is exposed synchronously — register extra interceptors here,
+// no need to await ready() (the request/response chain only affects later api() calls;
+// eager meta preload goes through a bypass channel and is unaffected).
+plugin.interceptors.request.use((config) => { /* … */ return config })
+plugin.interceptors.response.use((resp) => resp.data, (err) => Promise.reject(err))
 
 app.use(plugin)
 // Recommended: mount after summary discovery + eager levels are fully loaded;

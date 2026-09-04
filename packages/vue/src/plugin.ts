@@ -4,6 +4,7 @@
  *
  * 提供：
  *   - 全局属性 $forge（route() 工具）
+ *   - 返回对象上的 interceptors（转发实例拦截器）：创建后即可同步注册，无需等待 ready()
  *   - inject symbol 注入 RouteForge 实例供 composable 使用
  *   - useForge() / useForge(level) / useForge(level, prefix) 返回统一方法的 forge 实例
  *     • 不传 level：forge(level, name, params?) 直接调用
@@ -34,11 +35,14 @@ export type VueBoundForge = BoundForge<Ref<boolean>>;
 
 export function createRouteForgePlugin(options: RouteForgePluginOptions = {}): Plugin<[]> & {
   ready: RouteForge['ready']
+  /** 转发实例上的拦截器管理器：创建后即可同步注册，无需等待 ready()（请求/响应拦截链仅影响后续 api() 调用，eager 元信息预加载走 requestRaw 不受影响） */
+  interceptors: RouteForge['interceptors']
 } {
   const forge = createRouteForge(options);
 
   return {
     ready: forge.ready.bind(forge),
+    interceptors: forge.interceptors,
     install(app: App) {
       app.provide(FORGE_INJECTION_KEY, forge);
       app.config.globalProperties.$forge = {

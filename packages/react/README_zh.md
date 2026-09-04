@@ -22,11 +22,20 @@ import { createRoot } from 'react-dom/client'
 import { RouteForgeProvider } from '@route-forge/react'
 
 createRoot(document.getElementById('root')!).render(
-  <RouteForgeProvider options={{ endpoint: '/_forge/routes' }}>
+  <RouteForgeProvider
+    options={{ endpoint: '/_forge/routes' }}
+    // onInterceptors 每个实例触发一次——挂载前即注册拦截器，无需钻到子组件 useForge() 里挂
+    onInterceptors={(i) => {
+      i.request.use((config) => { /* … */ return config })
+      i.response.use((resp) => resp.data, (err) => Promise.reject(err))
+    }}
+  >
     <App />
   </RouteForgeProvider>,
 )
 ```
+
+> `onInterceptors` 是创建期注册入口（每个实例触发一次）；`options.interceptors` 仍只声明式描述「一个请求 + 一个响应」拦截器。两者都不依赖 `ready()`。
 
 hooks 内部已处理好异步：`useForgeApi` / `forge.api()` 自动等待层级加载，`useForgeRoute` 未加载时返回 `''`、加载后自动更新——无需阻塞渲染。
 
