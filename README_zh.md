@@ -312,25 +312,25 @@ const plugin = createRouteForgePlugin({
   endpoint: '/_forge/routes',
   // levels 不传 → 从摘要端点自动发现；eager 不传 → 取后端标记为 load:'eager' 的层级
   interceptors: {
-    request: [
+    // 声明式配置每个键只描述「一个」拦截器：函数（→ resolve）、[resolve?, reject?] 元组、或 { resolve?, reject? } 对象。
+    // 需要注册多个？改用运行时 forge.interceptors.*.use()。
+    request: (config) => {
       // 登录态注入：业务请求自动携带 Token
-      (config) => {
-        const token = tokenStore.get()
-        if (token) config.headers.Authorization = `Bearer ${token}`
-        return config
-      },
-    ],
-    response: [
-      (resp) => resp.data,  // 统一解包：api() 直接 resolve 业务数据
-      [undefined, (err) => {
+      const token = tokenStore.get()
+      if (token) config.headers.Authorization = `Bearer ${token}`
+      return config
+    },
+    response: {
+      resolve: (resp) => resp.data,  // 统一解包：api() 直接 resolve 业务数据
+      reject: (err) => {
         // 401 → 清空登录态并跳转登录页；其余错误继续上抛
         if ((err as any).context?.status === 401) {
           tokenStore.clear()
           location.href = '/login'
         }
         return Promise.reject(err)
-      }],
-    ],
+      },
+    },
   },
 })
 

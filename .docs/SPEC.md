@@ -461,29 +461,20 @@ const forge = createRouteForge({
         ttl: 3600,                  // 默认缓存 TTL（秒），可被后端 levels[level].cache 覆盖
         storage: 'memory',          // 'memory' | 'sessionStorage' | 'localStorage'
     },
-    interceptors: {              // 声明式注册（等价于 forge.interceptors.use），可选
-        // 支持两种形式
-        // 单一函数 视为拦截器的 onFulfilled
-        // [onFulfilled?, onRejected?] 数组 → 一个拦截器的完整定义
-        request: [
-            (config) => {
-                config.headers.Authorization = `Bearer ${token()}`;
-                return config;
-            }, // onFulfilled 可以为undefined
-            [
-                (config) => {
-                    console.debug('[forge]', config.route);
-                    return config;
-                },
-                (err) => Promise.reject(err),
-            ],
-            [undefined, (err) => Promise.reject(err)],  // 单个onRejected
-        ],
-        response: [
-            // response 拦截器与 request 用法一致，支持单函数和元组两种形式
-            (res) => res.data?.data ?? res.data,  // onFulfilled 
-            [undefined, (err) => handle401(err)], // onRejected
-        ],
+    interceptors: {              // 声明式注册（等价于创建后调用一次 forge.interceptors.*.use），可选
+        // 只描述「一个」拦截器，三种写法：
+        //   函数 resolve          → onFulfilled
+        //   [resolve?, reject?]   → 成功 / 失败（允许缺位，如 [undefined, reject] 仅失败）
+        //   { resolve?, reject? } → 具名成功 / 失败
+        // 需要注册多个拦截器请改用运行时 forge.interceptors.request / response.use()（可多次调用）
+        request: (config) => {
+            config.headers.Authorization = `Bearer ${token()}`;
+            return config;
+        },
+        response: {
+            resolve: (res) => res.data?.data ?? res.data,   // onFulfilled
+            reject: (err) => handle401(err),                // onRejected
+        },
     },
 });
 
@@ -516,8 +507,8 @@ forge.interceptors.request.clear();
 - `eager` 列表里出现的层级会在 `createRouteForge()` 阶段触发拉取；未传时自动取后端标记为 `load: 'eager'` 的层级。
 - `adapter` 默认 `'auto'`：优先复用宿主项目已有的 axios（自动继承其拦截器/默认配置），未检测到则降级使用包内置的类 axios
   精简实现（见 4.3.1）。adapter 必须在 `createRouteForge()` 调用前确定，未显式指定时使用 `'auto'`检测，检测失败自动降级为内置实现，确保零配置即可运行。
-- `interceptors` 声明式配置支持两种形式：单个函数（视为 `onFulfilled`）或 [onFulfilled?, onRejected?] 数组。与所有内置
-  adapter（axios、builtin）行为一致，均按 4.1.3 的执行规则工作；自定义 Fetcher 接口需自行实现拦截器逻辑（详见 4.3.3）。
+- `interceptors` 声明式配置只描述**一个**拦截器，支持三种写法：单个函数（视为 `onFulfilled`）、`[resolve?, reject?]` 元组、`{ resolve?, reject? }` 对象。需要注册多个拦截器请改用运行时
+  `forge.interceptors.request/response.use()`（可多次调用）。与所有内置 adapter（axios、builtin）行为一致，均按 4.1.3 的执行规则工作；自定义 Fetcher 接口需自行实现拦截器逻辑（详见 4.3.3）。
 - 登录态与 Token 注入通过拦截器实现，而非内置配置。推荐模式：
     - 请求拦截器注入 `Authorization` 头（Token 从业务层状态读取）
     - 响应拦截器处理 401 响应（跳转登录页、刷新 Token 等）
@@ -747,7 +738,7 @@ forge.interceptors.response:InterceptorManager<ResponseData>;
 
 - **执行顺序**：对齐 axios 惯例——请求拦截 **LIFO**（后注册先执行），响应拦截 **FIFO**（先注册先执行）。`onRejected` 与对应 handler 的 `onFulfilled` 同序。内部以数组保存拦截器列表，`use()` 时按调用顺序入栈；`forEach` 正序迭代，请求拦截链在串联前 `reverse()` 实现 LIFO。
   > 设计意图：与 axios 行为完全一致，降低存量项目接入心智成本。鉴权头等需要在最后执行的请求拦截器，应在初始化时**最后** `use()` 注册（或在响应链最开始注册）。
-  > 顺序保证：声明式配置（`interceptors.request/response` 数组）按数组顺序注册，运行时 `use()` 按调用顺序追加，二者混用时统一按注册时间排序后应用各自顺序轴（请求 LIFO、响应 FIFO）。
+  > 顺序保证：声明式配置（`interceptors.request/response`）只注册**一个**拦截器并最先入栈，运行时 `use()` 按调用顺序追加，二者混用时统一按注册时间排序后应用各自顺序轴（请求 LIFO、响应 FIFO）。
 - **拦截器返回值**：请求拦截必须返回 `RequestConfig`（或 Promise），返回非对象会抛 `InvalidInterceptorReturnError`；响应拦截首段接收
   `ResponseData`，后续段接收上一段返回值，类型由用户自行约束（默认 `unknown`）。
 - **错误传播**：
@@ -1330,8 +1321,8 @@ const forge = createRouteForge({
 | `adapter`               | `'auto'\|'axios'\|'builtin'\|Fetcher`        | `'auto'`           | 详见 §4.3.2；必须在 `createRouteForge()` 调用前确定，调用后不再切换   |
 | `cache.ttl`             | `number`                                     | `3600`             | 前端本地兜底缓存 TTL（秒）；后端 `config.cache_ttl` 为全局上限，前端只能缩短不能延长（`config.cache_ttl=null` 时不缓存）      |
 | `cache.storage`         | `'memory'\|'sessionStorage'\|'localStorage'` | `'memory'`         | 缓存存储介质                                                          |
-| `interceptors.request`  | `Array<Fn \| [onFulfilled?, onRejected?]>`   | `[]`               | 声明式请求拦截器列表，支持单函数或元组两种形式（见 §4.1.1）           |
-| `interceptors.response` | `Array<Fn \| [onFulfilled?, onRejected?]>`   | `[]`               | 声明式响应拦截器列表，支持单函数或元组两种形式                        |
+| `interceptors.request`  | `Fn \| [resolve?, reject?] \| { resolve?, reject? }` | `—`        | 声明式请求拦截器（单个），支持函数/元组/对象三写法；多拦截器用运行时 `use()`（见 §4.1.1） |
+| `interceptors.response` | `Fn \| [resolve?, reject?] \| { resolve?, reject? }` | `—`        | 声明式响应拦截器（单个），形状同上；多拦截器用运行时 `use()`                              |
 | `strict`                | `boolean`                                    | `false`            | @deprecated 前端校验始终开启，此选项不被消费（见 §4.1.5）             |
 | `timeout`               | `number`                                     | `30000`            | 默认请求超时（毫秒）                                                  |
 | `baseURL`               | `string`                                     | `''`               | 前端 baseURL；为空时使用相对路径                                      |
@@ -1455,7 +1446,7 @@ class ForgeError extends Error {
 | 懒加载   | 隐式懒加载、显式 `load(level)`、并发去重、`invalidate` 失效                                                                |
 | 自动发现 | 摘要端点获取 `levels`、自动识别 `eager` 标记、`config` 字段分级覆盖逻辑、`url_prefix` 下发后拼接到路由 URL                 |
 | 缓存     | 三种 storage、TTL 优先级（后端 > 前端兜底）、跨层级隔离                                                                    |
-| 拦截器   | 多段串联、注册顺序执行、`onFulfilled`/`onRejected` 链、`eject`/`clear`、async 拦截器、单函数与元组两种声明形式             |
+| 拦截器   | 多段串联、注册顺序执行、`onFulfilled`/`onRejected` 链、`eject`/`clear`、async 拦截器、函数/元组/对象三种声明形式             |
 | 调用     | 路由校验（参数缺失/路由名不存在/层级未声明）、路径参数填充、`parameter_defaults` 默认值填充、query/body 拼装、方法自动选取 |
 | Adapter  | auto 检测、builtin adapter 行为、axios 复用、自定义 Fetcher                                                                |
 | 类型生成 | `route:forge:types` 生成的声明约束 `forge.api(level, name, params)` 调用（路由名字面量校验、参数类型校验，见 §3.2）        |

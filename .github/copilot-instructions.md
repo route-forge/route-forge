@@ -19,7 +19,7 @@ npx turbo run typecheck test build --output-logs=errors-only --force   # full va
 pnpm --filter @route-forge/core test                                   # single-package tests (vitest)
 ```
 
-Test baseline: 302 cases (core 230 / vue 34 / react 38) — all must pass before committing.
+Test baseline: 315 cases (core 241 / vue 35 / react 39) — all must pass before committing.
 
 ## Conventions
 

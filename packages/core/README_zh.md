@@ -105,8 +105,8 @@ await forge.ready()
 | `adapter` | `'auto' \| 'axios' \| 'builtin' \| Fetcher` | `'auto'` | 见下方「Adapter 适配」 |
 | `cache.ttl` | `number`（秒） | `3600` | 前端兜底 TTL；后端全局 `config.cache_ttl` 为上限，实际取 `min(后端, 前端)`（前端只能缩短不能延长，`0` 永久，`config.cache_ttl: null` 不缓存） |
 | `cache.storage` | `'memory' \| 'sessionStorage' \| 'localStorage'` | `'memory'` | 缓存介质；storage 模式维护内存镜像并通过 `storage` 事件感知跨 tab 失效 |
-| `interceptors.request` | 数组 | 无 | 声明式请求拦截器：单函数（视为 `onFulfilled`）或 `[onFulfilled?, onRejected?]` 元组 |
-| `interceptors.response` | 数组 | 无 | 声明式响应拦截器，形式同上 |
+| `interceptors.request` | `Fn \| [resolve?, reject?] \| { resolve?, reject? }` | 无 | 声明式**单个**请求拦截器：函数（→ `resolve`）、`[resolve?, reject?]` 元组或 `{ resolve?, reject? }` 对象；需要多个改用运行时 `use()` |
+| `interceptors.response` | `Fn \| [resolve?, reject?] \| { resolve?, reject? }` | 无 | 声明式响应拦截器，形式同上（首段 `resolve` 接收 `ResponseData`） |
 | `timeout` | `number`（毫秒） | `30000` | 全局超时；单次请求可用 `params.timeout` 覆盖 |
 | `baseURL` | `string` | `''` | 拼接在所有生成 URL 之前的基础地址 |
 | `strict` | `boolean` | — | **已废弃，传入无效**。前端校验始终开启（层级未声明抛 `UnknownLevelError`、路由名不存在抛 `UnknownRouteError`、必填参数缺失抛 `MissingRouteParamError`），静默忽略会掩盖拼写错误。后端的 `strict_mode` 是 manifest 生成侧语义，与前端无关 |
@@ -213,27 +213,27 @@ req.abort()   // 请求被中止，Promise reject 为 RequestAbortedError（RF_F
 const forge = createRouteForge({
   endpoint: '/_forge/routes',
   interceptors: {
-    request: [
-      (config) => {
-        const token = authStore.getToken()
-        if (token) config.headers.Authorization = `Bearer ${token}`
-        return config   // 必须返回 RequestConfig 对象，否则抛 RF_FE_006
-      },
-    ],
-    response: [
-      (resp) => resp.data,                    // 统一解包：api() 直接 resolve 业务数据
-      [undefined, (err) => {                  // 元组形式：[onFulfilled?, onRejected?]
+    // 声明式配置每个键只描述「一个」拦截器：函数（→ resolve）、[resolve?, reject?] 元组、或 { resolve?, reject? } 对象。
+    // 需要注册多个？改用运行时 forge.interceptors.*.use()。
+    request: (config) => {
+      const token = authStore.getToken()
+      if (token) config.headers.Authorization = `Bearer ${token}`
+      return config   // 必须返回 RequestConfig 对象，否则抛 RF_FE_006
+    },
+    response: {
+      resolve: (resp) => resp.data,             // 统一解包：api() 直接 resolve 业务数据
+      reject: (err) => {                        // { resolve, reject } 对象形式
         if (err instanceof HTTPError && err.context?.status === 401) {
           authStore.logout()
           window.location.href = '/login'
         }
         return Promise.reject(err)
-      }],
-    ],
+      },
+    },
   },
 })
 
-// 运行时动态注册 / 移除 / 清空
+// 运行时动态注册 / 移除 / 清空 —— 可多次 use() 注册多个拦截器
 const id = forge.interceptors.request.use((config) => { /* ... */ return config })
 forge.interceptors.request.eject(id)
 forge.interceptors.request.clear()

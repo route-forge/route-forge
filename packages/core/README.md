@@ -104,8 +104,8 @@ The three loading phases and how to track them:
 | `adapter` | `'auto' \| 'axios' \| 'builtin' \| Fetcher` | `'auto'` | see "Adapters" below |
 | `cache.ttl` | `number` (seconds) | `3600` | frontend fallback TTL; the backend's global `config.cache_ttl` is the ceiling — the effective TTL is `min(backend, frontend)` (frontend may shorten but never extend; `0` = forever; `config.cache_ttl: null` = don't cache) |
 | `cache.storage` | `'memory' \| 'sessionStorage' \| 'localStorage'` | `'memory'` | cache backend; storage modes keep an in-memory mirror and invalidate cross-tab writes via `storage` events |
-| `interceptors.request` | array | none | declarative request interceptors: plain function (treated as `onFulfilled`) or `[onFulfilled?, onRejected?]` tuple |
-| `interceptors.response` | array | none | declarative response interceptors, same shapes |
+| `interceptors.request` | `Fn \| [resolve?, reject?] \| { resolve?, reject? }` | none | declarative **single** request interceptor: a function (→ `resolve`), a `[resolve?, reject?]` tuple, or a `{ resolve?, reject? }` object; register multiple via runtime `use()` |
+| `interceptors.response` | `Fn \| [resolve?, reject?] \| { resolve?, reject? }` | none | declarative response interceptor, same shapes (first `resolve` receives `ResponseData`) |
 | `timeout` | `number` (ms) | `30000` | global timeout; a single call can override it via `params.timeout` |
 | `baseURL` | `string` | `''` | base prepended to every generated URL |
 | `strict` | `boolean` | — | **Deprecated, ignored.** Frontend validation is always on (unknown level → `UnknownLevelError`, unknown route → `UnknownRouteError`, missing required param → `MissingRouteParamError`); silently ignoring typos hides bugs. The backend's `strict_mode` is a manifest-generation concern and unrelated to the frontend |
@@ -213,27 +213,28 @@ The interceptor API matches axios (`use` / `eject` / `clear`); request intercept
 const forge = createRouteForge({
   endpoint: '/_forge/routes',
   interceptors: {
-    request: [
-      (config) => {
-        const token = authStore.getToken()
-        if (token) config.headers.Authorization = `Bearer ${token}`
-        return config   // must return a RequestConfig object, otherwise RF_FE_006 is thrown
-      },
-    ],
-    response: [
-      (resp) => resp.data,                    // unwrap: api() resolves with business data directly
-      [undefined, (err) => {                  // tuple form: [onFulfilled?, onRejected?]
+    // Declarative config describes ONE interceptor: a function (→ resolve),
+    // a [resolve?, reject?] tuple, or a { resolve?, reject? } object.
+    // To register several, call forge.interceptors.*.use() at runtime.
+    request: (config) => {
+      const token = authStore.getToken()
+      if (token) config.headers.Authorization = `Bearer ${token}`
+      return config   // must return a RequestConfig object, otherwise RF_FE_006 is thrown
+    },
+    response: {
+      resolve: (resp) => resp.data,             // unwrap: api() resolves with business data directly
+      reject: (err) => {                        // { resolve, reject } object form
         if (err instanceof HTTPError && err.context?.status === 401) {
           authStore.logout()
           window.location.href = '/login'
         }
         return Promise.reject(err)
-      }],
-    ],
+      },
+    },
   },
 })
 
-// Runtime registration / removal / clearing
+// Runtime registration / removal / clearing — call use() repeatedly to register multiple interceptors
 const id = forge.interceptors.request.use((config) => { /* ... */ return config })
 forge.interceptors.request.eject(id)
 forge.interceptors.request.clear()

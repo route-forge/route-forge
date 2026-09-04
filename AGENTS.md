@@ -33,7 +33,7 @@ pnpm --filter @route-forge/vue test
 pnpm --filter @route-forge/react test
 ```
 
-当前测试基线：**302 例**（core 230 / vue 34 / react 38），全部通过是提交前置条件。
+当前测试基线：**315 例**（core 241 / vue 35 / react 39），全部通过是提交前置条件。
 
 ## 提交与协作约定
 

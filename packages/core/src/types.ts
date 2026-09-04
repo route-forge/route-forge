@@ -312,23 +312,33 @@ export interface RouteForgeOptions {
   };
   interceptors?: {
     /**
-     * 声明式请求拦截器列表，支持两种形式（SPEC §4.1.1）：
-     * - 单一函数 → 视为 onFulfilled
-     * - [onFulfilled?, onRejected?] 元组 → 完整拦截器定义
+     * 声明式请求拦截器，只描述**一个**拦截器，支持三种写法（SPEC §4.1.1）：
+     * - 函数 `resolve` → 视为 onFulfilled
+     * - 元组 `[resolve?, reject?]` → 成功 / 失败（允许缺位，如 `[resolve]`、`[undefined, reject]`）
+     * - 对象 `{ resolve?, reject? }` → 具名成功 / 失败
+     * 需要注册多个拦截器请改用运行时 `forge.interceptors.request.use()`（可多次调用）。
      */
-    request?: Array<
+    request?:
       | ((c: RequestConfig) => RequestConfig | Promise<RequestConfig>)
-      | [((c: RequestConfig) => RequestConfig | Promise<RequestConfig>) | undefined, ((e: unknown) => unknown | Promise<unknown>) | undefined]
-    >;
+      | [
+          ((c: RequestConfig) => RequestConfig | Promise<RequestConfig>)?,
+          ((e: unknown) => unknown | Promise<unknown>)?,
+        ]
+      | {
+          resolve?: (c: RequestConfig) => RequestConfig | Promise<RequestConfig>;
+          reject?: (e: unknown) => unknown | Promise<unknown>;
+        };
     /**
-     * 声明式响应拦截器列表，支持两种形式（SPEC §4.1.1）：
-     * - 单一函数 → 视为 onFulfilled
-     * - [onFulfilled?, onRejected?] 元组 → 完整拦截器定义
+     * 声明式响应拦截器，形状同 `request`（首段 onFulfilled 接收 ResponseData）。
+     * 同样只描述一个拦截器，多拦截器改用运行时 `forge.interceptors.response.use()`。
      */
-    response?: Array<
+    response?:
       | ((r: ResponseData) => unknown | Promise<unknown>)
-      | [((r: ResponseData) => unknown | Promise<unknown>) | undefined, ((e: unknown) => unknown | Promise<unknown>) | undefined]
-    >;
+      | [((r: ResponseData) => unknown | Promise<unknown>)?, ((e: unknown) => unknown | Promise<unknown>)?]
+      | {
+          resolve?: (r: ResponseData) => unknown | Promise<unknown>;
+          reject?: (e: unknown) => unknown | Promise<unknown>;
+        };
   };
   /**
    * @deprecated 前端校验始终开启，此选项不再被消费。

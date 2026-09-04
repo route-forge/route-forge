@@ -11,7 +11,7 @@
  */
 
 import { RouteCache } from './cache.js';
-import { InterceptorManagerImpl } from './interceptors.js';
+import { InterceptorManagerImpl, normalizeInterceptorDeclaration } from './interceptors.js';
 import { resolveAdapter } from './adapters/index.js';
 import type { LoadingChangeCallback } from './loading.js';
 import { LoadingTracker } from './loading.js';
@@ -99,27 +99,19 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
   const requestInterceptors: InterceptorManager<RequestConfig, RequestConfig> = new InterceptorManagerImpl();
   const responseInterceptors: InterceptorManager<ResponseData, unknown> = new InterceptorManagerImpl();
 
-  // 声明式拦截器先注册（按数组顺序），随后允许运行时 use() 追加
-  // 支持两种形式：单函数（视为 onFulfilled）或 [onFulfilled?, onRejected?] 元组（SPEC §4.1.1）
-  if (declarativeInterceptors?.request) {
-    for (const entry of declarativeInterceptors.request) {
-      if (typeof entry === 'function') {
-        requestInterceptors.use(entry);
-      } else {
-        const [onFulfilled, onRejected] = entry;
-        requestInterceptors.use(onFulfilled, onRejected);
-      }
-    }
+  // 声明式拦截器先注册（只描述一个拦截器：函数 / [resolve, reject] 元组 / { resolve, reject } 对象，SPEC §4.1.1）
+  // 需要注册多个拦截器请改用运行时 forge.interceptors.request/response.use()
+  const reqDecl = normalizeInterceptorDeclaration<RequestConfig, RequestConfig>(
+    declarativeInterceptors?.request,
+  );
+  if (reqDecl.onFulfilled || reqDecl.onRejected) {
+    requestInterceptors.use(reqDecl.onFulfilled, reqDecl.onRejected);
   }
-  if (declarativeInterceptors?.response) {
-    for (const entry of declarativeInterceptors.response) {
-      if (typeof entry === 'function') {
-        responseInterceptors.use(entry);
-      } else {
-        const [onFulfilled, onRejected] = entry;
-        responseInterceptors.use(onFulfilled, onRejected);
-      }
-    }
+  const resDecl = normalizeInterceptorDeclaration<ResponseData, unknown>(
+    declarativeInterceptors?.response,
+  );
+  if (resDecl.onFulfilled || resDecl.onRejected) {
+    responseInterceptors.use(resDecl.onFulfilled, resDecl.onRejected);
   }
 
   const adapterPromise = resolveAdapter({

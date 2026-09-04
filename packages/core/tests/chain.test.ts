@@ -3,6 +3,7 @@ import {
   InterceptorManagerImpl,
   runRequestInterceptors,
   runResponseInterceptors,
+  normalizeInterceptorDeclaration,
 } from '../src/interceptors.js';
 import { InvalidInterceptorReturnError } from '../src/errors.js';
 import type { RequestConfig, ResponseData } from '../src/types.js';
@@ -156,5 +157,67 @@ describe('runResponseInterceptors', () => {
     const result = await runResponseInterceptors(mgr, Promise.resolve(makeResponse()));
     expect(seen).toEqual(['f0', 'r1:boom']);
     expect(result).toBe('recovered');
+  });
+});
+
+describe('normalizeInterceptorDeclaration', () => {
+  const resolve = (v: unknown) => v;
+  const reject = (e: unknown) => e;
+
+  it('function → onFulfilled only', () => {
+    const h = normalizeInterceptorDeclaration(resolve);
+    expect(h.onFulfilled).toBe(resolve);
+    expect(h.onRejected).toBeUndefined();
+  });
+
+  it('tuple [resolve, reject] → both', () => {
+    const h = normalizeInterceptorDeclaration([resolve, reject]);
+    expect(h.onFulfilled).toBe(resolve);
+    expect(h.onRejected).toBe(reject);
+  });
+
+  it('tuple [resolve] → onFulfilled only', () => {
+    const h = normalizeInterceptorDeclaration([resolve]);
+    expect(h.onFulfilled).toBe(resolve);
+    expect(h.onRejected).toBeUndefined();
+  });
+
+  it('tuple [undefined, reject] → onRejected only', () => {
+    const h = normalizeInterceptorDeclaration([undefined, reject]);
+    expect(h.onFulfilled).toBeUndefined();
+    expect(h.onRejected).toBe(reject);
+  });
+
+  it('object { resolve, reject } → both', () => {
+    const h = normalizeInterceptorDeclaration({ resolve, reject });
+    expect(h.onFulfilled).toBe(resolve);
+    expect(h.onRejected).toBe(reject);
+  });
+
+  it('object { reject } → onRejected only', () => {
+    const h = normalizeInterceptorDeclaration({ reject });
+    expect(h.onFulfilled).toBeUndefined();
+    expect(h.onRejected).toBe(reject);
+  });
+
+  it('undefined / null / empty → no handlers', () => {
+    expect(normalizeInterceptorDeclaration(undefined)).toEqual({});
+    expect(normalizeInterceptorDeclaration(null)).toEqual({});
+    expect(normalizeInterceptorDeclaration([])).toEqual({});
+    expect(normalizeInterceptorDeclaration({})).toEqual({});
+    expect(normalizeInterceptorDeclaration([undefined, undefined])).toEqual({});
+  });
+
+  it('unsupported scalar type → TypeError', () => {
+    expect(() => normalizeInterceptorDeclaration(5)).toThrow(TypeError);
+    expect(() => normalizeInterceptorDeclaration('nope')).toThrow(TypeError);
+    expect(() => normalizeInterceptorDeclaration(true)).toThrow(TypeError);
+  });
+
+  it('non-function resolve / reject in tuple or object → TypeError', () => {
+    expect(() => normalizeInterceptorDeclaration([5])).toThrow(TypeError);
+    expect(() => normalizeInterceptorDeclaration([resolve, 5])).toThrow(TypeError);
+    expect(() => normalizeInterceptorDeclaration({ resolve: 5 })).toThrow(TypeError);
+    expect(() => normalizeInterceptorDeclaration({ reject: 'bad' })).toThrow(TypeError);
   });
 });

@@ -311,25 +311,26 @@ const plugin = createRouteForgePlugin({
   endpoint: '/_forge/routes',
   // no levels → auto-discovered from the summary endpoint; no eager → backend load:'eager' levels
   interceptors: {
-    request: [
+    // Declarative config describes ONE interceptor each: a function (→ resolve),
+    // a [resolve?, reject?] tuple, or a { resolve?, reject? } object.
+    // Need several? Register them at runtime via forge.interceptors.*.use().
+    request: (config) => {
       // Token injection: business requests carry the token automatically
-      (config) => {
-        const token = tokenStore.get()
-        if (token) config.headers.Authorization = `Bearer ${token}`
-        return config
-      },
-    ],
-    response: [
-      (resp) => resp.data,  // unwrap: api() resolves with business data directly
-      [undefined, (err) => {
+      const token = tokenStore.get()
+      if (token) config.headers.Authorization = `Bearer ${token}`
+      return config
+    },
+    response: {
+      resolve: (resp) => resp.data,  // unwrap: api() resolves with business data directly
+      reject: (err) => {
         // 401 → clear the session and redirect to login; rethrow everything else
         if ((err as any).context?.status === 401) {
           tokenStore.clear()
           location.href = '/login'
         }
         return Promise.reject(err)
-      }],
-    ],
+      },
+    },
   },
 })
 

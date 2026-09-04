@@ -2,6 +2,22 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## Unreleased
+
+### Changed
+
+- **声明式拦截器（`createRouteForge({ interceptors })`）契约收敛为「单个拦截器 + 三种写法」**：修复
+  `[resolve, reject]` 被误当作「两个各自只成功」的拦截器、导致正常响应也执行 `reject` 的问题。现在
+  `interceptors.request` / `interceptors.response` 每个键只描述**一个**拦截器，接受三种形式：
+  - 函数 `resolve` → `onFulfilled`
+  - 元组 `[resolve?, reject?]` → 成功 / 失败（允许缺位，如 `[resolve]` 仅成功、`[undefined, reject]` 仅失败）
+  - 对象 `{ resolve?, reject? }` → 具名成功 / 失败
+- **移除「顶层数组=拦截器列表」旧语义**：`request: [fnA, fnB]` 现表示**一个**拦截器（fnA=`resolve`、
+  fnB=`reject`）；需要注册多个请改用运行时 `forge.interceptors.request/response.use()`（可多次调用，不受影响）。
+- 修复此前把裸函数（非数组）直接传给 `interceptors.request/response` 会在 `createRouteForge` 同步抛
+  `TypeError: ... is not iterable` —— 现按函数形式正常注册。非法形状（传入 number/string/boolean，或
+  `resolve`/`reject` 存在但非函数）显式抛 `TypeError`，不再静默误注册。
+
 ## 2.2.1 — 2026-09-03
 
 ### Changed

@@ -229,42 +229,100 @@ describe('request/response interceptor integration', () => {
     expect(count).toBe(0);
   });
 
-  it('declarative interceptors (tuple form) run in the pipeline', async () => {
-    const calls = mockBackend({});
-    const order: string[] = [];
+  it('declarative interceptor resolves for each accepted form (fn / tuple / object)', async () => {
+    // 函数形式：整个作为 resolve
+    {
+      mockBackend({});
+      let hit = false;
+      const forge = createRouteForge({
+        endpoint: '/_forge/routes',
+        levels: ['public'],
+        adapter: 'builtin',
+        interceptors: {
+          response: (r) => {
+            hit = (r as ResponseData).route === 'users.index';
+            return r;
+          },
+        },
+      });
+      await forge.load('public');
+      await forge.api('public', 'users.index');
+      expect(hit).toBe(true);
+    }
+    // 元组形式 [resolve, reject]：成功只走 resolve，不走 reject
+    {
+      mockBackend({});
+      const seen: string[] = [];
+      const forge = createRouteForge({
+        endpoint: '/_forge/routes',
+        levels: ['public'],
+        adapter: 'builtin',
+        interceptors: {
+          response: [
+            (r) => {
+              seen.push('resolve');
+              return r;
+            },
+            () => {
+              seen.push('reject');
+            },
+          ],
+        },
+      });
+      await forge.load('public');
+      await forge.api('public', 'users.index');
+      expect(seen).toEqual(['resolve']);
+    }
+    // 对象形式 { resolve, reject }
+    {
+      mockBackend({});
+      const seen: string[] = [];
+      const forge = createRouteForge({
+        endpoint: '/_forge/routes',
+        levels: ['public'],
+        adapter: 'builtin',
+        interceptors: {
+          response: {
+            resolve: (r) => {
+              seen.push('resolve');
+              return r;
+            },
+            reject: () => {
+              seen.push('reject');
+            },
+          },
+        },
+      });
+      await forge.load('public');
+      await forge.api('public', 'users.index');
+      expect(seen).toEqual(['resolve']);
+    }
+  });
+
+  it('declarative [resolve, reject] tuple routes non-2xx to reject only', async () => {
+    // 复现用户报的坑：[resolve, reject] 在成功时误跑 reject —— 修复后成功走 resolve、失败才走 reject
+    mockBackend({ apiStatus: 500 });
+    const seen: string[] = [];
     const forge = createRouteForge({
       endpoint: '/_forge/routes',
       levels: ['public'],
       adapter: 'builtin',
       interceptors: {
-        // 仅对业务请求计数（层级拉取 __forge__.load.* 也共享同一拦截器管理器）
-        request: [
-          (c) => {
-            if (c.route === 'users.index') order.push('req-fn');
-            return c;
-          },
-          [(c) => {
-            if (c.route === 'users.index') order.push('req-tuple');
-            return c;
-          }, undefined],
-        ],
         response: [
           (r) => {
-            if ((r as ResponseData).route === 'users.index') order.push('resp-fn');
+            seen.push('resolve');
             return r;
           },
-          [(r) => {
-            if ((r as ResponseData).route === 'users.index') order.push('resp-tuple');
-            return r;
-          }, undefined],
+          (e) => {
+            seen.push('reject');
+            throw e;
+          },
         ],
       },
     });
     await forge.load('public');
-    await forge.api('public', 'users.index');
-    // 请求拦截器 LIFO：元组后注册 → 先执行；响应拦截器 FIFO：先注册先执行
-    expect(order).toEqual(['req-tuple', 'req-fn', 'resp-fn', 'resp-tuple']);
-    expect(calls.some((c) => c.url.startsWith('/users'))).toBe(true);
+    await expect(forge.api('public', 'users.index')).rejects.toBeInstanceOf(HTTPError);
+    expect(seen).toEqual(['reject']);
   });
 });
 
@@ -391,23 +449,28 @@ describe('declarative + runtime interceptor unified order (L7)', () => {
   it('request chain is LIFO across declarative and runtime registrations', async () => {
     mockBackend();
     const order: string[] = [];
+    const tag =
+      (label: string) =>
+      (c: { route?: string }) => {
+        if (c.route === 'users.index') order.push(label);
+        return c as never;
+      };
     const forge = createRouteForge({
       endpoint: '/_forge/routes',
       levels: ['public'],
       adapter: 'builtin',
+      // 声明式只注册一个拦截器（函数形式）
       interceptors: {
-        request: [
-          (c) => { order.push('decl-1'); return c; },
-          (c) => { order.push('decl-2'); return c; },
-        ],
+        request: tag('decl'),
       },
     });
-    // 运行时追加：后注册
-    forge.interceptors.request.use((c) => { order.push('runtime-3'); return c; });
+    // 运行时可多次追加，与声明式统一按注册时间排序
+    forge.interceptors.request.use(tag('runtime-1'));
+    forge.interceptors.request.use(tag('runtime-2'));
     await forge.load('public');
     await forge.api('public', 'users.index');
-    // LIFO（对齐 axios）：runtime-3 → decl-2 → decl-1
-    expect(order).toEqual(['runtime-3', 'decl-2', 'decl-1']);
+    // LIFO（对齐 axios）：后注册先执行 → runtime-2 → runtime-1 → decl
+    expect(order).toEqual(['runtime-2', 'runtime-1', 'decl']);
   });
 
   it('response chain is FIFO across declarative and runtime registrations', async () => {
