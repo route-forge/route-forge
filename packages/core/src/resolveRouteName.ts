@@ -24,6 +24,18 @@ export interface RouteResolver {
 }
 
 /**
+ * 剥掉 prefix 尾部的 separator（可能多个），避免拼接出 `a..b` 这类重复分隔符。
+ * 例：prefix='api.manage.' + suffix='a' → 'api.manage.a' 而非 'api.manage..a'。
+ */
+function stripTrailingSeparator(prefix: string, separator: string): string {
+  let normalized = prefix;
+  while (normalized.endsWith(separator)) {
+    normalized = normalized.slice(0, -separator.length);
+  }
+  return normalized;
+}
+
+/**
  * 异步版本：先确保层级已加载，再做歧义消解。
  * 适用于 api() 调用路径。
  */
@@ -34,13 +46,15 @@ export async function resolveRouteName(
   suffix: string,
   separator = '.',
 ): Promise<string> {
-  // 后缀为空 → 直接返回前缀
-  if (!suffix) return prefix;
+  // 归一化前缀：尾部 separator 剥掉后再参与拼接与歧义判断
+  const normalized = stripTrailingSeparator(prefix, separator);
+  // 后缀为空 → 直接返回（归一化后的）前缀
+  if (!suffix) return normalized;
 
-  const joined = `${prefix}${separator}${suffix}`;
+  const joined = `${normalized}${separator}${suffix}`;
 
   // 后缀不以前缀开头 → 无歧义，直接拼接
-  if (!suffix.startsWith(`${prefix}${separator}`)) return joined;
+  if (!suffix.startsWith(`${normalized}${separator}`)) return joined;
 
   // 歧义场景：先确保层级已加载
   await forge.load(level);
@@ -65,10 +79,11 @@ export function resolveRouteNameSync(
   suffix: string,
   separator = '.',
 ): string {
-  if (!suffix) return prefix;
+  const normalized = stripTrailingSeparator(prefix, separator);
+  if (!suffix) return normalized;
 
-  const joined = `${prefix}${separator}${suffix}`;
-  if (!suffix.startsWith(`${prefix}${separator}`)) return joined;
+  const joined = `${normalized}${separator}${suffix}`;
+  if (!suffix.startsWith(`${normalized}${separator}`)) return joined;
 
   // 歧义场景：基于已加载缓存判定
   if (forge.hasRoute(level, joined)) return joined;

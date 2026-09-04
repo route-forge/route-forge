@@ -5,6 +5,7 @@
  *   - H3：invalidate() 失效代数——加载期间被 invalidate 后，在途响应不回写缓存
  *   - H4：后端将 unassigned 注册为真实层级时走 HTTP 拉取（不走虚拟层级）
  *   - H5：BoundForge.useRoutePrefix() 返回绑定新前缀的 BoundForge
+ *   - H5b：前缀尾部 separator 归一化——prefix='users.' 拼接不产生 'users..x'
  *   - H6：ready() 回调重载；auto-discovery 失败时 ready 永不 resolve
  *   - H7：ready() 在 eager load 完成后才 resolve（onSummaryReady 已移除）
  *   - M4：schemaVersion > 1 告警
@@ -220,6 +221,55 @@ describe('BoundForge.useRoutePrefix (H5)', () => {
     expect(twice.prefix).toBe('users');
     const result = (await twice('show', { user: 1 })) as any;
     expect(result.data.url).toBe('/users/1');
+  });
+});
+
+// ─── H5b：前缀尾部 separator 归一化 ─────────────────────────
+
+describe('BoundForge prefix trailing separator (H5b)', () => {
+  async function makeBound(prefix: string) {
+    mockBackend(makeSummary(), { public: publicRoutes });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    return forge.use('public', prefix);
+  }
+
+  it("prefix='users.' 时 api() 拼接不产生重复 separator", async () => {
+    const bound = await makeBound('users.');
+    const result = (await bound('show', { user: 9 })) as any;
+    expect(result.data.url).toBe('/users/9');
+  });
+
+  it("prefix='users.' 时 route() 同步路径同样归一化", async () => {
+    const bound = await makeBound('users.');
+    await bound.load();
+    expect(bound.route('index')).toBe('/users');
+    expect(bound.route('show', { user: 2 })).toBe('/users/2');
+  });
+
+  it("尾 separator 的歧义回退仍成立（suffix 已含前缀）", async () => {
+    const bound = await makeBound('users.');
+    await bound.load();
+    // suffix='users.index' 以归一化前缀 'users.' 开头 → 走消解回退命中自身
+    expect(bound.route('users.index')).toBe('/users');
+  });
+
+  it('连续多个尾 separator 也被剥干净', async () => {
+    const bound = await makeBound('users..');
+    const result = (await bound('index')) as any;
+    expect(result.data.url).toBe('/users');
+  });
+
+  it('空 suffix 返回归一化后的名字（错误中不含尾点）', async () => {
+    const bound = await makeBound('users.');
+    await bound.load();
+    // 'users' 本身不是已注册路由 → 抛 UnknownRouteError；错误中的路由名不带尾点
+    const err = await bound('').catch((e: unknown) => e);
+    expect((err as { code: string }).code).toBe('RF_FE_001');
+    expect((err as { route: string }).route).toBe('users');
   });
 });
 
