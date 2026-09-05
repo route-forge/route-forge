@@ -241,7 +241,7 @@ await users('show', { user: 1 })      // ✅ params 类型自动校验
 | `useForgeApi` 的 `pending` / `error` | —（用 `LoadingTracker`） | `Ref<boolean>` / `Ref<unknown>` | `boolean` / `unknown` |
 | URL 生成返回值 | `string`（同步，未就绪抛错） | `ComputedRef<string>`（未就绪为 `''`） | `string`（未就绪为 `''`） |
 | `useForgeRoute` 的 params | — | getter 函数 | 普通对象（按内容对比依赖） |
-| 绑定签名 | `forge.use(level, prefix?)` | `useForge(level?, prefix?)` | `useForge({ level?, prefix? })` |
+| 绑定签名 | `forge.use(level, prefix?)` | `useForge(level?, prefix?)` | `useForge(level?, prefix?)` |
 
 ## 常见问题
 

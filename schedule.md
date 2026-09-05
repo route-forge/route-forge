@@ -52,10 +52,10 @@
 
 #### 4. React 集成（100%）
 - `RouteForgeProvider`（options 浅比较保证实例稳定）
-- `useForge({ level?, prefix? })`（levelLoaded → boolean：`loadedRef` 单一真值源 + getter，
+- `useForge(level?, prefix?)`（levelLoaded → boolean：`loadedRef` 单一真值源 + getter，
   仅在 effect / 异步回调（渲染提交后）写值并驱动重渲染，消除渲染期写 ref 的并发副作用；
   level 为静态绑定，切换层级请新建组件/实例）
-- `useForgeApi` / `useForgeRoute`；前缀绑定统一走 `useForge({ level, prefix })`
+- `useForgeApi` / `useForgeRoute`；前缀绑定统一走 `useForge(level, prefix)`
 - 测试 27 个全绿
 
 #### 5. 文档（100%）

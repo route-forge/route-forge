@@ -173,7 +173,7 @@ describe('useForge', () => {
     let bound: any;
 
     function C() {
-      bound = useForge({ level: 'public' });
+      bound = useForge('public');
       return null;
     }
 
@@ -195,7 +195,7 @@ describe('useForge', () => {
     let bound: any;
 
     function C() {
-      bound = useForge({ level: 'public' });
+      bound = useForge('public');
       return null;
     }
 
@@ -215,7 +215,7 @@ describe('useForge', () => {
     let bound: any;
 
     function C() {
-      bound = useForge({ level: 'public', prefix: 'users' });
+      bound = useForge('public', 'users');
       return null;
     }
 
@@ -237,7 +237,7 @@ describe('useForgeApi', () => {
     let api: any;
 
     function C() {
-      api = useForgeApi({ level: 'public' });
+      api = useForgeApi('public');
       return null;
     }
 
@@ -267,7 +267,7 @@ describe('useForgeApi', () => {
 
     let api: any;
     function C() {
-      api = useForgeApi({ level: 'public' });
+      api = useForgeApi('public');
       return <div data-testid="pending">{String(api.pending)}</div>;
     }
     const { getByTestId } = render(
@@ -295,7 +295,7 @@ describe('useForgeApi', () => {
     let api: any;
 
     function C() {
-      api = useForgeApi({ level: 'public' });
+      api = useForgeApi('public');
       return null;
     }
 
@@ -410,11 +410,11 @@ describe('useForge API trimming', () => {
     expect(forge.onLevelLoaded).toBeUndefined();
   });
 
-  it('useForge({ level }) returns levelLoaded and auto-triggers load', async () => {
+  it('useForge(level) returns levelLoaded and auto-triggers load', async () => {
     let bound: any;
 
     function C() {
-      bound = useForge({ level: 'public' });
+      bound = useForge('public');
       return null;
     }
 
@@ -432,7 +432,7 @@ describe('useForge API trimming', () => {
     const rendered: boolean[] = [];
 
     function C() {
-      const bound = useForge({ level: 'public' }) as any;
+      const bound = useForge('public') as any;
       rendered.push(bound.levelLoaded);
       return <div>{String(bound.levelLoaded)}</div>;
     }
@@ -455,7 +455,7 @@ describe('useForge API trimming', () => {
     const rendered: boolean[] = [];
 
     function C() {
-      const bound = useForge({ level: 'public' }) as any;
+      const bound = useForge('public') as any;
       rendered.push(bound.levelLoaded);
       return <div>{String(bound.levelLoaded)}</div>;
     }
@@ -487,7 +487,7 @@ describe('useForge API trimming', () => {
     };
 
     function Preload() {
-      useForge({ level: 'public' });
+      useForge('public');
       return null;
     }
     const first = render(
@@ -500,7 +500,7 @@ describe('useForge API trimming', () => {
 
     const seen: boolean[] = [];
     function Late() {
-      const bound = useForge({ level: 'public' }) as any;
+      const bound = useForge('public') as any;
       seen.push(bound.levelLoaded);
       return <div>{String(bound.levelLoaded)}</div>;
     }

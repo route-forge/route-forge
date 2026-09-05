@@ -242,7 +242,7 @@ See the [core README "Type safety" section](../core/README.md#type-safety-option
 | `useForgeApi` `pending` / `error` | — (use `LoadingTracker`) | `Ref<boolean>` / `Ref<unknown>` | `boolean` / `unknown` |
 | URL generation returns | `string` (sync; throws when unready) | `ComputedRef<string>` (`''` until ready) | `string` (`''` until ready) |
 | `useForgeRoute` params | — | getter function | plain object (content-compared deps) |
-| Binding signature | `forge.use(level, prefix?)` | `useForge(level?, prefix?)` | `useForge({ level?, prefix? })` |
+| Binding signature | `forge.use(level, prefix?)` | `useForge(level?, prefix?)` | `useForge(level?, prefix?)` |
 
 ## FAQ
 

@@ -242,19 +242,19 @@ createRoot(document.getElementById('root')!).render(
 ```
 
 ```tsx
-// App.tsx —— 与 Vue 对等的能力，差异在 React 用选项对象、params 传普通对象
+// App.tsx —— 与 Vue 对等的能力，差异在 React 的 params 传普通对象
 import { useForge, useForgeApi, useForgeRoute } from '@route-forge/react'
 
 export default function App() {
   // 绑定层级 — 后续调用无需再传 level
-  const forge = useForge({ level: 'admin' })
+  const forge = useForge('admin')
 
   // 绑定层级 + 前缀 — 路由名自动拼接
-  const userForge = useForge({ level: 'admin', prefix: 'users' })
+  const userForge = useForge('admin', 'users')
 
   // 带 loading / error 状态的 API 调用（同样支持层级绑定和前缀）
-  const { call, pending, error } = useForgeApi({ level: 'admin' })
-  const { call: callUser } = useForgeApi({ level: 'admin', prefix: 'users' })
+  const { call, pending, error } = useForgeApi('admin')
+  const { call: callUser } = useForgeApi('admin', 'users')
 
   // 响应式 URL 生成器：渲染期专用，未加载返回 ''、加载后自动更新、参数变化重算
   const detailUrl = useForgeRoute('admin', 'users.show', { user: 1 })

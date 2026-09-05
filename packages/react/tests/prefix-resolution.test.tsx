@@ -121,7 +121,7 @@ afterEach(() => {
 describe('useForge with prefix — smart route name resolution', () => {
   it('suffix without prefix → auto-join (1 → test.1)', async () => {
     const { getResult } = renderWithForge(() => {
-      const forge = useForge({ level: 'admin', prefix: 'test' });
+      const forge = useForge('admin', 'test');
       return { forge };
     }, {
       'test.1': { name: 'test.1', uri: 'test/1', methods: ['GET'], parameters: [] },
@@ -136,7 +136,7 @@ describe('useForge with prefix — smart route name resolution', () => {
 
   it('suffix starts with prefix but not prefix+sep → auto-join (test1.1 → test.test1.1)', async () => {
     const { getResult } = renderWithForge(() => {
-      const forge = useForge({ level: 'admin', prefix: 'test' });
+      const forge = useForge('admin', 'test');
       return { forge };
     }, {
       'test.test1.1': {
@@ -156,7 +156,7 @@ describe('useForge with prefix — smart route name resolution', () => {
 
   it('ambiguous: suffix starts with prefix+sep, joined exists → use joined (test.1 → test.test.1)', async () => {
     const { getResult } = renderWithForge(() => {
-      const forge = useForge({ level: 'admin', prefix: 'test' });
+      const forge = useForge('admin', 'test');
       return { forge };
     }, {
       'test.test.1': { name: 'test.test.1', uri: 'test/test/1', methods: ['GET'], parameters: [] },
@@ -173,7 +173,7 @@ describe('useForge with prefix — smart route name resolution', () => {
 
   it('ambiguous: joined NOT exists → fallback to suffix (test.1 → test.1)', async () => {
     const { getResult } = renderWithForge(() => {
-      const forge = useForge({ level: 'admin', prefix: 'test' });
+      const forge = useForge('admin', 'test');
       return { forge };
     }, {
       'test.1': { name: 'test.1', uri: 'test/1', methods: ['GET'], parameters: [] },
@@ -189,7 +189,7 @@ describe('useForge with prefix — smart route name resolution', () => {
 
   it('ambiguous: neither joined nor suffix exists → throws UnknownRouteError', async () => {
     const { getResult } = renderWithForge(() => {
-      const forge = useForge({ level: 'admin', prefix: 'test' });
+      const forge = useForge('admin', 'test');
       return { forge };
     }, {
       'other.route': { name: 'other.route', uri: 'other/route', methods: ['GET'], parameters: [] },
@@ -203,7 +203,7 @@ describe('useForge with prefix — smart route name resolution', () => {
 
   it('api() resolves ambiguous name correctly (async)', async () => {
     const { getResult } = renderWithForge(() => {
-      const forge = useForge({ level: 'admin', prefix: 'test' });
+      const forge = useForge('admin', 'test');
       return { forge };
     }, {
       'test.1': { name: 'test.1', uri: 'test/1', methods: ['GET'], parameters: [] },

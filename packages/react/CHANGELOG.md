@@ -10,6 +10,14 @@
   用于在挂载前同步注册请求/响应拦截器，无需钻到子组件 `useForge()` 里挂；null 守卫 + 依赖数组刻意仅含 `options`，
   StrictMode 双渲染下也只触发一次（请求/响应拦截链只影响后续 `api()` 调用，eager 元信息预加载走 `requestRaw` 旁路不受影响）。
 
+### Changed
+
+- **BREAKING**：`useForge` / `useForgeApi` 的层级绑定从选项对象改为位置参数，与 `@route-forge/vue`
+  及 core `forge.use(level, prefix?)` 完全对齐——`useForge({ level })` → `useForge(level)`、
+  `useForge({ level, prefix })` → `useForge(level, prefix)`，`useForgeApi` 同理；
+  `useForgeRoute` 本就是位置参数，不受影响。迁移只需把 `useForge({ level: 'admin', prefix: 'users' })`
+  改写为 `useForge('admin', 'users')`；TS 下旧对象写法在编译期即报错（非静默降级）。
+
 ## 2.2.1 — 2026-09-03
 
 ### Changed

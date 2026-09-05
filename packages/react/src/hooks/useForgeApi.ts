@@ -4,8 +4,8 @@
  *
  * 支持：
  *   - useForgeApi()             — call(level, name, params)
- *   - useForgeApi({ level })    — call(name, params)，自动绑定层级
- *   - useForgeApi({ level, prefix }) — call(suffix, params)，自动绑定层级 + 拼接前缀
+ *   - useForgeApi(level)        — call(name, params)，自动绑定层级
+ *   - useForgeApi(level, prefix) — call(suffix, params)，自动绑定层级 + 拼接前缀
  *
  * 类型推断：
  *   当 ForgeRouteMap 通过 codegen 或 module augmentation 定义时，
@@ -34,20 +34,12 @@ export type UseForgeApiBoundReturnReact<L extends string> = UseForgeApiBoundRetu
 /** 不绑定层级 — call 需要传 level */
 export function useForgeApi(): UseForgeApiReturnReact;
 /** 绑定层级 — call 无需传 level */
-export function useForgeApi<L extends string>(options: {
-  level: L
-}): UseForgeApiBoundReturnReact<L>;
+export function useForgeApi<L extends string>(level: L): UseForgeApiBoundReturnReact<L>;
 /** 绑定层级 + 前缀 — call 无需传 level，路由名自动拼接 prefix */
-export function useForgeApi<L extends string>(options: {
-  level: L;
-  prefix: string
-}): UseForgeApiBoundReturnReact<L>;
-export function useForgeApi(opts?: {
-  level?: string;
-  prefix?: string
-}): UseForgeApiReturnReact | UseForgeApiBoundReturnReact<string> {
-  const bound = opts?.level !== undefined
-    ? useForge({ level: opts.level, prefix: opts.prefix as string })
+export function useForgeApi<L extends string>(level: L, prefix: string): UseForgeApiBoundReturnReact<L>;
+export function useForgeApi(level?: string, prefix?: string): UseForgeApiReturnReact | UseForgeApiBoundReturnReact<string> {
+  const bound = level !== undefined
+    ? useForge(level, prefix as string)
     : undefined;
   const unbound = bound === undefined ? useForge() : undefined;
   const [pending, setPending] = useState(false);

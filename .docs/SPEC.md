@@ -874,7 +874,7 @@ interface BoundForge<LL = Promise<void>> {
 - `onLevelLoaded()`：等待当前 level 加载完成后 resolve，resolve 值为 BoundForge 自身。与 `ready()` 相同的异步模式（无参返回 Promise，有参走回调）。
 - `useRoutePrefix(prefix)`：在已绑定 level 基础上追加路由名前缀，返回新的 BoundForge。level 一旦绑定不可更换。
 
-> 设计意图：`forge.use()` 作为唯一绑定入口，统一了 Vue `useForge(level)`、React `useForge({ level })` 和 IIFE 场景的底层实现。用户无论在哪种环境，API 表面完全一致。
+> 设计意图：`forge.use()` 作为唯一绑定入口，统一了 Vue `useForge(level)`、React `useForge(level)` 和 IIFE 场景的底层实现。用户无论在哪种环境，API 表面完全一致。
 
 #### 4.1.8 加载中标识
 
@@ -1478,7 +1478,7 @@ class ForgeError extends Error {
 - ✅ 前端：懒加载、隔离缓存、并发去重、拦截器、严格模式、摘要端点自动发现
 - ✅ Adapter：auto 检测、内置 builtin、axios 复用、自定义 Fetcher
 - ✅ Vue 插件：`useForge(level?, prefix?)`（内部委托 `forge.use()`，层级绑定 + `levelLoaded` Ref）/`useForgeApi`/`useForgeRoute`
-- ✅ React 集成：`RouteForgeProvider` / `useForge({ level?, prefix? })`（内部委托 `forge.use()`，`levelLoaded` boolean） / `useForgeApi` / `useForgeRoute`
+- ✅ React 集成：`RouteForgeProvider` / `useForge(level?, prefix?)`（内部委托 `forge.use()`，`levelLoaded` boolean） / `useForgeApi` / `useForgeRoute`
 - ✅ Core API：`forge.ready()` 方法（返回 `Promise<RouteForge>`）/ `forge.use(level?, prefix?)` 统一绑定入口 / `BoundForge` 接口（`onLevelLoaded()` / `useRoutePrefix()`）
 
 ### 8.2 v1.x 路线图

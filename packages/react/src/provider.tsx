@@ -4,7 +4,7 @@
  *
  * 提供：
  *   - RouteForgeProvider：React Context Provider，注入 RouteForge 实例
- *   - useForge() / useForge({ level }) / useForge({ level, prefix }) 返回统一方法的 forge 实例
+ *   - useForge() / useForge(level) / useForge(level, prefix) 返回统一方法的 forge 实例
  *     • 不传 level：forge.api(level, name, params?) 直接调用
  *     • 传 level：forge(name, params?) 可直接调用（= api 快捷方式），自动绑定层级
  *     • 传 level + prefix：forge(suffix, params?) 自动拼接 prefix
@@ -156,37 +156,28 @@ export type ReactBoundForge = BoundForge<boolean>;
  * forge.api('admin', 'users.show', { user: 1 })
  *
  * // 绑定层级 — 可直接调用，也可通过 api/route/url
- * const forge = useForge({ level: 'admin' })
+ * const forge = useForge('admin')
  * forge.level                    // → 'admin'
  * forge.levelLoaded              // boolean
  * forge('users.show', { user: 1 })
  * forge.route('users.show', { user: 1 })
  *
  * // 绑定层级 + 前缀 — 路由名自动拼接
- * const forge = useForge({ level: 'admin', prefix: 'users' })
+ * const forge = useForge('admin', 'users')
  * forge('show', { user: 1 })
  * forge.route('show', { user: 1 })
  * ```
  */
-export function useForge(options: {
-  level: string;
-  prefix: string
-}): ReactBoundForge;
-export function useForge(options: { level: string }): ReactBoundForge;
+export function useForge<L extends string>(level: L, prefix: string): ReactBoundForge;
+export function useForge<L extends string>(level: L): ReactBoundForge;
 export function useForge(): RouteForge;
-export function useForge(opts?: {
-  level?: string;
-  prefix?: string
-}): RouteForge | ReactBoundForge {
+export function useForge(level?: string, prefix?: string): RouteForge | ReactBoundForge {
   const forge = useContext(ForgeContext);
   if (!forge) {
     throw new Error(
       '[route-forge/react] useForge() must be used within a <RouteForgeProvider>',
     );
   }
-
-  const level = opts?.level;
-  const prefix = opts?.prefix;
 
   // 契约：level 为实例级静态绑定——在 hook 首次调用时求值并固定，不支持动态切换。
   // 因为层级与其前缀（prefix）/ 路由名解析语义绑定，中途换 level 会让 prefix 失去意义；

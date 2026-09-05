@@ -241,19 +241,19 @@ createRoot(document.getElementById('root')!).render(
 ```
 
 ```tsx
-// App.tsx — capability parity with Vue; differences: options object, plain-object params
+// App.tsx — capability parity with Vue; difference: plain-object params
 import { useForge, useForgeApi, useForgeRoute } from '@route-forge/react'
 
 export default function App() {
   // Bind a level — later calls don't need the level argument
-  const forge = useForge({ level: 'admin' })
+  const forge = useForge('admin')
 
   // Bind level + prefix — route names are joined automatically
-  const userForge = useForge({ level: 'admin', prefix: 'users' })
+  const userForge = useForge('admin', 'users')
 
   // API calls with loading / error state (also supports level binding and prefix)
-  const { call, pending, error } = useForgeApi({ level: 'admin' })
-  const { call: callUser } = useForgeApi({ level: 'admin', prefix: 'users' })
+  const { call, pending, error } = useForgeApi('admin')
+  const { call: callUser } = useForgeApi('admin', 'users')
 
   // Reactive URL generator: render-phase only; '' until loaded, auto-updates, recomputes on param change
   const detailUrl = useForgeRoute('admin', 'users.show', { user: 1 })

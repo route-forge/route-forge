@@ -65,7 +65,7 @@ forge.ready()
 
 ## useForge — the core hook
 
-Without `level` it returns the full `RouteForge` instance; with `{ level }` it delegates to `forge.use(level, prefix?)` (triggering the level load) and returns a `ReactBoundForge`:
+Without `level` it returns the full `RouteForge` instance; with `level` it delegates to `forge.use(level, prefix?)` (triggering the level load) and returns a `ReactBoundForge`:
 
 ```tsx
 import { useForge } from '@route-forge/react'
@@ -76,7 +76,7 @@ forge.api('admin', 'users.show', { user: 1 })
 forge.ready().then(f => f.use('admin'))           // bind a level once ready
 
 // Bound to a level — callable directly, load triggered automatically
-const users = useForge({ level: 'admin' })
+const users = useForge('admin')
 users.level                                       // → 'admin'
 users.levelLoaded                                 // boolean, true once loaded (triggers re-render)
 users('users.show', { user: 1 })                  // callable (= users.api() shorthand)
@@ -87,7 +87,7 @@ users.onLevelLoaded()                             // wait until the level is loa
 users.useRoutePrefix('users')                     // returns a NEW BoundForge with the new prefix
 
 // Bound level + prefix — route names joined automatically (ambiguity resolved smartly)
-const userApi = useForge({ level: 'admin', prefix: 'users' })
+const userApi = useForge('admin', 'users')
 userApi('show', { user: 1 })                      // → forge.api('admin', 'users.show', ...)
 userApi.route('show', { user: 1 })                // → forge.route('admin', 'users.show', ...)
 
@@ -109,10 +109,10 @@ For imperative scenarios like click handlers (you cannot `await` during render):
 ```tsx
 import { useForgeApi } from '@route-forge/react'
 
-// Three binding forms (options object; same level semantics as useForge)
+// Three binding forms (positional args; same level semantics as useForge)
 const api = useForgeApi()                                        // unbound: call(level, name, params)
-const admin = useForgeApi({ level: 'admin' })                    // bound: call(name, params)
-const users = useForgeApi({ level: 'admin', prefix: 'users' })   // bound + prefix: call(suffix, params)
+const admin = useForgeApi('admin')                               // bound: call(name, params)
+const users = useForgeApi('admin', 'users')                      // bound + prefix: call(suffix, params)
 
 async function handleClick() {
   const { data, error } = await admin.call('users.show', { user: 1 })
@@ -223,7 +223,7 @@ npx route-forge-codegen --endpoint http://localhost/_forge/routes --out src/type
 
 ```tsx
 // Typo'd route name / param name → compile error; correct call → autocompletion
-const users = useForge({ level: 'admin', prefix: 'users' })
+const users = useForge('admin', 'users')
 await users('show', { user: 1 })      // ✅ params checked at compile time
 ```
 
@@ -237,7 +237,7 @@ See the [core README "Type safety" section](../core/README.md#type-safety-option
 | `useForgeApi` `pending` / `error` | — (use `LoadingTracker`) | `Ref<boolean>` / `Ref<unknown>` | `boolean` / `unknown` |
 | URL generation returns | `string` (sync; throws when unready) | `ComputedRef<string>` (`''` until ready) | `string` (`''` until ready) |
 | `useForgeRoute` params | — | getter function | plain object (content-compared deps) |
-| Binding signature | `forge.use(level, prefix?)` | `useForge(level?, prefix?)` | `useForge({ level?, prefix? })` |
+| Binding signature | `forge.use(level, prefix?)` | `useForge(level?, prefix?)` | `useForge(level?, prefix?)` |
 
 ## FAQ
 

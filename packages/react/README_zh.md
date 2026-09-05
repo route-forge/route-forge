@@ -63,7 +63,7 @@ forge.ready()
 
 ## useForge — 核心 hook
 
-无 `level` 时返回完整 `RouteForge` 实例；传入 `{ level }` 时内部调用 `forge.use(level, prefix?)`（自动触发层级加载），返回 `ReactBoundForge`：
+无 `level` 时返回完整 `RouteForge` 实例；传入 `level` 时内部调用 `forge.use(level, prefix?)`（自动触发层级加载），返回 `ReactBoundForge`：
 
 ```tsx
 import { useForge } from '@route-forge/react'
@@ -74,7 +74,7 @@ forge.api('admin', 'users.show', { user: 1 })
 forge.ready().then(f => f.use('admin'))           // 等待就绪后绑定层级
 
 // 绑定层级 — 可直接调用，自动触发 load
-const users = useForge({ level: 'admin' })
+const users = useForge('admin')
 users.level                                       // → 'admin'
 users.levelLoaded                                 // boolean，加载完成后为 true（触发重渲染）
 users('users.show', { user: 1 })                  // 直接调用 = users.api() 快捷方式
@@ -85,7 +85,7 @@ users.onLevelLoaded()                             // 等待 level 加载完成
 users.useRoutePrefix('users')                     // 以新前缀返回新的 BoundForge
 
 // 绑定层级 + 前缀 — 路由名自动拼接（歧义时智能消解）
-const userApi = useForge({ level: 'admin', prefix: 'users' })
+const userApi = useForge('admin', 'users')
 userApi('show', { user: 1 })                      // → forge.api('admin', 'users.show', ...)
 userApi.route('show', { user: 1 })                // → forge.route('admin', 'users.show', ...)
 
@@ -107,10 +107,10 @@ users.invalidate()                                // 失效绑定层级缓存
 ```tsx
 import { useForgeApi } from '@route-forge/react'
 
-// 三种调用形态（选项对象，level 绑定语义与 useForge 一致）
+// 三种调用形态（位置参数，level 绑定语义与 useForge 一致）
 const api = useForgeApi()                                        // 未绑定：call(level, name, params)
-const admin = useForgeApi({ level: 'admin' })                    // 绑定层级：call(name, params)
-const users = useForgeApi({ level: 'admin', prefix: 'users' })   // 绑定层级 + 前缀：call(suffix, params)
+const admin = useForgeApi('admin')                               // 绑定层级：call(name, params)
+const users = useForgeApi('admin', 'users')                      // 绑定层级 + 前缀：call(suffix, params)
 
 async function handleClick() {
   const { data, error } = await admin.call('users.show', { user: 1 })
@@ -220,7 +220,7 @@ npx route-forge-codegen --endpoint http://localhost/_forge/routes --out src/type
 
 ```tsx
 // 拼错路由名 / 参数名 → 编译期报错；正确调用 → 自动补全
-const users = useForge({ level: 'admin', prefix: 'users' })
+const users = useForge('admin', 'users')
 await users('show', { user: 1 })      // ✅ params 类型自动校验
 ```
 
@@ -234,7 +234,7 @@ await users('show', { user: 1 })      // ✅ params 类型自动校验
 | `useForgeApi` 的 `pending` / `error` | —（用 `LoadingTracker`） | `Ref<boolean>` / `Ref<unknown>` | `boolean` / `unknown` |
 | URL 生成返回值 | `string`（同步，未就绪抛错） | `ComputedRef<string>`（未就绪为 `''`） | `string`（未就绪为 `''`） |
 | `useForgeRoute` 的 params | — | getter 函数 | 普通对象（按内容对比依赖） |
-| 绑定签名 | `forge.use(level, prefix?)` | `useForge(level?, prefix?)` | `useForge({ level?, prefix? })` |
+| 绑定签名 | `forge.use(level, prefix?)` | `useForge(level?, prefix?)` | `useForge(level?, prefix?)` |
 
 ## 常见问题
 
