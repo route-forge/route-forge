@@ -46,6 +46,7 @@ const url2 = forge.url('public', 'login.show')    // url() is a semantic alias o
 forge.hasRoute('admin', 'users.show')             // true / false
 forge.getRoutes('admin')                          // snapshot of one level (deep copy)
 forge.getRoutes()                                 // all loaded levels, grouped by level
+forge.getLevels()                                 // declared levels (incl. unassigned); [] until ready on network bootstrap
 
 // Level loading & cache management
 await forge.load('admin')                         // load a level (concurrent calls deduplicated)
@@ -97,7 +98,7 @@ The three loading phases and how to track them:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `endpoint` | `string` | — | summary/manifest endpoint path (network source). Optional: at least one of `endpoint`, `summary`, or an embedded `window.__ROUTE_FORGE__` must exist, otherwise `createRouteForge` throws `TypeError` |
+| `endpoint` | `string` | `/_forge/routes` | summary/manifest endpoint path (network source). Optional: when all three sources (`endpoint` / `summary` / embedded `window.__ROUTE_FORGE__`) are absent, network bootstrap falls back to the backend-agreed default summary endpoint `/_forge/routes` (no throw) |
 | `summary` | `SummaryResponse` | — | Provide the summary directly (tests / non-global bootstrap), skipping the summary HTTP request. Takes lower priority than an embedded `window.__ROUTE_FORGE__` |
 | `levels` | `string[]` | auto-discovered | discovered from the summary when omitted; when given, intersected with the backend summary (the frontend cannot declare levels the backend doesn't know) |
 | `eager` | `string[]` | backend `load:'eager'` levels | levels preloaded after discovery; union with the backend marks when given |

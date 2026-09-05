@@ -532,6 +532,7 @@ await forge.load(['client', 'manage']);
   `0`=永久、`undefined`=后端未表态时用前端 `cache.ttl` 兜底、正整数=`min(后端, cache.ttl)`（后端为上限，前端只能缩短不能延长）。
 - 调用 `forge.invalidate(level?)` 手动失效：传参失效指定层级，不传则失效全部。
 - `forge.isLoaded(level?)` 检查缓存状态：传参检查指定层级是否已加载，不传检查全部已声明层级。
+- `forge.getLevels(): string[]` 只读发现当前已知的已声明层级（含后端恒注入的 `unassigned`）：内嵌 / `summary` 引导构造后即返回；网络引导 `ready()` 前返回 `[]`、之后为全量；返回副本，不触发加载、未就绪不抛错。
 - `storage: 'localStorage'` 时，跨会话保留路由表；`sessionStorage` 仅当前标签页有效；`memory` 重载即丢。
 - storage 模式内存镜像：读盘解析（`getItem` + `JSON.parse` 整层路由表）是同步阻塞操作，
   `route()`/`api()` 热路径上重复执行代价高。首次读取解析后条目驻留内存，后续 `get` 直接命中；
@@ -1059,7 +1060,7 @@ Route Forge 的初始化涉及三个独立的异步阶段，理解它们的关�
 
 ```
 ① Auto-discovery（摘要）      ──  获取所有层级的元信息索引
-       ·  来源级联：页面内嵌 window.__ROUTE_FORGE__ > createRouteForge({summary}) > 网络 GET {endpoint}
+       ·  来源级联：页面内嵌 window.__ROUTE_FORGE__ > createRouteForge({summary}) > 网络 GET {endpoint}（endpoint 缺省走默认 /_forge/routes）
        ·  命中内嵌/配置 → 同步完成、不发网络；命中网络 → 异步回填（见 §4.1.1 / §5.3）
        ↓
 ② Level load（层级加载）      ──  拉取 eager 层级的完整路由表
@@ -1320,7 +1321,7 @@ const forge = createRouteForge({
 
 | 键                      | 类型                                         | 默认值             | 说明                                                                  |
 |-------------------------|----------------------------------------------|--------------------|-----------------------------------------------------------------------|
-| `endpoint`              | `string`（可选）                            | —                  | 摘要端点 URL（网络来源）。与 `summary`、页面内嵌 `window.__ROUTE_FORGE__` 三者必有一，否则抛 `TypeError`（见 §4.1.1 级联） |
+| `endpoint`              | `string`（可选）                            | `/_forge/routes`   | 摘要端点 URL（网络来源）。可省略：三源（`endpoint` / `summary` / 页面内嵌 `window.__ROUTE_FORGE__`）皆无时，网络引导回退到与后端约定的默认摘要端点 `/_forge/routes`（见 §4.1.1 级联） |
 | `summary`               | `SummaryResponse`（可选）                    | —                  | 直接提供摘要数据（如测试/非全局引导），跳过摘要 HTTP；优先级低于页面内嵌 `window.__ROUTE_FORGE__`                          |
 | `levels`                | `string[]`                                   | 自动发现           | 声明存在的层级名列表；未传时通过摘要端点（§3.1.6）自动获取            |
 | `eager`                 | `string[]`                                   | 自动发现           | 初始化时立即拉取的层级；未传时读取摘要端点返回的 `load: 'eager'` 标记 |
@@ -1372,7 +1373,7 @@ const forge = createRouteForge({
 
 前端初始化流程（摘要来源级联，SPEC §4.1.1 / §3.1.8）：
 
-1. 解析摘要来源：若存在页面内嵌 `window.__ROUTE_FORGE__` → 消费它（一次性读取、自删、memo）；否则若有 `createRouteForge({ summary })` → 用它；否则若配置了 `endpoint` → 网络 `GET {endpoint}` 拉摘要；三者皆无 → 抛 `TypeError`。`options` 参数本身可省略（`createRouteForge()` 等价 `createRouteForge({})`），摘要全来自内嵌时可直接无参调用。
+1. 解析摘要来源：若存在页面内嵌 `window.__ROUTE_FORGE__` → 消费它（一次性读取、自删、memo）；否则若有 `createRouteForge({ summary })` → 用它；否则走网络 `GET {endpoint}` 拉摘要，`endpoint` 缺省时使用与后端约定的默认摘要端点 `/_forge/routes`（不再因三源皆无而抛 `TypeError`）。`options` 参数本身可省略（`createRouteForge()` 等价 `createRouteForge({})`），摘要全来自内嵌时可直接无参调用。
 2. 命中内嵌/配置摘要时，`autoDiscovery` 同步完成（构造后 `route()`/`ready()` 立即可用）；命中网络时按响应回填。
 3. 折算出的 `config` 作为最高优先级覆盖前端配置；`levels` 用于发现层级与 `eager` 标记；各层级 `route.uri` 供懒加载拼 URL。
 

@@ -24,6 +24,7 @@ import {
 import { buildRequestUrl } from './url-builder.js';
 import {
   applySummaryToState,
+  DEFAULT_ENDPOINT,
   fetchSummary,
   type DiscoveryInputs,
   type DiscoveryState,
@@ -46,12 +47,8 @@ const DEFAULT_CACHE_TTL = 3600;
 
 export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
   // 摘要数据源级联（SPEC §4.1.1）：页面内嵌 > 配置 summary 字段 > 网络拉取 endpoint。
+  // endpoint 省略时不再抛错：三者皆无则网络拉取回退到与后端约定的默认摘要端点（DEFAULT_ENDPOINT）。
   const bootstrapSummary = readEmbeddedSummary() ?? options.summary ?? null;
-  if (!bootstrapSummary && !options.endpoint) {
-    throw new TypeError(
-      'createRouteForge: 需要 options.endpoint，或 options.summary，或页面内嵌 window.__ROUTE_FORGE__',
-    );
-  }
 
   const {
     adapter = 'auto',
@@ -74,7 +71,7 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
   const discoveryState: DiscoveryState = {
     levels: explicitLevels ?? [],
     eager: explicitEager ?? [],
-    endpoint: explicitEndpoint ?? bootstrapSummary?.config?.endpoint_prefix ?? '',
+    endpoint: explicitEndpoint ?? bootstrapSummary?.config?.endpoint_prefix ?? DEFAULT_ENDPOINT,
     urlPrefix: '',
     cacheTtl: undefined,
     levelRoutes: {},
@@ -232,6 +229,10 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     return level === undefined ? store.getRoutes() : store.getRoutes(level);
   }
 
+  function getLevels(): string[] {
+    return [...discoveryState.levels];
+  }
+
   function route(level: string, name: string, params?: Record<string, unknown>): string {
     assertDiscoveryReady();
     // 静态生成 URL：仅查已加载缓存，未加载时抛 UnknownRouteError
@@ -327,6 +328,7 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     isLoaded,
     hasRoute,
     getRoutes,
+    getLevels,
     isLoading: () => loadingTracker.isLoading(),
     onLoadingChange: (cb: LoadingChangeCallback) => loadingTracker.subscribe(cb),
     interceptors: {

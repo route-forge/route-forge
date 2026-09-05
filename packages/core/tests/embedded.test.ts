@@ -4,7 +4,7 @@
  * 覆盖：
  *   - window.__ROUTE_FORGE__ 一次性访问器：core 读取后跳过摘要 HTTP；构造后 route() 同步可用
  *   - module 级 memo：同页多实例（消费删除后）仍能复用摘要
- *   - 级联优先级：内嵌 > 配置 summary 字段 > 网络；三者皆缺抛 TypeError
+ *   - 级联优先级：内嵌 > 配置 summary 字段 > 网络；三者皆缺回退默认端点 /_forge/routes
  *   - 层级懒加载 URL 取自摘要 levels[].route.uri（自定义 uri 优先于 endpoint_prefix 拼接）
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -149,9 +149,50 @@ describe('embedded summary hydration (window.__ROUTE_FORGE__)', () => {
     expect(summaryRequested).toBe(false);
   });
 
-  it('throws TypeError when embedded, summary option, and endpoint are all absent', () => {
-    // 无 window 内嵌、无 summary、无 endpoint —— 传对象与零参都应给出友好 TypeError（而非读 undefined 崩溃）
-    expect(() => createRouteForge({ adapter: 'builtin' })).toThrow(TypeError);
-    expect(() => createRouteForge()).toThrow(TypeError);
+  it('falls back to the default endpoint when embedded, summary option, and endpoint are all absent', async () => {
+    // 三源皆无不再抛 TypeError：endpoint 省略时回退到与后端约定的默认摘要端点 /_forge/routes 拉取
+    const calls: string[] = [];
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      calls.push(url);
+      return jsonResponse(
+        makeSummary({ levels: { public: { description: 'public', load: 'lazy', route_count: 1 } } }),
+      );
+    });
+    const forge = createRouteForge({ adapter: 'builtin' });
+    await forge.ready();
+    expect(calls).toContain('/_forge/routes');
+    expect(forge.getLevels()).toContain('public');
+  });
+
+  it('getLevels() returns declared levels synchronously from embedded summary and is a defensive copy', () => {
+    injectEmbedded(
+      makeSummary({
+        levels: {
+          public: { description: 'p', load: 'lazy', route_count: 0 },
+          unassigned: { description: 'u', load: 'lazy', route_count: 0 },
+        },
+      }),
+    );
+    (globalThis as any).fetch = vi.fn(async () => jsonResponse(publicTable));
+    const forge = createRouteForge({ adapter: 'builtin' });
+    expect(forge.getLevels().sort()).toEqual(['public', 'unassigned']);
+    // 返回副本：外部 push 不影响内部状态
+    forge.getLevels().push('tamper');
+    expect(forge.getLevels()).not.toContain('tamper');
+  });
+
+  it('getLevels() is [] before ready on the network path and full after', async () => {
+    const calls: string[] = [];
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      calls.push(url);
+      return jsonResponse(
+        makeSummary({ levels: { admin: { description: 'a', load: 'lazy', route_count: 0 } } }),
+      );
+    });
+    const forge = createRouteForge({ endpoint: '/_forge/routes', adapter: 'builtin' });
+    expect(forge.getLevels()).toEqual([]); // 摘要尚未回填，只读发现返回空数组、不抛错
+    await forge.ready();
+    expect(forge.getLevels()).toEqual(['admin']);
+    expect(calls).toContain('/_forge/routes');
   });
 });

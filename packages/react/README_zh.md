@@ -93,7 +93,7 @@ userApi.route('show', { user: 1 })                // → forge.route('admin', 'u
 users.load()                                      // 加载绑定层级
 users.isLoaded()                                  // 检查绑定层级缓存
 users.invalidate()                                // 失效绑定层级缓存
-// 全局方法：isLoading() / onLoadingChange() / hasRoute(name) / getRoutes()
+// 全局方法：isLoading() / onLoadingChange() / hasRoute(name) / getRoutes() / getLevels()
 ```
 
 > **注意**：`useForge()` 无 `level` 时返回的完整实例在 auto-discovery 未完成前调用 `route()` / `hasRoute()` 可能抛守卫错误（`RF_FE_010`）。建议 `await forge.ready()`，或生成链接直接用 `useForgeRoute`。

@@ -10,6 +10,14 @@
   随错误逐段传递（响应拦截器 `onRejected` 链 → 最终 catch）。典型场景：Laravel 422 字段级校验错误回显，
   `err.response.data.errors` 直接可用，无需再发请求。业务请求（builtin / axios / 自定义 Fetcher 统一转换点）
   与元信息拉取通道的 HTTPError 均注入该字段。
+- `RouteForge.getLevels(): string[]`：只读发现 API，返回当前已知的已声明层级（含后端恒注入的 `unassigned`）。
+  内嵌 / `summary` 引导构造后即可用；网络引导 `ready()` 前返回 `[]`、之后为全量；返回副本，不触发加载、未就绪不抛错。
+
+### Changed
+
+- `createRouteForge` 摘要级联：`options.endpoint` 由「三源皆无时抛 `TypeError`」放宽为「可省略」——当 `endpoint` /
+  `summary` / 页面内嵌 `window.__ROUTE_FORGE__` 三源皆无时，网络引导回退到与后端约定的默认摘要端点 `/_forge/routes`
+  （core 新增 `DEFAULT_ENDPOINT` 常量）。向后兼容：原先会抛错的调用现在能正常完成引导。
 
 ### Fixed
 

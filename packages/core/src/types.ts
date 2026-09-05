@@ -253,6 +253,13 @@ export interface RouteForge {
   getRoutes(level: string): Record<string, RouteMeta>;
   getRoutes(): Record<string, Record<string, RouteMeta>>;
 
+  /**
+   * 当前已知的已声明层级列表（含后端恒注入的 `unassigned`）。
+   * 内嵌 / `summary` 引导：构造后即可用；网络引导：`ready()` 前可能为空数组、之后为全量。
+   * 只读发现 API，不触发加载、未就绪不抛错（返回 `[]`）。
+   */
+  getLevels(): string[];
+
   /** 拦截器入口（请求 / 响应） */
   interceptors: {
     request: InterceptorManager<RequestConfig, RequestConfig>;

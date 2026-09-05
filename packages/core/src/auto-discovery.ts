@@ -17,6 +17,12 @@ import type { SummaryResponse } from './types.js';
  */
 export const UNASSIGNED_LEVEL = 'unassigned';
 
+/**
+ * 与后端约定的默认摘要端点：`options.endpoint` 省略、且无内嵌/配置摘要时，
+ * 网络引导回退拉取此路径（相对 baseURL）。与 route-forge-laravel 默认 manifest 路由对齐。
+ */
+export const DEFAULT_ENDPOINT = '/_forge/routes';
+
 /** 层级明细端点自描述（来自摘要 levels[].route） */
 export interface LevelRouteDescriptor {
   uri: string;
@@ -54,7 +60,7 @@ export interface DiscoveryInputs {
 export type MetaFetcher = (routeTag: string, url: string, level?: string) => Promise<unknown>;
 
 /**
- * 拉取摘要端点（网络级联来源）。URL = baseURL + 显式 endpoint。
+ * 拉取摘要端点（网络级联来源）。URL = baseURL + endpoint；endpoint 缺省时回退 DEFAULT_ENDPOINT。
  * 失败语义：显式传了 levels → 降级（warn + 返回 null，effective* 保持显式初值）；
  * 未传 levels → 无可用降级，抛 UnknownLevelError（ready() 将 reject）。
  */
@@ -64,13 +70,11 @@ export async function fetchSummary(
   fetchMeta: MetaFetcher,
 ): Promise<SummaryResponse | null> {
   const { explicitLevels, explicitEndpoint } = inputs;
-  if (!explicitEndpoint) {
-    // 网络拉取要求有 endpoint；无 endpoint 的引导（内嵌/配置摘要）不会走到这里
-    throw new UnknownLevelError('(auto-discovery)');
-  }
+  // endpoint 缺省时回退到与后端约定的默认摘要端点（用户显式指定则优先其值）
+  const endpoint = explicitEndpoint ?? DEFAULT_ENDPOINT;
   try {
     const base = baseURL.endsWith('/') ? baseURL.slice(0, -1) : baseURL;
-    const ep = explicitEndpoint.startsWith('/') ? explicitEndpoint : `/${explicitEndpoint}`;
+    const ep = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
     const data = await fetchMeta('__forge__.summary', `${base}${ep}`);
     return data as SummaryResponse;
   } catch (e) {

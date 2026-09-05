@@ -79,7 +79,7 @@ userApi.route('show', { user: 1 })                // → forge.route('admin', 'u
 users.load()                                      // load the bound level
 users.isLoaded()                                  // check the bound level's cache
 users.invalidate()                                // invalidate the bound level's cache
-// Global methods: isLoading() / onLoadingChange() / hasRoute(name) / getRoutes()
+// Global methods: isLoading() / onLoadingChange() / hasRoute(name) / getRoutes() / getLevels()
 ```
 
 > **Note**: the unbound full instance may throw the guard error (`RF_FE_010`) from `route()` / `hasRoute()` before auto-discovery completes. Prefer `await forge.ready()`, or use `useForgeRoute` for links.

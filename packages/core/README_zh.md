@@ -46,6 +46,7 @@ const url2 = forge.url('public', 'login.show')    // url() 是 route() 的语义
 forge.hasRoute('admin', 'users.show')             // true / false
 forge.getRoutes('admin')                          // 指定层级的路由表快照（深拷贝）
 forge.getRoutes()                                 // 全部已加载层级（按 level 分组）
+forge.getLevels()                                 // 已声明层级（含 unassigned）；网络引导就绪前为 []
 
 // 层级加载与缓存管理
 await forge.load('admin')                         // 加载层级（并发自动去重）
@@ -98,7 +99,7 @@ await forge.ready()
 
 | 选项 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `endpoint` | `string` | — | 摘要/manifest 端点路径（网络来源）。可选：`endpoint`、`summary`、页面内嵌 `window.__ROUTE_FORGE__` 三者必有一，否则 `createRouteForge` 抛 `TypeError` |
+| `endpoint` | `string` | `/_forge/routes` | 摘要/manifest 端点路径（网络来源）。可省略：`endpoint` / `summary` / 页面内嵌 `window.__ROUTE_FORGE__` 三源皆无时，网络引导回退到与后端约定的默认摘要端点 `/_forge/routes`（不再抛错） |
 | `summary` | `SummaryResponse` | — | 直接提供摘要数据（测试 / 非全局引导），跳过摘要 HTTP；优先级低于页面内嵌 `window.__ROUTE_FORGE__` |
 | `levels` | `string[]` | 自动发现 | 不传时从摘要自动发现；显式传入时取与后端摘要的**交集**（前端不能声明后端不存在的层级） |
 | `eager` | `string[]` | 后端 `load:'eager'` 层级 | 预加载层级；显式传入时与后端标记取**并集** |
