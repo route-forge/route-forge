@@ -117,6 +117,44 @@ describe('HTTP error semantics (builtin adapter)', () => {
     expect(result).toEqual({ recovered: true });
   });
 
+  it('422 HTTPError carries the full ResponseData for error-echo flows (Laravel errors field)', async () => {
+    const { forge } = await createLoadedForge({
+      apiStatus: 422,
+      apiBody: { message: 'The given data was invalid.', errors: { email: ['must be a valid email'] } },
+    });
+    // ① 响应拦截器 onRejected：可逐段读取 err.response 判断如何处理
+    const seenInInterceptor: { status: number; data: unknown }[] = [];
+    forge.interceptors.response.use(undefined, (e) => {
+      if (e instanceof HTTPError && e.response) {
+        seenInInterceptor.push({ status: e.response.status, data: e.response.data });
+      }
+      throw e; // 不恢复，继续向调用方传递
+    });
+    // ② 最终 catch：err.response.data.errors 可直接取用
+    let caught: HTTPError | undefined;
+    try {
+      await forge.api('public', 'users.upload');
+      expect.fail('should have thrown');
+    } catch (e) {
+      caught = e as HTTPError;
+    }
+    expect(seenInInterceptor).toEqual([
+      {
+        status: 422,
+        data: { message: 'The given data was invalid.', errors: { email: ['must be a valid email'] } },
+      },
+    ]);
+    expect(caught).toBeInstanceOf(HTTPError);
+    expect(caught!.code).toBe('RF_FE_008');
+    expect(caught!.response!.status).toBe(422);
+    expect((caught!.response!.data as { errors: { email: string[] } }).errors.email).toEqual([
+      'must be a valid email',
+    ]);
+    // response.config 是请求拦截链输出的 RequestConfig（route/method/url 可用于上报）
+    expect(caught!.response!.config.route).toBe('users.upload');
+    expect(caught!.response!.config.method).toBe('POST');
+  });
+
   it('response onFulfilled only receives 2xx responses', async () => {
     const { forge } = await createLoadedForge({ apiStatus: 404 });
     const fulfilled: unknown[] = [];

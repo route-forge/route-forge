@@ -106,5 +106,24 @@ describe('error codes and payloads', () => {
     expect(e.context?.status).toBe(503);
     expect(e.context?.url).toBe('/x');
     expect(e.context?.method).toBe('GET');
+    expect(e.response).toBeUndefined();
+  });
+
+  it('HTTPError optionally carries the full ResponseData', () => {
+    const resp = {
+      route: 'x',
+      level: 'public',
+      method: 'POST',
+      url: '/x',
+      status: 422,
+      headers: new Headers(),
+      data: { message: 'The given data was invalid.', errors: { email: ['must be a valid email'] } },
+      config: {} as never,
+    };
+    const e = new HTTPError('HTTP 422 for route "x"', { route: 'x', status: 422, response: resp });
+    expect(e.response).toBe(resp);
+    expect((e.response?.data as { errors: Record<string, string[]> }).errors.email).toEqual([
+      'must be a valid email',
+    ]);
   });
 });

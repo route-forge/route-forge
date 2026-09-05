@@ -1404,7 +1404,7 @@ const forge = createRouteForge({
 | `AdapterNotFoundError`          | `RF_FE_005` | `adapter: 'axios'` 但未检测到 axios        |
 | `InvalidInterceptorReturnError` | `RF_FE_006` | 请求拦截器返回非 `RequestConfig`           |
 | `NetworkError`                  | `RF_FE_007` | adapter 抛出的网络错误（DNS、连接超时等）  |
-| `HTTPError`                     | `RF_FE_008` | HTTP 非 2xx 且未被 `onRejected` 拦截器恢复 |
+| `HTTPError`                     | `RF_FE_008` | HTTP 非 2xx 且未被 `onRejected` 拦截器恢复；`response` 携带完整 ResponseData 供逐段检查响应体 |
 | `RequestAbortedError`           | `RF_FE_009` | 请求被 `AbortSignal` 取消                  |
 | `ForgeError`（守卫）            | `RF_FE_010` | auto-discovery 未完成时调用 `route()` / `hasRoute()`（见 §4.1.9） |
 
@@ -1419,6 +1419,9 @@ class ForgeError extends Error {
     readonly level?: string;      // 触发错误的层级（如适用）
     readonly context?: Record<string, unknown>;  // 额外上下文（如缺失的参数名、HTTP 状态等）
     readonly cause?: unknown;     // 原始错误（如 adapter 抛出的底层错误）
+    // 仅 HTTPError (RF_FE_008)：完整 ResponseData（status/headers/data/config），
+    // 随错误逐段传递（响应拦截器 onRejected 链 → 最终 catch），供调用方检查响应体
+    readonly response?: ResponseData;
 }
 ```
 
@@ -1427,6 +1430,8 @@ class ForgeError extends Error {
 - 所有错误都可通过 `error.code` 精确匹配，便于在 `onRejected` 拦截器中分支处理。
 - `error.route` / `error.level` 让错误日志能定位到具体路由，便于排查。
 - `error.cause` 保留原始错误链，便于深层调试；序列化时建议只输出 `code + route + message`。
+- `HTTPError.response`（仅 RF_FE_008）携带完整 ResponseData：Laravel 422 字段级校验错误回显（`err.response.data.errors`）等
+  场景可在响应拦截器 `onRejected` 与最终 catch 中直接读取，无需再发请求。
 - 网络层与 HTTP 层错误（`NetworkError`/`HTTPError`）的 `context` 包含 `status`、`url`、`method`、`headers`。
 - 拦截器 `onRejected` 收到的错误都是 `ForgeError` 实例；用户在 `onRejected` 中抛新错误会替换原错误（与 axios 一致）。
 

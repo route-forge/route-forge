@@ -179,7 +179,7 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     if (!resp || resp.status < 200 || resp.status >= 300) {
       throw new HTTPError(
         `Failed to fetch "${routeTag}": HTTP ${resp?.status}`,
-        { level, status: resp?.status, url, method: 'GET' },
+        { level, status: resp?.status, url, method: 'GET', response: resp ?? undefined },
       );
     }
     return resp.data;

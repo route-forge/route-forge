@@ -352,7 +352,7 @@ const data = await forge.api('unassigned', 'some.route')
 | `AdapterNotFoundError` | `RF_FE_005` | `adapter: 'axios'` 但宿主未安装 / 无有效 axios |
 | `InvalidInterceptorReturnError` | `RF_FE_006` | 请求拦截器未返回 RequestConfig 对象 |
 | `NetworkError` | `RF_FE_007` | 网络层失败（DNS、连接被拒等），`cause` 保留原始错误 |
-| `HTTPError` | `RF_FE_008` | HTTP 非 2xx，`context.status` 为状态码 |
+| `HTTPError` | `RF_FE_008` | HTTP 非 2xx，`context.status` 为状态码；`response` 携带完整 ResponseData（如 Laravel 422 校验错误 `err.response.data.errors`） |
 | `RequestAbortedError` | `RF_FE_009` | 请求被 `abort()` / AbortSignal 取消 |
 | `ForgeError`（守卫） | `RF_FE_010` | auto-discovery 未完成时调用 `route()` / `hasRoute()` |
 
@@ -365,8 +365,12 @@ const data = await forge.api('unassigned', 'some.route')
   level?: string,                        // 关联层级
   context?: Record<string, unknown>,     // 附加上下文（如 HTTP 状态码、url、method）
   cause?: unknown,                       // 原始底层错误
+  response?: ResponseData,               // 仅 HTTPError：完整响应（status/headers/data/config），
+                                         // 供响应拦截器 onRejected 与最终 catch 逐段检查响应体
 }
 ```
+
+> 典型场景——Laravel 422 字段级错误回显：`err.response.data.errors` 直接可用，响应拦截器与最终 catch 都能读到，无需再发请求。
 
 ## 工具导出
 

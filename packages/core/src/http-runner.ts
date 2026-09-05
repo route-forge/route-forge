@@ -128,6 +128,9 @@ export function createHttpRunner(deps: HttpRunnerDeps): (
                 status: resp.status,
                 url: resp.url,
                 method: resp.method,
+                // 完整 ResponseData 随错误逐段传递（响应拦截器 onRejected 链 → 最终 catch），
+                // 供调用方检查响应体，如 Laravel 422 校验错误 err.response.data.errors
+                response: resp,
               },
             );
           }

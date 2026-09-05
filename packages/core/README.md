@@ -353,7 +353,7 @@ All errors extend `ForgeError` and carry a stable `code` field (the `ForgeErrorC
 | `AdapterNotFoundError` | `RF_FE_005` | `adapter: 'axios'` but no usable host axios |
 | `InvalidInterceptorReturnError` | `RF_FE_006` | a request interceptor did not return a RequestConfig object |
 | `NetworkError` | `RF_FE_007` | network-layer failure (DNS, refused connection…); `cause` keeps the original error |
-| `HTTPError` | `RF_FE_008` | non-2xx HTTP response; `context.status` holds the status code |
+| `HTTPError` | `RF_FE_008` | non-2xx HTTP response; `context.status` holds the status code; `response` carries the full ResponseData (e.g. Laravel 422 validation errors via `err.response.data.errors`) |
 | `RequestAbortedError` | `RF_FE_009` | request cancelled via `abort()` / AbortSignal |
 | `ForgeError` (guard) | `RF_FE_010` | `route()` / `hasRoute()` called before auto-discovery completed |
 
@@ -366,8 +366,12 @@ Error object shape:
   level?: string,                        // related level
   context?: Record<string, unknown>,     // extra context (HTTP status, url, method…)
   cause?: unknown,                       // original underlying error
+  response?: ResponseData,               // HTTPError only: full response (status/headers/data/config),
+                                         // inspectable step by step in the onRejected chain and final catch
 }
 ```
+
+> Typical use — Laravel 422 field-level error echo: `err.response.data.errors` is directly available in both the response interceptor and the final catch, no extra request needed.
 
 ## Utility exports
 

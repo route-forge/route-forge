@@ -4,6 +4,13 @@
 
 ## Unreleased
 
+### Added
+
+- `HTTPError`（RF_FE_008）新增 `response?: ResponseData` 字段：携带完整响应（status/headers/data/config），
+  随错误逐段传递（响应拦截器 `onRejected` 链 → 最终 catch）。典型场景：Laravel 422 字段级校验错误回显，
+  `err.response.data.errors` 直接可用，无需再发请求。业务请求（builtin / axios / 自定义 Fetcher 统一转换点）
+  与元信息拉取通道的 HTTPError 均注入该字段。
+
 ### Fixed
 
 - `forge.use(level, prefix)` 路由名前缀尾部 separator 归一化：prefix 以 `.` 结尾（含连续多个）时先剥掉再参与拼接与歧义判断，

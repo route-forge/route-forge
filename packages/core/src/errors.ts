@@ -3,6 +3,8 @@
  * @see .docs/SPEC.md §6
  */
 
+import type { ResponseData } from './types.js';
+
 export interface ForgeErrorContext {
   [key: string]: unknown;
 }
@@ -108,11 +110,18 @@ export class NetworkError extends ForgeError {
   }
 }
 
-/** RF_FE_008：HTTP 非 2xx 且未被 onRejected 拦截器恢复 */
+/**
+ * RF_FE_008：HTTP 非 2xx 且未被 onRejected 拦截器恢复。
+ *
+ * `response` 携带完整的 ResponseData（status/headers/data/config），
+ * 供响应拦截器 onRejected 链与最终 catch 逐段检查响应体——典型场景：
+ * Laravel 422 校验错误回显（`err.response.data.errors`）。
+ */
 export class HTTPError extends ForgeError {
+  readonly response?: ResponseData;
   constructor(
     message: string,
-    opts: { route?: string; level?: string; status?: number; url?: string; method?: string; cause?: unknown },
+    opts: { route?: string; level?: string; status?: number; url?: string; method?: string; cause?: unknown; response?: ResponseData },
   ) {
     super(message, {
       code: 'RF_FE_008',
@@ -121,6 +130,7 @@ export class HTTPError extends ForgeError {
       context: { status: opts.status, url: opts.url, method: opts.method },
       cause: opts.cause,
     });
+    if (opts.response !== undefined) this.response = opts.response;
   }
 }
 
