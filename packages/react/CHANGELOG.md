@@ -2,6 +2,14 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## Unreleased
+
+### Added
+
+- `<RouteForgeProvider>` 新增 `onInterceptors` 创建期回调：每个 forge 实例触发**一次**（首次创建 + options 变更重建时），
+  用于在挂载前同步注册请求/响应拦截器，无需钻到子组件 `useForge()` 里挂；null 守卫 + 依赖数组刻意仅含 `options`，
+  StrictMode 双渲染下也只触发一次（请求/响应拦截链只影响后续 `api()` 调用，eager 元信息预加载走 `requestRaw` 旁路不受影响）。
+
 ## 2.2.1 — 2026-09-03
 
 ### Changed

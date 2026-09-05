@@ -130,7 +130,7 @@ Laravel 路由定义里天然包含 HTTP 方法（GET/POST/PUT/DELETE），没�
 拆分后的协作纪律：
 
 - manifest 格式（字段、tier 语义、端点路径）是跨仓契约，变更时两边 PR 同步；
-- 端点响应带 `schemaVersion` 字段，便于前端做兼容判断；
+- 端点响应带 `schemeVersion` 字段（拼写为 scheme 非 schema），便于前端做兼容判断；
 - 两个仓库的 README 互相链接，`.docs/` 目录保留在本仓库作为全链路设计文档。
 
 ### 6.4 为什么 level 不固定

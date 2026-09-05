@@ -458,7 +458,7 @@ const forge = createRouteForge({
     // 显式传 'builtin' 强制使用内置实现（即使装了 axios 也不用）
     // 传自定义 Fetcher 接口（见 4.3.3）跳过 auto 检测
     cache: {
-        ttl: 3600,                  // 默认缓存 TTL（秒），可被后端 levels[level].cache 覆盖
+        ttl: 3600,                  // 前端兜底缓存 TTL（秒）；TTL 唯一来源为摘要 config.cache_ttl（全局），此值仅在后端未下发时兜底，且只能缩短不能延长
         storage: 'memory',          // 'memory' | 'sessionStorage' | 'localStorage'
     },
     interceptors: {              // 声明式注册（等价于创建后调用一次 forge.interceptors.*.use），可选
@@ -508,7 +508,7 @@ forge.interceptors.request.clear();
 - `adapter` 默认 `'auto'`：优先复用宿主项目已有的 axios（自动继承其拦截器/默认配置），未检测到则降级使用包内置的类 axios
   精简实现（见 4.3.1）。adapter 必须在 `createRouteForge()` 调用前确定，未显式指定时使用 `'auto'`检测，检测失败自动降级为内置实现，确保零配置即可运行。
 - `interceptors` 声明式配置只描述**一个**拦截器，支持三种写法：单个函数（视为 `onFulfilled`）、`[resolve?, reject?]` 元组、`{ resolve?, reject? }` 对象。需要注册多个拦截器请改用运行时
-  `forge.interceptors.request/response.use()`（可多次调用）。与所有内置 adapter（axios、builtin）行为一致，均按 4.1.3 的执行规则工作；自定义 Fetcher 接口需自行实现拦截器逻辑（详见 4.3.3）。
+  `forge.interceptors.request/response.use()`（可多次调用）。与所有内置 adapter（axios、builtin）行为一致，均按 4.1.3 的执行规则工作；自定义 Fetcher 无需自行实现拦截器——forge 拦截链由 core 在 adapter 调用外围统一执行（详见 4.3.3）。
 - 登录态与 Token 注入通过拦截器实现，而非内置配置。推荐模式：
     - 请求拦截器注入 `Authorization` 头（Token 从业务层状态读取）
     - 响应拦截器处理 401 响应（跳转登录页、刷新 Token 等）
@@ -528,7 +528,8 @@ await forge.load(['client', 'manage']);
 
 - 每层级缓存条目独立存放，互不污染。拉取 `admin` 不会把 `manage` 的路由带过去。
 - 缓存 key 为 `route-forge:${level}`，按 `cache.storage` 配置选择存储介质。
-- TTL 优先使用后端响应里返回的 `cache` 字段；前端 `cache.ttl` 仅作本地兜底（防止后端没返回时无限缓存）。
+- TTL 唯一来源为摘要 `config.cache_ttl`（全局；层级表响应不下发 `cache` 字段）：`null`=不缓存（不落 storage，每次 load 重取）、
+  `0`=永久、`undefined`=后端未表态时用前端 `cache.ttl` 兜底、正整数=`min(后端, cache.ttl)`（后端为上限，前端只能缩短不能延长）。
 - 调用 `forge.invalidate(level?)` 手动失效：传参失效指定层级，不传则失效全部。
 - `forge.isLoaded(level?)` 检查缓存状态：传参检查指定层级是否已加载，不传检查全部已声明层级。
 - `storage: 'localStorage'` 时，跨会话保留路由表；`sessionStorage` 仅当前标签页有效；`memory` 重载即丢。
@@ -1052,7 +1053,7 @@ const url = useForgeRoute('public', 'login.show');
   （Vue 支持值与 getter 双形态，React `params` 收普通对象按内容比较）。
 - SSR：level 缓存就绪前组件只渲染 loading（或不渲染），链接在客户端 hydration 后自然出现。
 
-#### 4.1.9 初始化合时序与推荐模式
+#### 4.1.9 初始化时序与推荐模式
 
 Route Forge 的初始化涉及三个独立的异步阶段，理解它们的关系对于正确挂载应用至关重要：
 
@@ -1267,7 +1268,7 @@ const forge = createRouteForge({
             const res = await myKyInst(config.url, {method: config.method, ...});
             return {route: config.route, /* ... 其他 ResponseData 字段 */};
         },
-        // 拦截器管理可选；若不提供，则 forge.interceptors.* 对该 adapter 不生效
+        // 拦截器管理可选；forge.interceptors.* 的拦截链由 core 在 adapter 外围统一执行，与此字段无关
         interceptors: undefined,
     },
 });
@@ -1276,20 +1277,21 @@ const forge = createRouteForge({
 约束：
 
 - 自定义 Fetcher 必须返回 `ResponseData`（结构见 4.1.3a），由 Route Forge 接管后续拦截链处理。
-- 如果想保留拦截器能力，需自行实现 `InterceptorManager` 接口；或直接借用内置 builtin adapter 的实现（包会导出
-  `createInterceptorManager()` 工厂函数）。
-- 当 `adapter.interceptors` 为 `undefined` 时，`forge.interceptors.request/response` 仍可调用但不会生效（运行时无操作 +
-  开发模式告警）。
+- 拦截器能力由 Route Forge 统一提供：`forge.interceptors.request/response` 注册的拦截链由 core 在 adapter 调用外围执行
+  （请求链在调用 adapter 前、响应链在其后，规则见 4.1.3），自定义 Fetcher 无需自行实现 `InterceptorManager`；
+  需要自建管理器时可直接借用包导出的 `createInterceptorManager()` 工厂函数。
+- `adapter.interceptors` 字段可省略——省略不影响 `forge.interceptors.*` 生效（拦截链由 core 编排，与此字段无关），
+  该字段仅为与 axios 形状对齐而保留。
 
 #### 4.3.4 与 axios 宿主实例的关系
 
 当 `adapter: 'auto'` 检测到宿主 axios 时：
 
 - Route Forge **不会**接管或修改宿主 axios 实例的拦截器。
-- 宿主 axios 已注册的拦截器（如全局鉴权、错误上报）在 `axios.request()` 内部按 axios 自身顺序执行；Route Forge 自己 `forge.interceptors.use()` 注册的拦截器在外层 `forge.api()` 链中执行。当前实现：**forge 拦截器先于宿主 axios 拦截器执行**（forge 先组装 RequestConfig，再调用 `axios.request()` 触发宿主拦截器）。如需让 forge 拦截器在宿主之后执行，可改为注入式（spec 后续版本演进）。
+- 宿主 axios 已注册的拦截器（如全局鉴权、错误上报）在 `axios.request()` 内部按 axios 自身顺序执行；Route Forge 自己 `forge.interceptors.use()` 注册的拦截器在外层 `forge.api()` 链中执行。当前实现按链路方向区分：**请求链 forge 先执行**（core 先跑完 forge 请求拦截链，再调用 `axios.request()` 触发宿主请求拦截器）；**响应链宿主先执行**（宿主响应拦截器在 axios 内部先行，返回后 core 再跑 forge 响应拦截链）。
 - 宿主 axios 的 `defaults.baseURL`、`defaults.headers` 等配置继承生效；Route Forge 不会覆盖，只在调用时追加 `url`/`method`/
   `headers`/`data`。
-- 若宿主 axios 拦截器与 Route Forge 拦截器行为冲突（如都改 `Authorization`），宿主 axios 拦截器在 forge 之后执行，可覆盖 forge 的设置。
+- 若宿主 axios 请求拦截器与 Route Forge 请求拦截器行为冲突（如都改 `Authorization`），宿主请求拦截器在 forge 请求链之后执行，可覆盖 forge 的设置；响应链方向相反（宿主先、forge 后）。
 
 > 设计意图：把 Route Forge 视为「在已有 axios 之上叠加的路由层」，而非替代宿主 HTTP 客户端。已有 axios 配置保持不变，Route
 > Forge 只负责路由解析与命名调用，把 HTTP 细节交给宿主。

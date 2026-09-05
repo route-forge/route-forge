@@ -5,7 +5,8 @@
  * 设计约定：
  * - 不接管或修改宿主 axios 已有拦截器/defaults 配置，仅调用其 request 入口
  * - 宿主 axios 的 defaults.baseURL/defaults.headers 自动生效
- * - 宿主已注册的拦截器会先执行；Route Forge 自身拦截器在宿主拦截器之后执行
+ * - 请求链：Route Forge 自身请求拦截器先执行（core 先跑完 forge 请求链再调 axios.request），宿主请求拦截器在其后；
+ *   响应链：宿主响应拦截器在 axios 内部先行，Route Forge 响应拦截器在其后执行
  * - 未检测到 axios 时返回 null（让 'auto' 自动降级到 builtin）
  */
 
@@ -84,6 +85,7 @@ export async function wrapAxiosAdapter(): Promise<ResolvedAdapter | null> {
   }
 
   // 不暴露宿主 axios 的 interceptors manager（避免覆盖 Route Forge 的统一时序）；
-  // Route Forge 调用链由 forge.interceptors 控制，宿主拦截器先执行由 axios 内部保证。
+  // Route Forge 请求拦截链在调用 axios.request 前执行、响应拦截链在返回后执行，
+  // 宿主拦截器的相对位置由 axios 内部决定（请求链在 forge 后、响应链在 forge 前）。
   return { request, interceptors: undefined };
 }

@@ -2,6 +2,14 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## Unreleased
+
+### Added
+
+- `createRouteForgePlugin()` 返回对象新增 `interceptors` 转发属性（转发实例 `forge.interceptors` 引用）：工厂返回后即可同步
+  `plugin.interceptors.request/response.use(...)` 注册多个拦截器，无需 `await ready()`（请求/响应拦截链只影响后续 `api()` 调用，
+  eager 元信息预加载走 `requestRaw` 旁路不受影响）。
+
 ## 2.2.1 — 2026-09-03
 
 ### Changed

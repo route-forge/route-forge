@@ -191,7 +191,7 @@ bound.useRoutePrefix('posts')         // returns a NEW BoundForge with the new p
 // Global methods still work: bound.isLoading() / bound.onLoadingChange()
 ```
 
-> Every `use()` call returns a fresh `BoundForge` (not cached); `forge.use()` without arguments returns the forge itself.
+> Every `use()` call returns a fresh `BoundForge` (not cached); `forge.use()` without arguments returns the forge itself. A `prefix` with trailing separators is normalized before joining (`use('admin', 'users.')` + `'show'` resolves to `admin.users.show`, not `admin.users..show`); the exposed `prefix` keeps its original value.
 
 ## Request cancellation
 
@@ -252,7 +252,7 @@ function logout() {
 }
 ```
 
-> With `adapter: 'auto'` reusing host axios, interceptors already registered on the host axios instance run first; Route Forge interceptors run after them.
+> With `adapter: 'auto'` reusing host axios, the ordering differs per chain: Route Forge request interceptors run **before** host axios request interceptors (core finishes the forge request chain, then calls `axios.request()`), while host response interceptors run inside axios, **before** the Route Forge response chain.
 > Metadata fetching (summary / level tables) goes through the adapter's raw channel and never passes the business interceptor chains, so unwrapping interceptors can't corrupt it.
 
 ## Loading-state tracking

@@ -191,7 +191,7 @@ bound.useRoutePrefix('posts')         // 以新前缀返回新的 BoundForge（�
 // 全局方法照常可用：bound.isLoading() / bound.onLoadingChange()
 ```
 
-> `use()` 每次调用都返回新的 `BoundForge`（不缓存）；`forge.use()` 不传参时返回 forge 自身。
+> `use()` 每次调用都返回新的 `BoundForge`（不缓存）；`forge.use()` 不传参时返回 forge 自身。prefix 尾部的 separator（含连续多个）会先归一化再拼接（`use('admin', 'users.')` + `'show'` 解析为 `admin.users.show` 而非 `admin.users..show`）；`bound.prefix` 暴露值保持原样。
 
 ## 请求取消
 
@@ -251,7 +251,7 @@ function logout() {
 }
 ```
 
-> `adapter: 'auto'` 复用宿主 axios 时，宿主已注册的 axios 拦截器会先执行，Route Forge 拦截器在其后执行。
+> `adapter: 'auto'` 复用宿主 axios 时，执行顺序按链路方向区分：Route Forge 请求拦截链先执行（core 先跑完 forge 请求链，再调用 `axios.request()`），宿主请求拦截器在其后；响应链则宿主响应拦截器在 axios 内部先行，Route Forge 响应拦截链在其后执行。
 > 元信息拉取（摘要 / 层级路由表）走 adapter 原始通道，不经过业务拦截链，避免被解包类拦截器干扰。
 
 ## 加载状态跟踪

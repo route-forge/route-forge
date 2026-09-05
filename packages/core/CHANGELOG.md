@@ -4,6 +4,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- `forge.use(level, prefix)` 路由名前缀尾部 separator 归一化：prefix 以 `.` 结尾（含连续多个）时先剥掉再参与拼接与歧义判断，
+  `use('admin', 'users.')('show')` 现解析为 `admin.users.show` 而非 `admin.users..show`；空 suffix 返回归一化后的前缀；
+  `bound.prefix` 暴露值保持原样不变。api / route / url 三条调用路径（vue / react 透传）一并生效。
+
 ### Changed
 
 - **声明式拦截器（`createRouteForge({ interceptors })`）契约收敛为「单个拦截器 + 三种写法」**：修复
