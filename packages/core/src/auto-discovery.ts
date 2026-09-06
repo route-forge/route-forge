@@ -7,7 +7,7 @@
  * 本模块只提供纯计算函数（fetchSummary / applySummaryToState），不介入工厂启动时序。
  */
 
-import { UnknownLevelError } from './errors.js';
+import { NetworkError } from './errors.js';
 import type { SummaryResponse } from './types.js';
 
 /**
@@ -62,7 +62,8 @@ export type MetaFetcher = (routeTag: string, url: string, level?: string) => Pro
 /**
  * 拉取摘要端点（网络级联来源）。URL = baseURL + endpoint；endpoint 缺省时回退 DEFAULT_ENDPOINT。
  * 失败语义：显式传了 levels → 降级（warn + 返回 null，effective* 保持显式初值）；
- * 未传 levels → 无可用降级，抛 UnknownLevelError（ready() 将 reject）。
+ * 未传 levels → 无可用降级，抛 NetworkError（message 含实际请求 URL 与原始原因，cause 携带原始错误），
+ * ready() 将 reject——绝不伪装成层级声明错误误导排查。
  */
 export async function fetchSummary(
   inputs: DiscoveryInputs,
@@ -72,10 +73,11 @@ export async function fetchSummary(
   const { explicitLevels, explicitEndpoint } = inputs;
   // endpoint 缺省时回退到与后端约定的默认摘要端点（用户显式指定则优先其值）
   const endpoint = explicitEndpoint ?? DEFAULT_ENDPOINT;
+  const base = baseURL.endsWith('/') ? baseURL.slice(0, -1) : baseURL;
+  const ep = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = `${base}${ep}`;
   try {
-    const base = baseURL.endsWith('/') ? baseURL.slice(0, -1) : baseURL;
-    const ep = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-    const data = await fetchMeta('__forge__.summary', `${base}${ep}`);
+    const data = await fetchMeta('__forge__.summary', url);
     return data as SummaryResponse;
   } catch (e) {
     if (explicitLevels && explicitLevels.length > 0) {
@@ -84,7 +86,13 @@ export async function fetchSummary(
       );
       return null;
     }
-    throw new UnknownLevelError('(auto-discovery)');
+    throw new NetworkError(
+      `Failed to fetch route summary from "${url}": ${(e as Error)?.message ?? String(e)}; ` +
+        'check the backend manifest endpoint or options.endpoint',
+      undefined,
+      undefined,
+      e,
+    );
   }
 }
 

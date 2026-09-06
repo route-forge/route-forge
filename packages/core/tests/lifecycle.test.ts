@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createRouteForge,
   ForgeError,
+  NetworkError,
   RequestAbortedError,
 } from '../src/index.js';
 import type { LevelRoutesResponse, SummaryResponse } from '../src/types.js';
@@ -302,7 +303,7 @@ describe('ready() semantics (H6 / M8)', () => {
   });
 
   it('rejects with the original error when auto-discovery fails without explicit levels', async () => {
-    // fetch 直接网络错误且未传 levels → summaryPromise 抛 UnknownLevelError → ready() reject
+    // fetch 直接网络错误且未传 levels → summaryPromise 抛 NetworkError（含 URL 与原始原因）→ ready() reject
     (globalThis as any).fetch = vi.fn(async () => {
       throw new Error('network down');
     });
@@ -321,6 +322,22 @@ describe('ready() semantics (H6 / M8)', () => {
     await expect(forge.ready()).rejects.toThrow();
     // 错误在 load 调用时同样重新抛出（不丢失）
     await expect(forge.load('public')).rejects.toThrow();
+  });
+
+  it('summary fetch failure surfaces a NetworkError with URL and cause (no UnknownLevelError masquerade)', async () => {
+    (globalThis as any).fetch = vi.fn(async () => {
+      throw new Error('network down');
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      adapter: 'builtin',
+    });
+    const err = await forge.ready().catch((e) => e);
+    expect(err).toBeInstanceOf(NetworkError);
+    expect(err.code).toBe('RF_FE_007');
+    expect(err.message).toContain('/_forge/routes');
+    expect(err.message).toContain('network down');
+    expect((err as { cause?: unknown }).cause).toBeInstanceOf(Error);
   });
 
   it('rejects when summary endpoint returns non-2xx without explicit levels', async () => {

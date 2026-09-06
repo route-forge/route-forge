@@ -19,18 +19,13 @@
 
 ### Changed
 
+- **摘要拉取失败的错误语义真实化**：`options.endpoint` 网络引导失败且无显式 `levels` 可降级时，
+  改抛 `NetworkError`（RF_FE_007，message 含实际请求 URL 与原始原因，`cause` 携带原始错误）——
+  此前伪装成 `UnknownLevelError('(auto-discovery)')`，让用户误以为层级未声明而排查错方向。
+  `ready()` / `load()` 的 reject 时机不变，仅错误类型与信息变化。
 - `createRouteForge` 摘要级联：`options.endpoint` 由「三源皆无时抛 `TypeError`」放宽为「可省略」——当 `endpoint` /
   `summary` / 页面内嵌 `window.__ROUTE_FORGE__` 三源皆无时，网络引导回退到与后端约定的默认摘要端点 `/_forge/routes`
   （core 新增 `DEFAULT_ENDPOINT` 常量）。向后兼容：原先会抛错的调用现在能正常完成引导。
-
-### Fixed
-
-- `forge.use(level, prefix)` 路由名前缀尾部 separator 归一化：prefix 以 `.` 结尾（含连续多个）时先剥掉再参与拼接与歧义判断，
-  `use('admin', 'users.')('show')` 现解析为 `admin.users.show` 而非 `admin.users..show`；空 suffix 返回归一化后的前缀；
-  `bound.prefix` 暴露值保持原样不变。api / route / url 三条调用路径（vue / react 透传）一并生效。
-
-### Changed
-
 - **声明式拦截器（`createRouteForge({ interceptors })`）契约收敛为「单个拦截器 + 三种写法」**：修复
   `[resolve, reject]` 被误当作「两个各自只成功」的拦截器、导致正常响应也执行 `reject` 的问题。现在
   `interceptors.request` / `interceptors.response` 每个键只描述**一个**拦截器，接受三种形式：
@@ -42,6 +37,12 @@
 - 修复此前把裸函数（非数组）直接传给 `interceptors.request/response` 会在 `createRouteForge` 同步抛
   `TypeError: ... is not iterable` —— 现按函数形式正常注册。非法形状（传入 number/string/boolean，或
   `resolve`/`reject` 存在但非函数）显式抛 `TypeError`，不再静默误注册。
+
+### Fixed
+
+- `forge.use(level, prefix)` 路由名前缀尾部 separator 归一化：prefix 以 `.` 结尾（含连续多个）时先剥掉再参与拼接与歧义判断，
+  `use('admin', 'users.')('show')` 现解析为 `admin.users.show` 而非 `admin.users..show`；空 suffix 返回归一化后的前缀；
+  `bound.prefix` 暴露值保持原样不变。api / route / url 三条调用路径（vue / react 透传）一并生效。
 
 ## 2.2.1 — 2026-09-03
 
