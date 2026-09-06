@@ -91,11 +91,17 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
   });
   // 无人调用 ready() 时防 unhandled rejection；不改变 reject 语义，订阅者仍能收到错误
   readyPromise.catch(() => {});
-  // 就绪标记（isReady 同步查询用）：仅 ready() 成功 resolve 后置 true；reject 不算就绪
+  // 就绪标记（isReady 同步查询用）：仅 ready() 成功 resolve 后置 true；reject 不算就绪。
+  // onRejected 必须就地消化——否则衍生 promise 在 reject 时成为 unhandled rejection
   let readySettledOk = false;
-  readyPromise.then(() => {
-    readySettledOk = true;
-  });
+  readyPromise.then(
+    () => {
+      readySettledOk = true;
+    },
+    () => {
+      /* reject 不算就绪；原始错误由 readyPromise.catch 兜底，订阅者仍能收到 */
+    },
+  );
 
   const cacheTtl = cacheOpts.ttl ?? DEFAULT_CACHE_TTL;
   const cacheStorage = cacheOpts.storage ?? 'memory';
