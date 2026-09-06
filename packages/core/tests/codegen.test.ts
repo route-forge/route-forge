@@ -133,6 +133,16 @@ describe('parseArgs', () => {
   it('exits with error when --out missing', () => {
     expect(() => parseArgs(['--endpoint', 'http://x'])).toThrow(/exit:1/);
   });
+
+  it('rejects removed --responseTypes flag loudly (both forms)', () => {
+    expect(() => parseArgs(['--endpoint', 'http://x', '--out', 'y.d.ts', '--responseTypes', 'map.json']))
+      .toThrow(/exit:1/);
+    expect(errSpy).toHaveBeenCalledWith(
+      expect.stringContaining('--responseTypes has been removed'),
+    );
+    expect(() => parseArgs(['--endpoint', 'http://x', '--out', 'y.d.ts', '--responseTypes=map.json']))
+      .toThrow(/exit:1/);
+  });
 });
 
 describe('codegen main with unassigned real level', () => {

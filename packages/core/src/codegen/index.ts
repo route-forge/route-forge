@@ -16,14 +16,13 @@ export interface CodegenOptions {
   endpoint: string;
   levels: string[];
   out: string;
-  responseTypes?: string;
 }
 
 const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH']);
 
 /**
  * 解析 argv（最小手写实现，不引入 commander/yargs）
- * 支持：--endpoint VALUE / --endpoint=VALUE / --levels a,b,c / --out PATH / --responseTypes PATH
+ * 支持：--endpoint VALUE / --endpoint=VALUE / --levels a,b,c / --out PATH
  */
 export function parseArgs(argv: string[]): CodegenOptions {
   const opts: Partial<CodegenOptions> = {};
@@ -50,10 +49,13 @@ export function parseArgs(argv: string[]): CodegenOptions {
       opts.out = next();
     } else if (arg?.startsWith('--out=')) {
       opts.out = arg.slice('--out='.length);
-    } else if (arg === '--responseTypes') {
-      opts.responseTypes = next();
-    } else if (arg?.startsWith('--responseTypes=')) {
-      opts.responseTypes = arg.slice('--responseTypes='.length);
+    } else if (arg === '--responseTypes' || arg?.startsWith('--responseTypes=')) {
+      // 该参数从未实现（解析后被静默忽略）；现显式报错并给出迁移方式，不再无声吞掉
+      console.error(
+        '[route-forge/codegen] --responseTypes has been removed (it was never implemented). ' +
+          'Edit the "response" field in the generated d.ts directly, or use module augmentation on ForgeRouteMap.',
+      );
+      process.exit(1);
     } else if (arg === '--help' || arg === '-h') {
       printHelp();
       process.exit(0);
@@ -75,7 +77,6 @@ export function parseArgs(argv: string[]): CodegenOptions {
     endpoint: opts.endpoint,
     levels: opts.levels ?? [],
     out: opts.out,
-    responseTypes: opts.responseTypes,
   };
 }
 
@@ -84,13 +85,12 @@ function printHelp(): void {
 route-forge codegen - generate TS route types from backend summary endpoint
 
 Usage:
-  npx @route-forge/core codegen --endpoint URL --out PATH [--levels a,b,c] [--responseTypes PATH]
+  npx @route-forge/core codegen --endpoint URL --out PATH [--levels a,b,c]
 
 Options:
   --endpoint URL         Backend summary endpoint (e.g. http://localhost/_forge/routes)
   --levels a,b,c         Optional: explicit level list (skip auto-discovery)
   --out PATH              Output .d.ts file path
-  --responseTypes PATH    Optional: JSON file mapping route names to response types
   -h, --help              Show this help
 `);
 }

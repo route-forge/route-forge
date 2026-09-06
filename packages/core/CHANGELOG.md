@@ -7,6 +7,9 @@
 ### Removed
 
 - **BREAKING**：`getRoutes(level)` 对未声明层级改抛 `UnknownLevelError`（原静默返回 `{}`）——拼错层级不再与空层级混淆，对齐 `route()` / `loadOne()` 的校验口径（设计铁律：前端校验始终抛错）。已声明但未加载的层级仍返回 `{}`。
+- **BREAKING**：codegen CLI 移除 `--responseTypes` 参数——该参数自引入起从未被实现（解析后被静默忽略），
+  文档却宣传其存在。现传入时显式报错并提示迁移方式（直接编辑生成 d.ts 的 `response` 字段，或
+  module augmentation `ForgeRouteMap`）。
 
 ### Added
 

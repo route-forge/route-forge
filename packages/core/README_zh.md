@@ -282,7 +282,7 @@ Vue / React 包可基于 `onLoadingChange` 驱动组件级加载指示。
 npx route-forge-codegen \
   --endpoint http://localhost/_forge/routes \
   --out src/types/forge-routes.d.ts \
-  [--levels public,admin] [--responseTypes path/to/map.json]
+  [--levels public,admin]
 ```
 
 ```ts
