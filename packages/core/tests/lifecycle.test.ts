@@ -409,6 +409,26 @@ describe('ready() semantics (H6 / M8)', () => {
     expect((err as Error).message).toContain('HTTP 500');
   });
 
+  it('isReady(): false at construction, true after ready() resolves, stays false on reject', async () => {
+    // summary 直供：discovery 同步完成，但 ready 在微任务 resolve → 构造后同步查询为 false
+    const summary = makeSummary();
+    const forge = createRouteForge({ summary, adapter: 'builtin' });
+    expect(forge.isReady()).toBe(false);
+    await forge.ready();
+    expect(forge.isReady()).toBe(true);
+    // 同步幂等：多次查询稳定
+    expect(forge.isReady()).toBe(true);
+  });
+
+  it('isReady(): stays false when ready() rejects (reject is not ready)', async () => {
+    (globalThis as any).fetch = vi.fn(async () => {
+      throw new Error('network down');
+    });
+    const forge = createRouteForge({ endpoint: '/_forge/routes', adapter: 'builtin' });
+    await forge.ready().catch(() => {});
+    expect(forge.isReady()).toBe(false);
+  });
+
   it('eager load failure does not block ready, and direct calls retry then throw', async () => {
     // eager 层级加载失败：ready 仍 resolve，异常以 console.error 抛出；
     // 失败不缓存——直接调用 load()/api() 时重试，再失败向调用方抛出

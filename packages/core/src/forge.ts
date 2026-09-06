@@ -91,6 +91,11 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
   });
   // 无人调用 ready() 时防 unhandled rejection；不改变 reject 语义，订阅者仍能收到错误
   readyPromise.catch(() => {});
+  // 就绪标记（isReady 同步查询用）：仅 ready() 成功 resolve 后置 true；reject 不算就绪
+  let readySettledOk = false;
+  readyPromise.then(() => {
+    readySettledOk = true;
+  });
 
   const cacheTtl = cacheOpts.ttl ?? DEFAULT_CACHE_TTL;
   const cacheStorage = cacheOpts.storage ?? 'memory';
@@ -338,6 +343,7 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     getLevels,
     warnings,
     isLoading: () => loadingTracker.isLoading(),
+    isReady: () => readySettledOk,
     onLoadingChange: (cb: LoadingChangeCallback) => loadingTracker.subscribe(cb),
     interceptors: {
       request: requestInterceptors,

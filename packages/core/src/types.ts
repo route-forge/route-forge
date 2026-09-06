@@ -262,6 +262,13 @@ export interface RouteForge {
   /** 查询加载中标识状态 */
   isLoading(): boolean;
 
+  /**
+   * ready() 是否已成功 resolve（同步查询，不触发任何加载）。
+   * discovery + eager 完成为 true；reject 不算就绪（保持 false）。
+   * 供框架层 ready 门闩（react Provider `gate` / vue `ForgeReady`）避免多余的 fallback 首帧。
+   */
+  isReady(): boolean;
+
   /** 非致命警告是否启用（来自 createRouteForge({ warnings })，默认 true）；vue/react 适配层共用此开关 */
   readonly warnings: boolean;
 
