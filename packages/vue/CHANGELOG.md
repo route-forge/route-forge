@@ -4,6 +4,13 @@
 
 ## Unreleased
 
+### Changed
+
+- `useForgeRoute` / `ForgeRoute` / `ForgeLink` 增加注入守卫：未安装 `createRouteForgePlugin()` 时
+  抛指引性错误（「must be used inside an app with createRouteForgePlugin() installed」），与
+  `useForge()` 口径一致——此前是裸 `as` 强转，运行时报晦涩的
+  `Cannot read properties of undefined`。
+
 ### Added
 
 - `createRouteForgePlugin()` 返回对象新增 `interceptors` 转发属性（转发实例 `forge.interceptors` 引用）：工厂返回后即可同步

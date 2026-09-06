@@ -9,11 +9,10 @@
  * - level 为静态快照，name / params 保持响应式（值或 getter 函数双形态均可）
  */
 
-import { defineComponent, inject, type SlotsType, type VNode } from 'vue';
-import { FORGE_INJECTION_KEY } from '../plugin.js';
+import { defineComponent, type SlotsType, type VNode } from 'vue';
+import { useInjectedForge } from '../useInjectedForge.js';
 import { useForgeRoute } from '../composables/useForgeRoute.js';
 import { forgeLinkProps, reportDegrade, warnUnloadedOnce } from './shared.js';
-import type { RouteForge } from '@route-forge/core';
 
 export const ForgeRoute = defineComponent({
   name: 'ForgeRoute',
@@ -25,7 +24,7 @@ export const ForgeRoute = defineComponent({
     loading?: () => VNode[];
   }>,
   setup(props, { slots }) {
-    const forge = inject(FORGE_INJECTION_KEY) as RouteForge;
+    const forge = useInjectedForge('ForgeRoute');
     // 统一收敛为 getter：name / params 双形态（值或函数）均保持响应式
     const nameGetter = () => (typeof props.name === 'function' ? props.name() : props.name);
     const paramsGetter = () =>

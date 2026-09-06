@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, getCurrentInstance, nextTick, ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
-import { createRouteForgePlugin, useForge, useForgeApi, useForgeRoute } from '../src/index.js';
+import {
+  createRouteForgePlugin,
+  ForgeLink,
+  ForgeRoute,
+  useForge,
+  useForgeApi,
+  useForgeRoute,
+} from '../src/index.js';
 import type { LevelRoutesResponse, SummaryResponse } from '@route-forge/core';
 
 // ─── mock backend ───────────────────────────────────────────
@@ -444,5 +451,38 @@ describe('plugin.ready() (M5)', () => {
     const mounted = await plugin.ready().then(() => true).catch(() => false);
     expect(mounted).toBe(true);
     expect(plugin.ready).toBeTypeOf('function');
+  });
+});
+
+describe('missing-plugin guard (friendly error, no bare TypeError)', () => {
+  const mountedError = (api: string) =>
+    new RegExp(
+      `\\[route-forge/vue\\] ${api} must be used inside an app with createRouteForgePlugin\\(\\) installed`,
+    );
+
+  it('useForgeRoute without plugin throws instructive error', () => {
+    const C = defineComponent({
+      setup() {
+        useForgeRoute('public', 'users.show');
+        return () => null;
+      },
+    });
+    expect(() => mount(C)).toThrowError(mountedError('useForgeRoute\\(\\)'));
+  });
+
+  it('ForgeRoute without plugin throws instructive error', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(() =>
+      mount(ForgeRoute, { props: { level: 'public', name: 'users.show' } }),
+    ).toThrowError(mountedError('ForgeRoute'));
+    warn.mockRestore();
+  });
+
+  it('ForgeLink without plugin throws instructive error', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(() =>
+      mount(ForgeLink, { props: { level: 'public', name: 'users.show' } }),
+    ).toThrowError(mountedError('ForgeLink'));
+    warn.mockRestore();
   });
 });

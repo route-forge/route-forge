@@ -12,9 +12,8 @@
  * - 用户无需关心 levelLoaded 状态，直接用即可
  */
 
-import { computed, type ComputedRef, inject, onMounted, ref } from 'vue';
-import { FORGE_INJECTION_KEY } from '../plugin.js';
-import type { RouteForge } from '@route-forge/core';
+import { computed, type ComputedRef, onMounted, ref } from 'vue';
+import { useInjectedForge } from '../useInjectedForge.js';
 
 /** 渲染期错误降级输出：橙色加粗标签 + 完整错误对象，控制台一眼可见 */
 function warnRenderError(error: unknown): void {
@@ -46,7 +45,7 @@ export function useForgeRoute(
     );
   }
 
-  const forge = inject(FORGE_INJECTION_KEY) as RouteForge;
+  const forge = useInjectedForge('useForgeRoute()');
 
   // level 为静态字符串（层级是确定性声明）：绑定即固定，不支持中途动态切换
   //（需要另一个层级请在别的组件 / 别的 useForgeRoute 调用里分别使用，与 useForge 契约一致）。
