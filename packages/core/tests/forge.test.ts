@@ -360,8 +360,10 @@ describe('route parameter validation', () => {
     } catch (e) {
       expect(e).toBeInstanceOf(MissingRouteParamError);
       const msg = (e as Error).message;
-      expect(msg).toContain('y');
-      expect(msg).not.toContain('x');
+      // 缺失列表只含 y（x 由默认值填充）；URI 模板是上下文信息，不进缺失列表
+      expect(msg).toContain('Missing path parameter(s) y for route "multi"');
+      expect(msg).not.toContain('parameter(s) x');
+      expect(msg).toContain('(a/{x}/b/{y})');
     }
   });
 });
