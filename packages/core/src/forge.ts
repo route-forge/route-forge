@@ -179,8 +179,9 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     const doRawRequest = adp.requestRaw ?? adp.request;
     const resp = await doRawRequest(config);
     if (!resp || resp.status < 200 || resp.status >= 300) {
+      // message 带 URL：控制台看到 404/500 无需再猜是哪个端点（与业务路径 HTTPError 口径一致）
       throw new HTTPError(
-        `Failed to fetch "${routeTag}": HTTP ${resp?.status}`,
+        `Failed to fetch "${routeTag}" (${url}): HTTP ${resp?.status}`,
         { level, status: resp?.status, url, method: 'GET', response: resp ?? undefined },
       );
     }

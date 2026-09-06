@@ -42,6 +42,8 @@
   用户显式指定 adapter/Fetcher 却实际运行 builtin，此前完全静默。
 - `MissingRouteParamError` 的 message 追加 URI 模板（如 `(admin/users/{user})`）并写入
   `context.uri`——缺失哪些参数一目了然，无需翻查路由缓存；`uri` 参数可选，旧构造调用不受影响。
+- 元信息拉取通道（摘要 / 层级端点）的 `HTTPError` message 追加实际请求 URL——
+  此前 URL 只在 `context` 里，控制台看到 404/500 还得猜端点；与业务路径 HTTPError 口径对齐。
 - **摘要拉取失败的错误语义真实化**：`options.endpoint` 网络引导失败且无显式 `levels` 可降级时，
   改抛 `NetworkError`（RF_FE_007，message 含实际请求 URL 与原始原因，`cause` 携带原始错误）——
   此前伪装成 `UnknownLevelError('(auto-discovery)')`，让用户误以为层级未声明而排查错方向。

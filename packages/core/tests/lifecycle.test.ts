@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createRouteForge,
   ForgeError,
+  HTTPError,
   NetworkError,
   RequestAbortedError,
 } from '../src/index.js';
@@ -378,6 +379,34 @@ describe('ready() semantics (H6 / M8)', () => {
     expect(warn).not.toHaveBeenCalled();
     expect(forge.warnings).toBe(false);
     warn.mockRestore();
+  });
+
+  it('level fetch failure HTTPError message includes the URL', async () => {
+    // 摘要 OK，层级端点 500 → load() reject HTTPError，message 含实际 URL（与业务路径口径一致）
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url === '/_forge/routes') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => makeSummary(),
+          text: async () => JSON.stringify(makeSummary()),
+          headers: new Headers({ 'content-type': 'application/json' }),
+        } as any;
+      }
+      return {
+        ok: false,
+        status: 500,
+        json: async () => ({}),
+        text: async () => '',
+        headers: new Headers(),
+      } as any;
+    });
+    const forge = createRouteForge({ endpoint: '/_forge/routes', adapter: 'builtin' });
+    const err = await forge.load('public').catch((e) => e);
+    expect(err).toBeInstanceOf(HTTPError);
+    expect((err as ForgeError).code).toBe('RF_FE_008');
+    expect((err as Error).message).toContain('/_forge/routes/public');
+    expect((err as Error).message).toContain('HTTP 500');
   });
 
   it('eager load failure does not block ready, and direct calls retry then throw', async () => {
