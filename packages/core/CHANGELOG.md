@@ -16,6 +16,10 @@
   与元信息拉取通道的 HTTPError 均注入该字段。
 - 新增 `InvalidPathParamError`（复用码 `RF_FE_003`）：路径参数收到非原始值（对象/数组）时抛出——
   此前抛裸 `ForgeError`，无法 `instanceof` 判定；错误码契约不变，仅类层次补全。
+- **codegen 类型接入 core 主入口**：`RouteForge.api / route / url / hasRoute` 签名泛型化——声明
+  `ForgeRouteMap`（codegen 生成或 module augmentation）后，主入口的路由名、params 与 api 响应类型
+  按映射收敛（此前泛型只对 vue/react hooks 生效，纯 core 用户拿到 d.ts 无约束）。未声明映射时
+  与旧签名完全等价（additive，零迁移成本）。`BoundForge` 维持宽松签名，类型化入口仍在框架层 hooks。
 - `RouteForge.getLevels(): string[]`：只读发现 API，返回当前已知的已声明层级（含后端恒注入的 `unassigned`）。
   内嵌 / `summary` 引导构造后即可用；网络引导 `ready()` 前返回 `[]`、之后为全量；返回副本，不触发加载、未就绪不抛错。
 

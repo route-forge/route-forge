@@ -214,16 +214,36 @@ export interface InterceptorHandler<TIn, TOut = TIn> {
  * forge 顶层 API 形状
  */
 export interface RouteForge {
-  /** 通过层级 + 路由名调用 API；level 用于确定加载哪个层级的路由元信息 */
-  api(level: string, name: string, params?: ApiCallParams): ForgeRequest;
+  /**
+   * 通过层级 + 路由名调用 API；level 用于确定加载哪个层级的路由元信息。
+   * 声明 `ForgeRouteMap`（codegen 生成或 module augmentation）后，name / params / 响应类型
+   * 按映射收敛；未声明映射时完全等价于 `(level: string, name: string, params?: ApiCallParams) => ForgeRequest<unknown>`。
+   */
+  api<L extends string, N extends ForgeRouteName<L>>(
+    level: L,
+    name: N,
+    params?: ForgeApiParams<L, N>,
+  ): ForgeRequest<ForgeApiResponse<L, N>>;
+
   /** 拉取一个或多个层级（自动并发去重） */
   load(level: string | string[]): Promise<void>;
 
-  /** 仅生成 URL，不发请求；level 用于定位路由所在的层级缓存 */
-  route(level: string, name: string, params?: Record<string, unknown>): string;
+  /**
+   * 仅生成 URL，不发请求；level 用于定位路由所在的层级缓存。
+   * 声明 `ForgeRouteMap` 后 name 按映射收敛（params 保持宽松——路径参数与后端默认值均可）。
+   */
+  route<L extends string, N extends ForgeRouteName<L>>(
+    level: L,
+    name: N,
+    params?: Record<string, unknown>,
+  ): string;
 
   /** route() 的语义别名，适用于链接生成等场景 */
-  url(level: string, name: string, params?: Record<string, unknown>): string;
+  url<L extends string, N extends ForgeRouteName<L>>(
+    level: L,
+    name: N,
+    params?: Record<string, unknown>,
+  ): string;
 
   /**
    * 失效缓存：
@@ -236,8 +256,8 @@ export interface RouteForge {
   /** 检查指定层级路由是否已加载并缓存；不传参检查全部 */
   isLoaded(level?: string): boolean;
 
-  /** 检查指定层级下某路由是否存在（需该层级缓存已加载） */
-  hasRoute(level: string, name: string): boolean;
+  /** 检查指定层级下某路由是否存在（需该层级缓存已加载）；声明 `ForgeRouteMap` 后 name 按映射收敛 */
+  hasRoute<L extends string, N extends ForgeRouteName<L>>(level: L, name: N): boolean;
 
   /** 查询加载中标识状态 */
   isLoading(): boolean;
@@ -298,7 +318,7 @@ export interface RouteForgeOptions {
    * 摘要端点 URL（网络拉取来源）。
    * 摘要数据源级联（SPEC §4.1.1）：Blade 注入的 `window.__ROUTE_FORGE__` > 本 `summary` 字段 > 网络拉取 `endpoint`。
    * 命中前两者时可省略；层级明细端点取自摘要 `levels[].route.uri`，不依赖本字段。
-   * 三者皆无（既无注入/summary、又无 endpoint）时 createRouteForge 抛 `TypeError`。
+   * 三者皆无（既无注入/summary、又无 endpoint）时网络引导回退默认摘要端点 `/_forge/routes`（DEFAULT_ENDPOINT）。
    */
   endpoint?: string;
   /**
