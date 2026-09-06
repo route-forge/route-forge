@@ -40,6 +40,8 @@
   新参数均为可选，直接构造错误类的旧代码不受影响。
 - adapter 初始化非预期错误降级 builtin 时补发 `console.warn`（遵循 `warnings` 开关）——
   用户显式指定 adapter/Fetcher 却实际运行 builtin，此前完全静默。
+- `MissingRouteParamError` 的 message 追加 URI 模板（如 `(admin/users/{user})`）并写入
+  `context.uri`——缺失哪些参数一目了然，无需翻查路由缓存；`uri` 参数可选，旧构造调用不受影响。
 - **摘要拉取失败的错误语义真实化**：`options.endpoint` 网络引导失败且无显式 `levels` 可降级时，
   改抛 `NetworkError`（RF_FE_007，message 含实际请求 URL 与原始原因，`cause` 携带原始错误）——
   此前伪装成 `UnknownLevelError('(auto-discovery)')`，让用户误以为层级未声明而排查错方向。
