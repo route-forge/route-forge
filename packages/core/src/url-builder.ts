@@ -59,7 +59,8 @@ export function buildRequestUrl(
     }
   }
   if (missingRequired.length > 0) {
-    throw new MissingRouteParamError(meta.name, missingRequired);
+    // 附 URI 模板：用户无需翻缓存即可对照该传哪些参数
+    throw new MissingRouteParamError(meta.name, missingRequired, meta.uri);
   }
 
   // 2. 单次遍历替换所有占位符：避免参数值中的 "{other}" 文本被后续参数二次替换（占位符注入）

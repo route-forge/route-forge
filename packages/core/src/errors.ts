@@ -91,12 +91,16 @@ export class UnknownLevelError extends ForgeError {
 
 /** RF_FE_003：必填路径参数缺失（无后端 default 时，前端校验恒开） */
 export class MissingRouteParamError extends ForgeError {
-  constructor(route: string, missingParams: string[]) {
-    super(`Missing path parameter(s) ${missingParams.join(', ')} for route "${route}"`, {
-      code: 'RF_FE_003',
-      route,
-      context: { missingParams },
-    });
+  constructor(route: string, missingParams: string[], uri?: string) {
+    super(
+      `Missing path parameter(s) ${missingParams.join(', ')} for route "${route}"` +
+        `${uri ? ` (${uri})` : ''}`,
+      {
+        code: 'RF_FE_003',
+        route,
+        context: { missingParams, ...(uri !== undefined ? { uri } : {}) },
+      },
+    );
   }
 }
 

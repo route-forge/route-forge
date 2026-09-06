@@ -84,10 +84,13 @@ describe('error codes and payloads', () => {
   });
 
   it('MissingRouteParamError lists all missing params in context', () => {
-    const e = new MissingRouteParamError('posts.update', ['post', 'user']);
+    const e = new MissingRouteParamError('posts.update', ['post', 'user'], 'posts/{post}/{user}');
     expect(e.code).toBe('RF_FE_003');
     expect(e.context?.missingParams).toEqual(['post', 'user']);
+    expect(e.context?.uri).toBe('posts/{post}/{user}');
     expect(e.message).toContain('post, user');
+    // message 附 URI 模板：无需翻缓存即可对照
+    expect(e.message).toContain('(posts/{post}/{user})');
   });
 
   it('InvalidPathParamError shares RF_FE_003 but is a distinct class', () => {
