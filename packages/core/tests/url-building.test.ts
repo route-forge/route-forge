@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRouteForge, UnknownRouteError } from '../src/index.js';
+import { createRouteForge, UnknownLevelError, UnknownRouteError } from '../src/index.js';
 import type { LevelRoutesResponse, RequestConfig, SummaryResponse } from '../src/types.js';
 import { makeSummary as normalizeSummary, type SummaryOverrides } from './fixtures.js';
 
@@ -453,9 +453,31 @@ describe('getRoutes snapshot isolation', () => {
     expect(all['admin']!['dash']!.uri).toBe('dash');
   });
 
-  it('getRoutes(unknownLevel) returns empty object without throwing', async () => {
+  it('getRoutes(undeclared level) throws UnknownLevelError (no silent {})', async () => {
     const { forge } = await createLoadedForge({});
-    expect(forge.getRoutes('public')).toEqual({});
+    expect(() => forge.getRoutes('adimn')).toThrowError(UnknownLevelError);
+  });
+
+  it('getRoutes(declared but not loaded) returns empty object', async () => {
+    const summary = makeSummary({
+      levels: {
+        public: { description: 'p', load: 'lazy', cache: 300, route_count: 1 },
+        admin: { description: 'a', load: 'lazy', cache: 300, route_count: 1 },
+      },
+    });
+    mockBackend(summary, {
+      public: { level: 'public', routes: {} },
+      admin: { level: 'admin', routes: {} },
+    });
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public', 'admin'],
+      adapter: 'builtin',
+    });
+    await forge.load('public');
+    // admin 已声明但未加载 → 返回 {}（不是抛错）；拼错的层级才抛
+    expect(forge.getRoutes('admin')).toEqual({});
+    expect(() => forge.getRoutes('typo')).toThrowError(UnknownLevelError);
   });
 
   it('getRoutes() no-arg overload deep-copies nested structures (L5)', async () => {

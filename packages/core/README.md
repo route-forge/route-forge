@@ -44,7 +44,7 @@ const url2 = forge.url('public', 'login.show')    // url() is a semantic alias o
 
 // Route existence / metadata inspection
 forge.hasRoute('admin', 'users.show')             // true / false
-forge.getRoutes('admin')                          // snapshot of one level (deep copy)
+forge.getRoutes('admin')                          // snapshot of one level (deep copy; throws UnknownLevelError if the level is not declared)
 forge.getRoutes()                                 // all loaded levels, grouped by level
 forge.getLevels()                                 // declared levels (incl. unassigned); [] until ready on network bootstrap
 

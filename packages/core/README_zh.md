@@ -44,7 +44,7 @@ const url2 = forge.url('public', 'login.show')    // url() 是 route() 的语义
 
 // 检查路由是否存在 / 获取路由元信息
 forge.hasRoute('admin', 'users.show')             // true / false
-forge.getRoutes('admin')                          // 指定层级的路由表快照（深拷贝）
+forge.getRoutes('admin')                          // 指定层级的路由表快照（深拷贝；层级未声明抛 UnknownLevelError）
 forge.getRoutes()                                 // 全部已加载层级（按 level 分组）
 forge.getLevels()                                 // 已声明层级（含 unassigned）；网络引导就绪前为 []
 

@@ -148,6 +148,8 @@ export class RouteStore {
   getRoutes(): Record<string, Record<string, RouteMeta>>;
   getRoutes(level?: string): Record<string, RouteMeta> | Record<string, Record<string, RouteMeta>> {
     if (level !== undefined) {
+      // 层级校验：未声明层级拼错时响亮报错（对齐 route()/loadOne() 口径），不与空层级混淆
+      this.assertLevelDeclared(level);
       const entry = this.cache.get(level);
       const routes = entry?.routes ?? {};
       const result: Record<string, RouteMeta> = {};

@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+### Removed
+
+- **BREAKING**：`getRoutes(level)` 对未声明层级改抛 `UnknownLevelError`（原静默返回 `{}`）——拼错层级不再与空层级混淆，对齐 `route()` / `loadOne()` 的校验口径（设计铁律：前端校验始终抛错）。已声明但未加载的层级仍返回 `{}`。
+
 ### Added
 
 - `HTTPError`（RF_FE_008）新增 `response?: ResponseData` 字段：携带完整响应（status/headers/data/config），

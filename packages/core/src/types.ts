@@ -247,7 +247,8 @@ export interface RouteForge {
 
   /**
    * 获取路由元信息快照（深拷贝，修改返回值不影响内部缓存）。
-   * - getRoutes(level)：返回指定层级下全部路由
+   * - getRoutes(level)：返回指定层级下全部路由；层级未声明抛 `UnknownLevelError`，
+   *   已声明但未加载返回 `{}`
    * - getRoutes()：返回全部层级的路由（按 level 分组）
    */
   getRoutes(level: string): Record<string, RouteMeta>;
