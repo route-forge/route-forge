@@ -184,6 +184,39 @@ describe('ForgeLink', () => {
     await wrapper.setProps({ params: () => ({ user: 9 }) });
     expect(wrapper.find('a').attributes('href')).toBe('/users/9');
   });
+
+  it('renders injected component via as prop with both href and to (takes precedence over RouterLink)', async () => {
+    let received: Record<string, unknown> | null = null;
+    const CustomLink = defineComponent({
+      setup(_, { attrs, slots }) {
+        return () => {
+          received = { ...attrs } as Record<string, unknown>;
+          return h('span', { 'data-testid': 'custom-link' }, [
+            String(attrs.to ?? ''),
+            ...(slots.default ? slots.default() : []),
+          ]);
+        };
+      },
+    });
+    const wrapper = mount(ForgeLink, {
+      props: {
+        level: 'public',
+        name: 'users.show',
+        params: { user: 7 },
+        as: CustomLink,
+        class: 'cl',
+      },
+      slots: { default: () => '查看用户' },
+      // 同时注册全局 RouterLink：as 必须优先于探测结果
+      global: { plugins: [makePlugin()], components: { RouterLink: RouterLinkStub } },
+    });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="custom-link"]').exists()).toBe(true);
+    expect(wrapper.text()).toBe('/users/7查看用户');
+    // 注入组件同时收到 href 与 to（对齐 react 包 as 契约），attrs 也透传
+    expect(received).toMatchObject({ href: '/users/7', to: '/users/7', class: 'cl' });
+  });
 });
 
 // ─── ForgeRoute ─────────────────────────────────────────────

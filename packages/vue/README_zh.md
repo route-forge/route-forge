@@ -170,7 +170,7 @@ import { ForgeLink } from '@route-forge/vue'
 </template>
 ```
 
-路由库集成**零依赖、全自动**：安装了 [vue-router](https://router.vuejs.org/)（`app.use(router)`）时，`ForgeLink` 自动渲染 `<RouterLink :to="href">` 做 SPA 内部跳转；否则渲染原生 `<a>`。无需任何配置。（仅在父组件局部注册的 `RouterLink` 探测不到——探测的是 `app.use(router)` 产生的全局注册。）
+路由库集成**零依赖、全自动**：安装了 [vue-router](https://router.vuejs.org/)（`app.use(router)`）时，`ForgeLink` 自动渲染 `<RouterLink :to="href">` 做 SPA 内部跳转；否则渲染原生 `<a>`。无需任何配置。（仅在父组件局部注册的 `RouterLink` 探测不到——探测的是 `app.use(router)` 产生的全局注册。）这类场景（或任意自定义链接组件）可通过 `as` prop 手动注入，注入组件会同时收到 `href` 与 `to` 两个 prop（与 `@route-forge/react` 对齐）。
 
 **`ForgeRoute`** —— 灵活形态：通过作用域插槽暴露 `{ href, loaded }`，完全自主控制渲染：
 

@@ -2,8 +2,9 @@
  * ForgeLink：便捷链接组件，封装 useForgeRoute 的"先空串、后更新"异步行为
  * @see .docs/SPEC.md §4.1.7
  *
- * - loaded（href !== ''）时直接渲染链接：检测到 vue-router 全局注册的 RouterLink
- *   则渲染 <RouterLink :to="href">（SPA 内部跳转），否则渲染原生 <a :href="href">
+ * - loaded（href !== ''）时直接渲染链接：`as` prop 显式注入的组件优先（同时收到 href+to）；
+ *   否则探测到 vue-router 全局注册的 RouterLink 则渲染 <RouterLink :to="href">（SPA 内部跳转），
+ *   再否则渲染原生 <a :href="href">
  * - 未加载（或路由解析出错）时渲染 loading 插槽，未传则默认不渲染；
  *   每实例以 console.warn 提醒一次（防刷屏）
  * - 路由解析出错以 console.error 报告，渲染不中断
@@ -42,7 +43,8 @@ export const ForgeLink = defineComponent({
       onDegrade: (e) => reportDegrade('ForgeLink', e),
     });
     const unloadWarned = { value: false };
-    // RouterLink 在 app.use(router) 时全局注册，app 生命周期内不变，setup 时探测一次即可
+    // 链接组件解析：显式 as prop 优先（同时收 href+to，对齐 react 包契约）；
+    // 否则探测 RouterLink（app.use(router) 时全局注册，app 生命周期内不变，setup 时探测一次即可）
     const routerLink = resolveRouterLink();
 
     return () => {
@@ -54,6 +56,14 @@ export const ForgeLink = defineComponent({
       if (!loaded) return slots.loading ? slots.loading() : null;
 
       const children = slots.default ? slots.default() : undefined;
+      if (props.as) {
+        // 手动注入的链接组件：同时收到 href 与 to（对齐 @route-forge/react 的 as 契约）
+        return h(
+          props.as as object,
+          { ...(attrs as Record<string, unknown>), to: url, href: url },
+          { default: () => children },
+        );
+      }
       if (routerLink) {
         return h(
           routerLink,

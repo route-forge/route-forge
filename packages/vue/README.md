@@ -171,7 +171,7 @@ import { ForgeLink } from '@route-forge/vue'
 </template>
 ```
 
-Router integration is **zero-dependency and automatic**: if [vue-router](https://router.vuejs.org/) is installed (`app.use(router)`), `ForgeLink` renders `<RouterLink :to="href">` for in-app navigation; otherwise it renders a native `<a>`. Nothing to configure. (A `RouterLink` registered only locally in a parent component is not detected — the global registration from `app.use(router)` is what's probed.)
+Router integration is **zero-dependency and automatic**: if [vue-router](https://router.vuejs.org/) is installed (`app.use(router)`), `ForgeLink` renders `<RouterLink :to="href">` for in-app navigation; otherwise it renders a native `<a>`. Nothing to configure. (A `RouterLink` registered only locally in a parent component is not detected — the global registration from `app.use(router)` is what's probed.) For those cases — or any custom link component — pass it via the `as` prop; the injected component receives both `href` and `to` props (mirroring `@route-forge/react`).
 
 **`ForgeRoute`** — the flexible one: exposes `{ href, loaded }` through a scoped slot for full control:
 

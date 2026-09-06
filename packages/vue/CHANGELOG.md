@@ -13,6 +13,10 @@
 
 ### Added
 
+- `ForgeLink` 新增可选 `as` prop：手动注入链接组件（组件对象或标签名），注入组件同时收到 `href`
+  与 `to` 两个 prop——对齐 `@route-forge/react` 的 `as` 契约。用于 `RouterLink` 仅局部注册、
+  或使用非 vue-router 链接组件（UI 库 Link 等）的场景，替代此前的静默降级为原生 `<a>`。
+  优先级：`as` > 全局探测 RouterLink > 原生 `<a>`；不传时行为不变。
 - `createRouteForgePlugin()` 返回对象新增 `interceptors` 转发属性（转发实例 `forge.interceptors` 引用）：工厂返回后即可同步
   `plugin.interceptors.request/response.use(...)` 注册多个拦截器，无需 `await ready()`（请求/响应拦截链只影响后续 `api()` 调用，
   eager 元信息预加载走 `requestRaw` 旁路不受影响）。

@@ -22,6 +22,16 @@ export const forgeLinkProps = {
     required: false,
     default: undefined,
   },
+  /**
+   * 手动注入链接组件（组件对象或标签名字符串），注入后同时收到 `href` 与 `to` 两个 prop
+   * （对齐 @route-forge/react 的 ForgeLink `as` 契约）。不传时按默认链路：
+   * 探测全局 RouterLink → 原生 `<a>`。用于 RouterLink 局部注册 / 非 vue-router 链接组件场景。
+   */
+  as: {
+    type: [Object, String, Function] as PropType<object>,
+    required: false,
+    default: undefined,
+  },
 } as const;
 
 /** 解析出错降级报告：红色加粗标签 + 完整错误对象，控制台一眼可见（error 级，每次出错都报） */
