@@ -48,6 +48,15 @@ plugin.ready()
 >
 > **Reuse mode**: already hold a forge instance outside Vue (SSR entry, singleton module)? Pass it directly — `createRouteForgePlugin(instance)` reuses it and ignores options, symmetric with React's `<RouteForgeProvider forge?>`.
 
+**Want direct mount AND a deterministic first frame?** Wrap route-dependent content in the `ForgeReady` gate component — it renders the `fallback` slot until ready, then the default slot; equivalent determinism to `plugin.ready().then(mount)`:
+
+```vue
+<ForgeReady>
+  <template #fallback><Splash /></template>
+  <RouterView />
+</ForgeReady>
+```
+
 ## useForge — the core composable
 
 Without `level` it returns the full `RouteForge` instance; with `level` it delegates to `forge.use(level, prefix?)` (triggering the level load) and returns a `VueBoundForge`:

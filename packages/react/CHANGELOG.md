@@ -6,6 +6,11 @@
 
 ### Added
 
+- `<RouteForgeProvider>` 新增可选 `gate` / `gateFallback`（ready 门闩）：`gate` 为 true 时在
+  `ready()` resolve 前渲染 `gateFallback`（缺省 null）、resolve 后放行 children——**直接 mount**
+  也能拿到 `ready().then(mount)` 同级的确定性（首帧路由数据必然就绪）。options 变更重建实例时
+  重新闭门；ready() reject 时响亮 `console.error` 且保持闭门。依赖 core 新增的 `isReady()` 同步
+  查询，已就绪实例不产生多余的 fallback 首帧。
 - `<RouteForgeProvider>` 新增可选 `forge` prop（复用模式）：传入已有实例时忽略 `options`、不在
   Provider 内创建/重建实例——与 Vue 的 `createRouteForgePlugin(instance)` 对称，供在非组件代码 /
   SSR 入口持有实例的场景消除 ready-gate 双实例与重复摘要请求；传入时 `onInterceptors` 不触发。

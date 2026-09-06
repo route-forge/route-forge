@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createApp, defineComponent } from 'vue';
-import { mount } from '@vue/test-utils';
+import { createApp, defineComponent, h } from 'vue';
+import { flushPromises, mount } from '@vue/test-utils';
 import { createRouteForge } from '@route-forge/core';
 import type { LevelRoutesResponse, SummaryResponse } from '@route-forge/core';
-import { createRouteForgePlugin, FORGE_INJECTION_KEY, useForge } from '../src/index.js';
+import { createRouteForgePlugin, ForgeReady, FORGE_INJECTION_KEY, useForge } from '../src/index.js';
 
 describe('@route-forge/vue plugin (scaffold smoke test)', () => {
   it('installs and provides injection key ($forge removed in v3.0.0)', () => {
@@ -151,6 +151,48 @@ describe('createRouteForgePlugin 传入实例（复用模式）', () => {
     mount(C, { global: { plugins: [createRouteForgePlugin(external)] } });
     expect(provided).toBe(external);
     expect(provided.interceptors).toBe(external.interceptors);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('ForgeReady（ready 门闩组件）', () => {
+  it('renders fallback until ready() resolves, then default slot', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === summary.config.endpoint_prefix) return jsonResponse(summary);
+      return jsonResponse(levelRoutes);
+    }));
+    const plugin = createRouteForgePlugin({ endpoint: '/_forge/routes', levels: ['public'], adapter: 'builtin' });
+    const wrapper = mount(ForgeReady, {
+      slots: {
+        default: () => h('span', 'content'),
+        fallback: () => h('span', 'gated'),
+      },
+      global: { plugins: [plugin] },
+    });
+    // ready 前：fallback
+    expect(wrapper.text()).toBe('gated');
+    await flushPromises();
+    // ready 后：default
+    expect(wrapper.text()).toBe('content');
+    vi.unstubAllGlobals();
+  });
+
+  it('opens immediately (no fallback frame) when forge is already ready', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === summary.config.endpoint_prefix) return jsonResponse(summary);
+      return jsonResponse(levelRoutes);
+    }));
+    const forge = createRouteForge({ endpoint: '/_forge/routes', levels: ['public'], adapter: 'builtin' });
+    await forge.ready();
+    const plugin = createRouteForgePlugin(forge);
+    const wrapper = mount(ForgeReady, {
+      slots: {
+        default: () => h('span', 'content'),
+        fallback: () => h('span', 'gated'),
+      },
+      global: { plugins: [plugin] },
+    });
+    expect(wrapper.text()).toBe('content');
     vi.unstubAllGlobals();
   });
 });

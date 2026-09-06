@@ -16,3 +16,5 @@ export { ForgeRoute } from './components/ForgeRoute.js';
 export type { ForgeRouteProps } from './components/ForgeRoute.js';
 export { ForgeLink } from './components/ForgeLink.js';
 export type { ForgeLinkProps } from './components/ForgeLink.js';
+export { ForgeReady } from './components/ForgeReady.js';
+export type { ForgeReadyProps } from './components/ForgeReady.js';

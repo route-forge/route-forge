@@ -13,6 +13,10 @@
 
 ### Added
 
+- 新增 `ForgeReady` 门闩组件：`ready()` resolve 前渲染 `fallback` 插槽（缺省不渲染）、resolve 后
+  渲染 default——**直接 mount** 也能拿到 `plugin.ready().then(mount)` 同级的确定性（首帧路由数据
+  必然就绪）；依赖 core 新增的 `isReady()` 同步查询，已就绪实例不产生多余的 fallback 首帧；
+  ready() reject 时响亮 `console.error` 且保持闭门。与 react `<RouteForgeProvider gate>` 对称。
 - `createRouteForgePlugin()` 支持直接传入 forge 实例（复用模式）：`createRouteForgePlugin(instance)`
   复用该实例、忽略 options，不在插件内重建——与 React 的 `<RouteForgeProvider forge?>` 对称，
   供在非组件代码 / SSR 入口持有实例的场景消除双实例。

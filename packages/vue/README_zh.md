@@ -47,6 +47,15 @@ plugin.ready()
 >
 > **复用模式**：已在 Vue 之外（SSR 入口、单例模块）持有 forge 实例？直接 `createRouteForgePlugin(instance)` 传入即可复用、忽略 options——与 React 的 `<RouteForgeProvider forge?>` 对称。
 
+**想要直接 mount 又要确定性首帧？** 用 `ForgeReady` 门闩组件包住依赖路由的内容——ready 前渲染 `fallback` 插槽、之后渲染 default，与 `plugin.ready().then(mount)` 的确定性等价：
+
+```vue
+<ForgeReady>
+  <template #fallback><Splash /></template>
+  <RouterView />
+</ForgeReady>
+```
+
 ## useForge — 核心 composable
 
 无 `level` 时返回完整 `RouteForge` 实例；传入 `level` 时内部调用 `forge.use(level, prefix?)`（自动触发层级加载），返回 `VueBoundForge`：
