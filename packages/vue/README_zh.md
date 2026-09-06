@@ -196,9 +196,9 @@ import { ForgeRoute } from '@route-forge/vue'
 - 控制台行为：`level` 未加载时每实例 `console.warn` **一次**（正常瞬态，不刷屏）；路由解析失败每次都 `console.error`（渲染仍不中断）
 - SSR：`level` 缓存就绪前组件只渲染 `loading` 插槽（或不渲染）——可在服务端预加载层级，或让链接在客户端 hydration 后自然出现
 
-## 关于 `$forge` 全局属性（不推荐在模板中用）
+## 关于 `$forge` 全局属性（已于 v3.0.0 移除）
 
-插件安装后会注入 `app.config.globalProperties.$forge`（含 `route(level, name, params?)`）。它是**底层兜底入口**：只有在对应 `level` 已加载完成后才可安全调用（例如 `plugin.ready()` resolve 之后）。渲染期若层级尚未加载，`$forge.route()` 会因路由数据未就绪直接抛错、打断渲染——不可控。模板里生成链接请优先用 `useForgeRoute`，`$forge` 保留给少数已确保时序安全的命令式场景。
+v3.0.0 起插件不再注入 `app.config.globalProperties.$forge`：它只暴露 `route()` 一个方法（无 `api` / `url` / `hasRoute`），且在层级未加载时直接抛错、打断渲染，属于易误用的残缺入口。模板内生成链接用 `useForgeRoute` / `ForgeLink` / `ForgeRoute`；命令式场景用 `useForge()`（未绑定层级时可直接 `forge(level, name, params?)` 调用）。
 
 ## 参数智能解析
 
@@ -245,8 +245,8 @@ await users('show', { user: 1 })      // ✅ params 类型自动校验
 
 ## 常见问题
 
-**模板里 `$forge.route()` 抛错？**
-层级尚未加载。改用 `useForgeRoute`（自动处理加载态并降级为 `''`），或确保在 `plugin.ready()` resolve 后再渲染依赖路由的组件。
+**模板里 `$forge.route()` 报错不存在？**
+`$forge` 已在 v3.0.0 移除。改用 `useForgeRoute`（自动处理加载态并降级为 `''`），或 `useForge('admin').route(...)` 的组合式写法。
 
 **`useForge()` 报 "must be used inside an app with createRouteForgePlugin() installed"？**
 composable 在插件安装前或插件未安装的组件树里被调用了；确认 `app.use(plugin)` 已执行。

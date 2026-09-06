@@ -5,7 +5,7 @@ import type { LevelRoutesResponse, SummaryResponse } from '@route-forge/core';
 import { createRouteForgePlugin, FORGE_INJECTION_KEY, useForge } from '../src/index.js';
 
 describe('@route-forge/vue plugin (scaffold smoke test)', () => {
-  it('installs and provides $forge global property', () => {
+  it('installs and provides injection key ($forge removed in v3.0.0)', () => {
     const app = createApp({ template: '<div/>' });
     app.use(createRouteForgePlugin({
       endpoint: '/_forge/routes',

@@ -1036,7 +1036,8 @@ const url = useForgeRoute('public', 'login.show');
   ，加载后自动更新。`level` 为静态字符串绑定（不支持 getter 形式）。路由名不存在或必填参数缺失等渲染期错误同样降级为 `''`（保证渲染不中断），
   并以样式化 `console.warn` 输出完整错误（含堆栈）——开发期控制台醒目可见，生产无副作用。
 - 组件 `ForgeRoute` / `ForgeLink`：封装 `useForgeRoute` 的"先空串、后更新"行为（§4.1.7a）。
-- 全局属性 `$forge` 与模板内 `{{ $forge.route('admin', 'users.show', { user: 1 }) }}` 工具函数。
+- ~~全局属性 `$forge`~~：v3.0.0 起移除（残缺 facade，仅 `route()` 且未 ready 时抛错断渲染）；
+  模板内生成链接用 `useForgeRoute` / `ForgeLink` / `ForgeRoute`，命令式场景用 `useForge()`。
 
 ##### 4.1.7a 组件 ForgeRoute / ForgeLink（vue / react）
 

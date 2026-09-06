@@ -162,26 +162,18 @@ describe('useForge', () => {
 
 // ─── $forge global property ─────────────────────────────────
 
-describe('$forge global property', () => {
-  it('$forge.route resolves url after level load', async () => {
-    let url: string | undefined;
+describe('$forge global property (removed in v3.0.0)', () => {
+  it('no longer injects $forge — use useForge()/useForgeRoute instead', () => {
+    let gp: Record<string, unknown> | undefined;
     const C = defineComponent({
       setup() {
-        const forge = useForge();
         const instance = getCurrentInstance()!;
-        const loaded = ref(false);
-        forge.load('public').then(() => (loaded.value = true));
-        return () => {
-          if (loaded.value) {
-            url = (instance.appContext.config.globalProperties as any).$forge.route('public', 'users.show', { user: 99 });
-          }
-          return null;
-        };
+        gp = instance.appContext.config.globalProperties as unknown as Record<string, unknown>;
+        return () => null;
       },
     });
     mount(C, { global: { plugins: [makePlugin()] } });
-    await flushPromises();
-    expect(url).toBe('/users/99');
+    expect(gp!.$forge).toBeUndefined();
   });
 });
 

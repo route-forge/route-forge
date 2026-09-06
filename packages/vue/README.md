@@ -197,9 +197,9 @@ Shared contract (both components):
 - Console behavior: while the level is not loaded each instance `console.warn`s **once** (a normal transient state — no spam); route resolution failures log `console.error` every time (rendering still never breaks)
 - SSR: the components simply render the `loading` slot (or nothing) until the level cache is populated — preload the level on the server, or let the link appear after client hydration
 
-## About the `$forge` global property (not recommended in templates)
+## About the `$forge` global property (removed in v3.0.0)
 
-Installing the plugin injects `app.config.globalProperties.$forge` (with `route(level, name, params?)`). It is a **low-level fallback entry**: safe to call only after the target `level` has loaded (e.g. after `plugin.ready()` resolves). During rendering, if the level is not ready yet, `$forge.route()` throws on unready route data and breaks the render — uncontrollable. Prefer `useForgeRoute` for template links; keep `$forge` for the rare imperative scenarios where timing is guaranteed.
+Since v3.0.0 the plugin no longer injects `app.config.globalProperties.$forge`: it exposed only `route()` (no `api` / `url` / `hasRoute`) and threw on unready route data, breaking the render — a fragile, misuse-prone entry. Generate links in templates with `useForgeRoute` / `ForgeLink` / `ForgeRoute`; for imperative code use `useForge()` (unbound calls work directly: `forge(level, name, params?)`).
 
 ## Smart parameter resolution
 
@@ -246,8 +246,8 @@ See the [core README "Type safety" section](../core/README.md#type-safety-option
 
 ## FAQ
 
-**`$forge.route()` throws in a template?**
-The level hasn't loaded yet. Use `useForgeRoute` instead (handles the loading state and degrades to `''`), or make sure the dependent components render only after `plugin.ready()` resolves.
+**`$forge.route()` doesn't exist in a template?**
+`$forge` was removed in v3.0.0. Use `useForgeRoute` instead (handles the loading state and degrades to `''`), or the composable form `useForge('admin').route(...)`.
 
 **`useForge()` says "must be used inside an app with createRouteForgePlugin() installed"?**
 A composable ran before the plugin was installed, or in a component tree without it; confirm `app.use(plugin)` happened first.

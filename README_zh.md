@@ -279,8 +279,8 @@ export default function App() {
 > 不支持中途动态切换 level（换 level 会让 `prefix` 失去绑定意义）。需要另一个层级时，请新建组件 / 新建一次实例，
 > 开销可接受。Vue、React 两包契约一致。
 
-> **关于 Vue 的 `$forge` 全局属性**：插件会注入 `$forge.route()`，但它只在对应 level 加载完成后（如 `ready()` 之后）
-> 才可安全调用，渲染期层级未就绪会抛错、不可控。模板里生成链接请用 `useForgeRoute`（自动处理加载态、错误降级为 `''`）。
+> **关于 Vue 的 `$forge` 全局属性**：v3.0.0 起已移除。模板里生成链接请用 `useForgeRoute`
+> （自动处理加载态、错误降级为 `''`）或 `ForgeRoute` / `ForgeLink` 组件。
 
 ### 4. 类型生成（可选）
 

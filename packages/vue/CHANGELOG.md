@@ -4,6 +4,13 @@
 
 ## Unreleased
 
+### Removed
+
+- **BREAKING**：移除 `$forge` 全局属性（`app.config.globalProperties`）——残缺 facade（仅 `route()`
+  一个方法、无 `api` / `url` / `hasRoute`），且在层级未加载时抛错、中断渲染，README 此前专设一节
+  警示不要在模板使用。模板内生成链接用 `useForgeRoute` / `ForgeLink` / `ForgeRoute`；命令式场景
+  用 `useForge()`。
+
 ### Added
 
 - 渲染期降级报告会话级去重：同一错误（component + message）只报告一次，`name`/`params` 联动输入

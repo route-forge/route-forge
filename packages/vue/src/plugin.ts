@@ -3,7 +3,6 @@
  * @see .docs/SPEC.md §4.1.7
  *
  * 提供：
- *   - 全局属性 $forge（route() 工具）
  *   - 返回对象上的 interceptors（转发实例拦截器）：创建后即可同步注册，无需等待 ready()
  *   - inject symbol 注入 RouteForge 实例供 composable 使用
  *   - useForge() / useForge(level) / useForge(level, prefix) 返回统一方法的 forge 实例
@@ -14,6 +13,9 @@
  * 类型推断：
  *   当 ForgeRouteMap 通过 codegen 或 module augmentation 定义时，
  *   level / name / params 均自动推断，IDE 提供补全提示。
+ *
+ * 注：v3.0.0 起不再注入 `$forge` 全局属性（残缺 facade，仅 route() 且未 ready 时抛错断渲染）；
+ * 模板内生成链接用 useForgeRoute / ForgeLink / ForgeRoute，命令式场景用 useForge()。
  */
 
 import type { App, InjectionKey, Plugin, Ref } from 'vue';
@@ -45,10 +47,7 @@ export function createRouteForgePlugin(options: RouteForgePluginOptions = {}): P
     interceptors: forge.interceptors,
     install(app: App) {
       app.provide(FORGE_INJECTION_KEY, forge);
-      app.config.globalProperties.$forge = {
-        route: (level: string, name: string, params?: Record<string, unknown>) =>
-          forge.route(level, name, params),
-      };
+      // v3.0.0 起不再注入 $forge 全局属性（残缺 facade 已移除，见 CHANGELOG）
     },
   };
 }

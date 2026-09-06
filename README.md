@@ -278,9 +278,8 @@ export default function App() {
 > and cannot be switched later (switching would make `prefix` meaningless). Create another component / instance for another level —
 > the overhead is acceptable. The Vue and React packages share this contract.
 
-> **About Vue's `$forge` global property**: the plugin injects `$forge.route()`, but it is safe only after the target level has loaded
-> (e.g. after `ready()`); during rendering an unready level throws — uncontrollable. Use `useForgeRoute` for template links
-> (handles loading state, degrades to `''` on error).
+> **About Vue's `$forge` global property**: removed in v3.0.0. Generate template links with `useForgeRoute`
+> (handles loading state, degrades to `''` on error) or the `ForgeRoute` / `ForgeLink` components.
 
 ### 4. Type generation (optional)
 
