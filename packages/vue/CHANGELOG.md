@@ -18,6 +18,9 @@
 
 ### Changed
 
+- `@route-forge/core` 由 `dependencies` 改为 `peerDependencies`（`^3.0.0`）：框架适配层与 core 必须
+  共享同一实例——core 存在 module 级 memo（内嵌摘要多实例兜底）、`instanceof` 错误判定等单例敏感
+  语义，双副本会静默破坏。安装 `@route-forge/vue` 时需自行安装 `@route-forge/core`。
 - `useForgeRoute` / `ForgeRoute` / `ForgeLink` 增加注入守卫：未安装 `createRouteForgePlugin()` 时
   抛指引性错误（「must be used inside an app with createRouteForgePlugin() installed」），与
   `useForge()` 口径一致——此前是裸 `as` 强转，运行时报晦涩的

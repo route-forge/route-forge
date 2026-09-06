@@ -53,6 +53,7 @@
     "clean": "rimraf dist .turbo"
   },
   "peerDependencies": {
+    "@route-forge/core": "workspace:^",
     "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
@@ -65,9 +66,6 @@
     "react-dom": "^18.3.0",
     "tsup": "^8.0.0",
     "vitest": "4.1.0"
-  },
-  "dependencies": {
-    "@route-forge/core": "workspace:^"
   },
   "publishConfig": {
     "access": "public"

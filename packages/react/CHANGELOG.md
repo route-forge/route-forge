@@ -18,6 +18,9 @@
 
 ### Changed
 
+- `@route-forge/core` 由 `dependencies` 改为 `peerDependencies`（`^3.0.0`）：框架适配层与 core 必须
+  共享同一实例——core 存在 module 级 memo（内嵌摘要多实例兜底）、`instanceof` 错误判定等单例敏感
+  语义，双副本会静默破坏。安装 `@route-forge/react` 时需自行安装 `@route-forge/core`。
 - `useForgeRoute` 消除首帧空窗：level **已加载**时改为渲染期同步求值（`forge.route()` 纯缓存读，
   不写 ref/state，符合 concurrent/StrictMode 渲染期只读约定），首帧即出 URL——旧实现即使层级已加载
   也要先渲染一帧空串、等 effect `setState` 后第二帧才出链接（列表页多个链接时首帧全空）。
