@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createRouteForge,
+  DiscoveryNotReadyError,
   ForgeError,
   MissingRouteParamError,
   RequestAbortedError,
@@ -1503,11 +1504,12 @@ describe('auto-discovery guard & callbacks', () => {
       endpoint: '/_forge/routes',
       adapter: 'builtin',
     });
-    expect(() => forge.route('public', 'users.index')).toThrow(ForgeError);
+    expect(() => forge.route('public', 'users.index')).toThrow(DiscoveryNotReadyError);
     try {
       forge.route('public', 'users.index');
     } catch (e) {
       expect((e as ForgeError).code).toBe('RF_FE_010');
+      expect(e).toBeInstanceOf(DiscoveryNotReadyError);
     }
   });
 

@@ -172,3 +172,14 @@ export class RequestAbortedError extends ForgeError {
     });
   }
 }
+
+/** RF_FE_010：auto-discovery 未完成时调用 route()/hasRoute() 的同步守卫（api() 内部 await discovery，不受此限） */
+export class DiscoveryNotReadyError extends ForgeError {
+  constructor() {
+    super(
+      'Route data not available. Auto-discovery has not completed. ' +
+      'Use forge.ready() or forge.use(level) first, or await ready() before calling route()/hasRoute().',
+      { code: 'RF_FE_010' },
+    );
+  }
+}

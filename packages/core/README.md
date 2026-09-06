@@ -358,7 +358,7 @@ All errors extend `ForgeError` and carry a stable `code` field (the `ForgeErrorC
 | `NetworkError` | `RF_FE_007` | network-layer failure (DNS, refused connection…); `cause` keeps the original error |
 | `HTTPError` | `RF_FE_008` | non-2xx HTTP response; `context.status` holds the status code; `response` carries the full ResponseData (e.g. Laravel 422 validation errors via `err.response.data.errors`) |
 | `RequestAbortedError` | `RF_FE_009` | request cancelled via `abort()` / AbortSignal |
-| `ForgeError` (guard) | `RF_FE_010` | `route()` / `hasRoute()` called before auto-discovery completed |
+| `DiscoveryNotReadyError` | `RF_FE_010` | `route()` / `hasRoute()` called before auto-discovery completed (sync guard; `api()` awaits discovery internally) |
 
 Error object shape:
 

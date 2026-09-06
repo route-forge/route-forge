@@ -357,7 +357,7 @@ const data = await forge.api('unassigned', 'some.route')
 | `NetworkError` | `RF_FE_007` | 网络层失败（DNS、连接被拒等），`cause` 保留原始错误 |
 | `HTTPError` | `RF_FE_008` | HTTP 非 2xx，`context.status` 为状态码；`response` 携带完整 ResponseData（如 Laravel 422 校验错误 `err.response.data.errors`） |
 | `RequestAbortedError` | `RF_FE_009` | 请求被 `abort()` / AbortSignal 取消 |
-| `ForgeError`（守卫） | `RF_FE_010` | auto-discovery 未完成时调用 `route()` / `hasRoute()` |
+| `DiscoveryNotReadyError` | `RF_FE_010` | auto-discovery 未完成时调用 `route()` / `hasRoute()`（同步守卫；`api()` 内部自动 await discovery） |
 
 错误对象结构：
 

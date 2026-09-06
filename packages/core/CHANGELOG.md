@@ -19,6 +19,9 @@
   与元信息拉取通道的 HTTPError 均注入该字段。
 - 新增 `InvalidPathParamError`（复用码 `RF_FE_003`）：路径参数收到非原始值（对象/数组）时抛出——
   此前抛裸 `ForgeError`，无法 `instanceof` 判定；错误码契约不变，仅类层次补全。
+- 新增 `DiscoveryNotReadyError`（复用码 `RF_FE_010`）：auto-discovery 未完成时 `route()` / `hasRoute()`
+  的同步守卫改抛该专属类（此前抛裸 `ForgeError`），`instanceof` 可用；message 补充
+  「or await ready() before calling route()/hasRoute()」。
 - **codegen 类型接入 core 主入口**：`RouteForge.api / route / url / hasRoute` 签名泛型化——声明
   `ForgeRouteMap`（codegen 生成或 module augmentation）后，主入口的路由名、params 与 api 响应类型
   按映射收敛（此前泛型只对 vue/react hooks 生效，纯 core 用户拿到 d.ts 无约束）。未声明映射时

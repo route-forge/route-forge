@@ -17,6 +17,7 @@ import type { LoadingChangeCallback } from './loading.js';
 import { LoadingTracker } from './loading.js';
 import {
   AdapterNotFoundError,
+  DiscoveryNotReadyError,
   ForgeError,
   HTTPError,
   UnknownRouteError,
@@ -138,11 +139,7 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
 
   function assertDiscoveryReady(): void {
     if (!autoDiscoveryCompleted && !explicitLevels?.length) {
-      throw new ForgeError(
-        'Route data not available. Auto-discovery has not completed. ' +
-        'Use forge.ready() or forge.use(level) first.',
-        { code: 'RF_FE_010' },
-      );
+      throw new DiscoveryNotReadyError();
     }
   }
 

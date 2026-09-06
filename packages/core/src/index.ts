@@ -20,6 +20,7 @@ export {
   NetworkError,
   HTTPError,
   RequestAbortedError,
+  DiscoveryNotReadyError,
 } from './errors.js';
 export type { ForgeErrorCode } from './errors.js';
 
