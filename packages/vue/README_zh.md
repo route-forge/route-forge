@@ -33,7 +33,8 @@ plugin.interceptors.response.use((resp) => resp.data, (err) => Promise.reject(er
 
 const app = createApp(App)
 app.use(plugin)
-// 推荐：ready()（摘要 + eager 层级全部完成）后再挂载应用，
+
+// 方式 A（推荐）：ready()（摘要 + eager 层级全部完成）后再挂载应用，
 // 挂载后 route()/hasRoute() 等同步方法即刻可用
 plugin.ready()
   .then(() => app.mount('#app'))
@@ -41,13 +42,18 @@ plugin.ready()
     // 失败必须接住：摘要端点不可达（网络错误/非 2xx/超时）时避免静默白屏
     console.error('[route-forge] init failed', err)
   })
+
+// 方式 B（同等支持）：立即挂载、在组件树内闭门——<ForgeReady> 会在 ready() resolve 前
+// 暂存依赖路由的内容，确定性与方式 A 等价：
+//   app.mount('#app')
+// 并在 App.vue 中用 <ForgeReady> 包住路由内容（见下）
 ```
 
 > 插件选项与 `createRouteForge(options)` 完全一致（`endpoint` / `summary` / `levels` / `eager` / `adapter` / `cache` / `interceptors` / `timeout` / `baseURL`），完整选项表见 [core README](../core/README_zh.md#配置选项createruteforgeoptions)。`options` 本身可选——摘要由页面内嵌 `@forgeSummary`（`window.__ROUTE_FORGE__`）提供时，可直接 `createRouteForgePlugin()` 无参安装。
 >
 > **复用模式**：已在 Vue 之外（SSR 入口、单例模块）持有 forge 实例？直接 `createRouteForgePlugin(instance)` 传入即可复用、忽略 options——与 React 的 `<RouteForgeProvider forge?>` 对称。
 
-**想要直接 mount 又要确定性首帧？** 用 `ForgeReady` 门闩组件包住依赖路由的内容——ready 前渲染 `fallback` 插槽、之后渲染 default，与 `plugin.ready().then(mount)` 的确定性等价：
+**方式 B——直接 mount 且确定性首帧：** 用 `ForgeReady` 门闩组件包住依赖路由的内容——ready 前渲染 `fallback` 插槽、之后渲染 default，与 `plugin.ready().then(mount)` 的确定性等价：
 
 ```vue
 <ForgeReady>

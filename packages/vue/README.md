@@ -33,7 +33,8 @@ plugin.interceptors.response.use((resp) => resp.data, (err) => Promise.reject(er
 
 const app = createApp(App)
 app.use(plugin)
-// Recommended: mount the app after ready() (summary + eager levels fully loaded);
+
+// Option A (recommended): mount the app after ready() (summary + eager levels fully loaded);
 // sync methods like route()/hasRoute() are then safe immediately
 plugin.ready()
   .then(() => app.mount('#app'))
@@ -42,13 +43,18 @@ plugin.ready()
     // (network error / non-2xx / timeout) — avoid a silent blank page
     console.error('[route-forge] init failed', err)
   })
+
+// Option B (equally supported): mount immediately and gate inside the component tree —
+// <ForgeReady> holds route-dependent content until ready() resolves, same determinism:
+//   app.mount('#app')
+// and wrap route content in App.vue (see ForgeReady below)
 ```
 
 > Plugin options are exactly `createRouteForge(options)` (`endpoint` / `summary` / `levels` / `eager` / `adapter` / `cache` / `interceptors` / `timeout` / `baseURL`); full options table in the [core README](../core/README.md#options-createrouteforgeoptions). `options` itself is optional — when the summary is embedded in the page via `@forgeSummary` (`window.__ROUTE_FORGE__`), install with a bare `createRouteForgePlugin()`.
 >
 > **Reuse mode**: already hold a forge instance outside Vue (SSR entry, singleton module)? Pass it directly — `createRouteForgePlugin(instance)` reuses it and ignores options, symmetric with React's `<RouteForgeProvider forge?>`.
 
-**Want direct mount AND a deterministic first frame?** Wrap route-dependent content in the `ForgeReady` gate component — it renders the `fallback` slot until ready, then the default slot; equivalent determinism to `plugin.ready().then(mount)`:
+**Option B — direct mount with a deterministic first frame:** wrap route-dependent content in the `ForgeReady` gate component — it renders the `fallback` slot until ready, then the default slot; equivalent determinism to `plugin.ready().then(mount)`:
 
 ```vue
 <ForgeReady>

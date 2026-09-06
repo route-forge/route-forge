@@ -201,10 +201,22 @@ const plugin = createRouteForgePlugin({
   endpoint: '/_forge/routes',
 })
 app.use(plugin)
-// Recommended: mount after ready() (summary + eager levels done); handle failures to avoid a silent blank page
+
+// Option A (recommended): mount after ready() (summary + eager levels done); handle failures
+// to avoid a silent blank page
 plugin.ready()
   .then(() => app.mount('#app'))
   .catch((err) => console.error('[route-forge] init failed', err))
+
+// Option B (equally supported): mount immediately and gate inside the component tree —
+// <ForgeReady> holds route-dependent content until ready() resolves, same determinism,
+// without deferring the mount:
+//   app.mount('#app')
+// and in App.vue:
+//   <ForgeReady>
+//     <template #fallback><Splash /></template>
+//     <RouterView />
+//   </ForgeReady>
 ```
 
 ```vue
@@ -262,6 +274,11 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </RouteForgeProvider>,
 )
+
+// Alternative (equally supported): mount immediately and gate inside the tree —
+// add gate (and an optional gateFallback) to the Provider; children render only after
+// ready() resolves, same determinism as ready().then(mount):
+//   <RouteForgeProvider gate gateFallback={<Splash />}> … </RouteForgeProvider>
 ```
 
 ```tsx

@@ -821,6 +821,24 @@ forge.ready(
 );
 ```
 
+##### `forge.isReady()` 方法
+
+`forge.isReady(): boolean` 同步查询 `ready()` 是否已**成功** resolve（auto-discovery + eager 完成）；
+reject 不算就绪（保持 false）。只读、不触发任何加载。供框架层 ready 门闩同步判定、避免多余的
+fallback 首帧（vue `ForgeReady` / react `<RouteForgeProvider gate>`）。
+
+##### 框架层 ready 门闩（vue / react）
+
+「整应用等待就绪」有两种**同等支持**的方式，效果等价（ready 前不渲染路由依赖内容）：
+
+- **方式 A（树外门控）**：`plugin.ready().then(() => app.mount(...))` / `forge.ready().then(() => root.render(...))`——
+  mount 本身推迟到 ready 之后；react 侧建议经 `<RouteForgeProvider forge={instance}>` 复用实例，
+  避免摘要请求两次。失败经 `.catch` 显式处理。
+- **方式 B（树内门控）**：直接 mount，由框架层闭门——
+  vue：`<ForgeReady>` 组件（`fallback` 插槽 → `default` 插槽）；
+  react：`<RouteForgeProvider gate gateFallback>`（children 在 ready 后放行）。
+  实例重建（options 变更）时重新闭门；`ready()` reject 时保持闭门并响亮 `console.error`（不静默）。
+
 ##### `forge.use(level?, prefix?)` 方法
 
 `forge.use()` 是 core 层唯一的 level 绑定入口，Vue/React/IIFE 三端共享同一套 API 表面：
@@ -1048,12 +1066,14 @@ const url = useForgeRoute('public', 'login.show');
   全局注册的 `RouterLink` 时自动改渲染 `<RouterLink :to="href">`（零依赖探测，不 import vue-router）；
   React 侧默认渲染 `<a href>`，通过 `as` prop 注入任意 Link 组件（react-router `Link` / next/link 等，
   注入组件同时收到 `href` 与 `to` 两个 prop）。attrs 透传到链接元素，生成的 `href` / `to` 优先于同名 attr。
-- `ForgeRoute`：Vue 作用域插槽暴露 `{ href, loaded }`；React `children` 为函数时收到 `{ href, loaded }`（render-prop）。
-- 未加载 / 解析失败时渲染 `loading` 插槽（Vue）/ `loading` prop（React），缺省不渲染；
+- `ForgeRoute`：Vue 作用域插槽暴露 `{ href, loaded }`；React `children` 为函数时收到 `{ href, loaded, error }`（render-prop，已加载后成功/失败态均调用；未加载时不调用）。
+- 未加载时渲染 `loading` 插槽（Vue）/ `loading` prop（React）；**已加载但解析失败**渲染 `error` 插槽
+  （Vue，props 携带 `{ error }`）/ `error` prop（React，未传回落 loading）；缺省均不渲染；
   `level` 未加载时每实例 `console.warn` 一次（正常瞬态不刷屏），路由解析失败每次 `console.error`（渲染不中断）。
 - `level` 为静态字符串绑定（与 `useForgeRoute` 契约一致）；`name` / `params` 保持响应式
   （Vue 支持值与 getter 双形态，React `params` 收普通对象按内容比较）。
 - SSR：level 缓存就绪前组件只渲染 loading（或不渲染），链接在客户端 hydration 后自然出现。
+- 整应用就绪门控（`ForgeReady` / `<RouteForgeProvider gate>`）见 §4.1.6「框架层 ready 门闩」。
 
 #### 4.1.9 初始化时序与推荐模式
 

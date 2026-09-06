@@ -202,10 +202,20 @@ const plugin = createRouteForgePlugin({
   endpoint: '/_forge/routes',
 })
 app.use(plugin)
-// 推荐：ready()（摘要 + eager 层级完成）后再挂载，失败接住避免静默白屏
+
+// 方式 A（推荐）：ready()（摘要 + eager 层级完成）后再挂载，失败接住避免静默白屏
 plugin.ready()
   .then(() => app.mount('#app'))
   .catch((err) => console.error('[route-forge] init failed', err))
+
+// 方式 B（同等支持）：立即挂载、在组件树内闭门——<ForgeReady> 会在 ready() resolve 前暂存
+// 依赖路由的内容，确定性与方式 A 等价，且不用推迟 mount：
+//   app.mount('#app')
+// App.vue 中：
+//   <ForgeReady>
+//     <template #fallback><Splash /></template>
+//     <RouterView />
+//   </ForgeReady>
 ```
 
 ```vue
@@ -262,6 +272,10 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </RouteForgeProvider>,
 )
+
+// 同等支持的替代：立即渲染、在树内闭门——给 Provider 加 gate（可选 gateFallback），
+// children 在 ready() resolve 后才渲染，确定性与 ready().then(mount) 等价：
+//   <RouteForgeProvider gate gateFallback={<Splash />}> … </RouteForgeProvider>
 ```
 
 ```tsx

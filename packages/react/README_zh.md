@@ -39,14 +39,16 @@ createRoot(document.getElementById('root')!).render(
 
 hooks 内部已处理好异步：`useForgeApi` / `forge.api()` 自动等待层级加载，`useForgeRoute` 未加载时返回 `''`、加载后自动更新——无需阻塞渲染。
 
-**需要整应用就绪后再渲染？**（例如首屏就要用 `route()` / `hasRoute()` 等同步方法）可在 Provider 外先建一个 forge 做就绪门控：
+**需要整应用就绪后再渲染？** 两种同等支持的方式，任选其一：
+
+**方式 A（推荐）：树外门控**——在 Provider 外先建 forge，`ready()` 后再挂载：
 
 ```tsx
 const forge = createRouteForge({ endpoint: '/_forge/routes' })
 forge.ready()
   .then(() => {
     createRoot(document.getElementById('root')!).render(
-      <RouteForgeProvider options={{ endpoint: '/_forge/routes' }}>
+      <RouteForgeProvider forge={forge}>
         <App />
       </RouteForgeProvider>,
     )
@@ -57,13 +59,21 @@ forge.ready()
   })
 ```
 
-> 注意：门控写法里 Provider 内部会创建第二个实例，摘要端点会被请求两次。若不想重复请求，可通过 `<RouteForgeProvider forge={instance}>` 传入实例（复用模式），或使用上面的直接渲染写法、把同步方法的调用放在 `ready()` 之后。
+**方式 B（同等支持）：树内门控**——立即渲染，给 Provider 加 `gate` prop；children 在 `ready()` resolve 后才渲染，确定性与方式 A 等价且不用推迟渲染：
+
+```tsx
+createRoot(document.getElementById('root')!).render(
+  <RouteForgeProvider options={{ endpoint: '/_forge/routes' }} gate gateFallback={<Splash />}>
+    <App />
+  </RouteForgeProvider>,
+)
+```
+
+> 方式 A 示例通过 `forge={forge}` 传实例（复用模式），摘要端点只请求一次；若传 `options`，Provider 会创建第二个实例、摘要请求两次。方式 B 天然无第二实例；`ready()` reject 时 children 保持闭门并通过 `console.error` 响亮报告。
 
 > Provider 选项与 `createRouteForge(options)` 完全一致（`endpoint` / `summary` / `levels` / `eager` / `adapter` / `cache` / `interceptors` / `timeout` / `baseURL`），完整选项表见 [core README](../core/README_zh.md#配置选项createruteforgeoptions)。`options` 做浅比较：内联字面量在值不变时不会重建实例。`options` 属性本身可省略——摘要由页面内嵌 `@forgeSummary`（`window.__ROUTE_FORGE__`）提供时，可直接 `<RouteForgeProvider>` 不带 `options`。
 >
 > **复用模式**：已在 React 之外（SSR 入口、单例模块）持有 forge 实例？直接 `<RouteForgeProvider forge={instance}>` 传入——Provider 将忽略 `options`、不再创建/重建实例，消除 ready-gate 双实例的重复摘要请求。（传入 `forge` 时 `onInterceptors` 不会触发——在你持有的实例上直接注册即可。）
->
-> **直接 mount 也要确定性首帧？** 加 `gate` prop：`<RouteForgeProvider gate gateFallback={<Splash/>}>` 在 `ready()` resolve 前渲染 `gateFallback`、之后渲染 children——与 `ready().then(mount)` 同级确定性，且不用包一层 bootstrap。
 
 ## useForge — 核心 hook
 

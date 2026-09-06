@@ -40,14 +40,16 @@ createRoot(document.getElementById('root')!).render(
 
 The hooks handle async internally: `useForgeApi` / `forge.api()` await level loading automatically, and `useForgeRoute` returns `''` until the level loads, then updates on its own — no render blocking needed.
 
-**Need the whole app to wait until ready?** (e.g. the first screen calls sync methods like `route()` / `hasRoute()`) Create a forge outside the Provider as a readiness gate:
+**Need the whole app to wait until ready?** Two equally supported options — pick one:
+
+**Option A (recommended): gate outside the tree** — create a forge outside the Provider and mount after `ready()`:
 
 ```tsx
 const forge = createRouteForge({ endpoint: '/_forge/routes' })
 forge.ready()
   .then(() => {
     createRoot(document.getElementById('root')!).render(
-      <RouteForgeProvider options={{ endpoint: '/_forge/routes' }}>
+      <RouteForgeProvider forge={forge}>
         <App />
       </RouteForgeProvider>,
     )
@@ -59,13 +61,21 @@ forge.ready()
   })
 ```
 
-> Note: in the gated pattern the Provider creates a second instance and the summary endpoint is requested twice. To avoid the duplicate request, either pass the instance via `<RouteForgeProvider forge={instance}>` (reuse mode), or prefer the direct-render pattern above and call sync methods only after `ready()`.
+**Option B (equally supported): gate inside the tree** — mount immediately and add the `gate` prop to the Provider; children render only after `ready()` resolves, same determinism without deferring the render:
+
+```tsx
+createRoot(document.getElementById('root')!).render(
+  <RouteForgeProvider options={{ endpoint: '/_forge/routes' }} gate gateFallback={<Splash />}>
+    <App />
+  </RouteForgeProvider>,
+)
+```
+
+> Option A as shown passes the instance via `forge={forge}` (reuse mode) so the summary endpoint is requested only once; if you pass `options` instead, the Provider creates a second instance and the summary is fetched twice. With Option B there is no second instance by construction; `ready()` rejection keeps children gated and reports loudly via `console.error`.
 
 > Provider options are exactly `createRouteForge(options)` (`endpoint` / `summary` / `levels` / `eager` / `adapter` / `cache` / `interceptors` / `timeout` / `baseURL`); full options table in the [core README](../core/README.md#options-createrouteforgeoptions). `options` is shallow-compared: inline literals do not rebuild the instance while the values stay the same. The `options` prop itself is optional — when the summary is embedded via `@forgeSummary` (`window.__ROUTE_FORGE__`), render `<RouteForgeProvider>` without any `options`.
 >
 > **Reuse mode**: already hold a forge instance outside React (SSR entry, singleton module)? Pass it via `<RouteForgeProvider forge={instance}>` — the Provider then ignores `options` and never creates or rebuilds an instance, avoiding the double-summary-request of ready-gate setups. (When `forge` is given, `onInterceptors` is not called — register interceptors on the instance you hold.)
->
-> **Direct mount + deterministic first frame?** Add the `gate` prop: `<RouteForgeProvider gate gateFallback={<Splash/>}>` renders `gateFallback` until `ready()` resolves, then children — same determinism as `ready().then(mount)` without wrapping your bootstrap.
 
 ## useForge — the core hook
 
