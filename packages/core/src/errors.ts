@@ -72,7 +72,7 @@ export class UnknownLevelError extends ForgeError {
   }
 }
 
-/** RF_FE_003：路径参数缺失（strict=true 时） */
+/** RF_FE_003：必填路径参数缺失（无后端 default 时，前端校验恒开） */
 export class MissingRouteParamError extends ForgeError {
   constructor(route: string, missingParams: string[]) {
     super(`Missing path parameter(s) ${missingParams.join(', ')} for route "${route}"`, {
@@ -80,6 +80,16 @@ export class MissingRouteParamError extends ForgeError {
       route,
       context: { missingParams },
     });
+  }
+}
+
+/** RF_FE_003：路径参数收到非原始值（对象/数组等，无法安全插入 URI） */
+export class InvalidPathParamError extends ForgeError {
+  constructor(route: string, param: string, value: unknown) {
+    super(
+      `Path parameter "${param}" must be a primitive value (string, number, boolean), got ${typeof value}`,
+      { code: 'RF_FE_003', route, context: { param, value } },
+    );
   }
 }
 

@@ -14,6 +14,8 @@
   随错误逐段传递（响应拦截器 `onRejected` 链 → 最终 catch）。典型场景：Laravel 422 字段级校验错误回显，
   `err.response.data.errors` 直接可用，无需再发请求。业务请求（builtin / axios / 自定义 Fetcher 统一转换点）
   与元信息拉取通道的 HTTPError 均注入该字段。
+- 新增 `InvalidPathParamError`（复用码 `RF_FE_003`）：路径参数收到非原始值（对象/数组）时抛出——
+  此前抛裸 `ForgeError`，无法 `instanceof` 判定；错误码契约不变，仅类层次补全。
 - `RouteForge.getLevels(): string[]`：只读发现 API，返回当前已知的已声明层级（含后端恒注入的 `unassigned`）。
   内嵌 / `summary` 引导构造后即可用；网络引导 `ready()` 前返回 `[]`、之后为全量；返回副本，不触发加载、未就绪不抛错。
 

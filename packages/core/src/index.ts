@@ -14,6 +14,7 @@ export {
   UnknownRouteError,
   UnknownLevelError,
   MissingRouteParamError,
+  InvalidPathParamError,
   AdapterNotFoundError,
   InvalidInterceptorReturnError,
   NetworkError,

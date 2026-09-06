@@ -349,7 +349,8 @@ const data = await forge.api('unassigned', 'some.route')
 |--------|------|----------|
 | `UnknownRouteError` | `RF_FE_001` | 路由名不存在于已加载层级中 |
 | `UnknownLevelError` | `RF_FE_002` | 层级未在 levels 声明（前端校验始终开启） |
-| `MissingRouteParamError` | `RF_FE_003` | 必填路径参数缺失（无后端默认值）；路径参数传入对象同样报此码 |
+| `MissingRouteParamError` | `RF_FE_003` | 必填路径参数缺失（无后端默认值） |
+| `InvalidPathParamError` | `RF_FE_003` | 路径参数收到非原始值（对象/数组） |
 | `AdapterNotFoundError` | `RF_FE_005` | `adapter: 'axios'` 但宿主未安装 / 无有效 axios |
 | `InvalidInterceptorReturnError` | `RF_FE_006` | 请求拦截器未返回 RequestConfig 对象 |
 | `NetworkError` | `RF_FE_007` | 网络层失败（DNS、连接被拒等），`cause` 保留原始错误 |

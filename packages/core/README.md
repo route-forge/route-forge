@@ -350,7 +350,8 @@ All errors extend `ForgeError` and carry a stable `code` field (the `ForgeErrorC
 |-------------|------|---------|
 | `UnknownRouteError` | `RF_FE_001` | route name not found in the loaded level |
 | `UnknownLevelError` | `RF_FE_002` | level not declared (frontend validation is always on) |
-| `MissingRouteParamError` | `RF_FE_003` | required path parameter missing (no backend default); also thrown when a path parameter receives an object |
+| `MissingRouteParamError` | `RF_FE_003` | required path parameter missing (no backend default) |
+| `InvalidPathParamError` | `RF_FE_003` | path parameter received a non-primitive value (object/array) |
 | `AdapterNotFoundError` | `RF_FE_005` | `adapter: 'axios'` but no usable host axios |
 | `InvalidInterceptorReturnError` | `RF_FE_006` | a request interceptor did not return a RequestConfig object |
 | `NetworkError` | `RF_FE_007` | network-layer failure (DNS, refused connection…); `cause` keeps the original error |

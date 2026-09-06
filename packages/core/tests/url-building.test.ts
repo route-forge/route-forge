@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRouteForge, UnknownLevelError, UnknownRouteError } from '../src/index.js';
+import { createRouteForge, InvalidPathParamError, UnknownLevelError, UnknownRouteError } from '../src/index.js';
 import type { LevelRoutesResponse, RequestConfig, SummaryResponse } from '../src/types.js';
 import { makeSummary as normalizeSummary, type SummaryOverrides } from './fixtures.js';
 
@@ -478,6 +478,25 @@ describe('getRoutes snapshot isolation', () => {
     // admin 已声明但未加载 → 返回 {}（不是抛错）；拼错的层级才抛
     expect(forge.getRoutes('admin')).toEqual({});
     expect(() => forge.getRoutes('typo')).toThrowError(UnknownLevelError);
+  });
+
+  it('route() with object path param throws InvalidPathParamError (still RF_FE_003)', async () => {
+    const { forge } = await createLoadedForge({
+      'user.show': {
+        name: 'user.show',
+        uri: 'users/{user}',
+        methods: ['GET'],
+        parameters: ['user'],
+      },
+    });
+    expect(() => forge.route('public', 'user.show', { user: { id: 1 } })).toThrowError(
+      InvalidPathParamError,
+    );
+    try {
+      forge.route('public', 'user.show', { user: { id: 1 } });
+    } catch (e) {
+      expect((e as { code?: string }).code).toBe('RF_FE_003');
+    }
   });
 
   it('getRoutes() no-arg overload deep-copies nested structures (L5)', async () => {

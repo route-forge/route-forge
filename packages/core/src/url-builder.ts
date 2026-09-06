@@ -7,7 +7,7 @@
  * @see .docs/SPEC.md §4.1.3
  */
 
-import { ForgeError, MissingRouteParamError } from './errors.js';
+import { InvalidPathParamError, MissingRouteParamError } from './errors.js';
 import type { ApiCallParams, RouteMeta } from './types.js';
 
 /** 层级元信息端点上下文（buildUrl 用） */
@@ -31,7 +31,7 @@ export function buildUrl(level: string, ctx: EndpointContext): string {
 
 /**
  * 由路由元信息 + 传参构建最终请求 URL（含路径参数替换、可选参数清理、前缀拼接）。
- * 抛错语义：缺失必填参数 → MissingRouteParamError；路径参数为对象 → ForgeError(RF_FE_003)。
+ * 抛错语义：缺失必填参数 → MissingRouteParamError；路径参数为对象 → InvalidPathParamError（同为 RF_FE_003）。
  */
 export function buildRequestUrl(
   meta: RouteMeta,
@@ -69,10 +69,7 @@ export function buildRequestUrl(
     if (values[name] !== undefined) {
       const val = values[name];
       if (typeof val === 'object') {
-        throw new ForgeError(
-          `Path parameter "${name}" must be a primitive value (string, number, boolean), got ${typeof val}`,
-          { code: 'RF_FE_003', route: meta.name, context: { param: name, value: val } },
-        );
+        throw new InvalidPathParamError(meta.name, name, val);
       }
       return encodeURIComponent(String(val));
     }

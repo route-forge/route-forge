@@ -4,6 +4,7 @@ import {
   ForgeError,
   HTTPError,
   InvalidInterceptorReturnError,
+  InvalidPathParamError,
   MissingRouteParamError,
   NetworkError,
   UnknownLevelError,
@@ -71,6 +72,17 @@ describe('error codes and payloads', () => {
     expect(e.code).toBe('RF_FE_003');
     expect(e.context?.missingParams).toEqual(['post', 'user']);
     expect(e.message).toContain('post, user');
+  });
+
+  it('InvalidPathParamError shares RF_FE_003 but is a distinct class', () => {
+    const e = new InvalidPathParamError('users.show', 'user', { id: 1 });
+    expect(e.code).toBe('RF_FE_003');
+    expect(e).toBeInstanceOf(ForgeError);
+    expect(e).not.toBeInstanceOf(MissingRouteParamError);
+    expect(e.route).toBe('users.show');
+    expect(e.context?.param).toBe('user');
+    expect(e.message).toContain('user');
+    expect(e.message).toContain('object');
   });
 
   it('AdapterNotFoundError carries RF_FE_005 with adapter name in context', () => {

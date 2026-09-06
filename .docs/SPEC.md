@@ -1402,6 +1402,7 @@ const forge = createRouteForge({
 | `UnknownRouteError`             | `RF_FE_001` | 路由名不存在于已加载层级中                 |
 | `UnknownLevelError`             | `RF_FE_002` | 路由所在层级未在 `levels` 声明             |
 | `MissingRouteParamError`        | `RF_FE_003` | 必填路径参数缺失（无默认值时，始终校验）    |
+| `InvalidPathParamError`         | `RF_FE_003` | 路径参数收到非原始值（对象/数组）          |
 | `AdapterNotFoundError`          | `RF_FE_005` | `adapter: 'axios'` 但未检测到 axios        |
 | `InvalidInterceptorReturnError` | `RF_FE_006` | 请求拦截器返回非 `RequestConfig`           |
 | `NetworkError`                  | `RF_FE_007` | adapter 抛出的网络错误（DNS、连接超时等）  |
