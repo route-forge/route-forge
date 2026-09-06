@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
-import { StrictMode, useContext, useEffect } from 'react';
+import { StrictMode, useContext, useEffect, useState } from 'react';
 import {
   ForgeContext,
   RouteForgeProvider,
@@ -377,6 +377,36 @@ describe('useForgeRoute', () => {
       ),
     ).toThrow(TypeError);
     errSpy.mockRestore();
+  });
+
+  it('builds url synchronously on first render when level is already loaded (no first-frame empty)', async () => {
+    // 预加载 public 后再挂载 useForgeRoute 消费组件：首次渲染就应拿到 URL，
+    // 不允许旧实现的「首帧 '' → effect setState → 第二帧才出 URL」闪烁
+    const urls: string[] = [];
+
+    function Host() {
+      const forge = useForge();
+      const [loaded, setLoaded] = useState(false);
+      useEffect(() => {
+        forge.load('public').then(() => setLoaded(true));
+      }, [forge]);
+      return loaded ? <C /> : null;
+    }
+
+    function C() {
+      const url = useForgeRoute('public', 'users.show', { user: 42 });
+      urls.push(url);
+      return <div>{url || 'loading'}</div>;
+    }
+
+    render(
+      <RouteForgeProvider options={makeOptions()}>
+        <Host />
+      </RouteForgeProvider>,
+    );
+    await waitFor(() => expect(urls.length).toBeGreaterThan(0));
+    // C 的首次渲染（含 StrictMode 双渲染）不应出现空帧
+    expect(urls[0]).toBe('/users/42');
   });
 });
 

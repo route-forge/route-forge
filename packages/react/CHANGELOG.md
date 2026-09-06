@@ -4,6 +4,14 @@
 
 ## Unreleased
 
+### Changed
+
+- `useForgeRoute` 消除首帧空窗：level **已加载**时改为渲染期同步求值（`forge.route()` 纯缓存读，
+  不写 ref/state，符合 concurrent/StrictMode 渲染期只读约定），首帧即出 URL——旧实现即使层级已加载
+  也要先渲染一帧空串、等 effect `setState` 后第二帧才出链接（列表页多个链接时首帧全空）。
+  `name` / `params` 变化同样即时生效，不再经过 effect 中转。未加载层级的行为不变（返回 `''`，
+  effect 发起 `load`，完成后 bump 版本号触发重渲染）；降级错误仍在提交后以 warn 输出。
+
 ### Added
 
 - `<RouteForgeProvider>` 新增 `onInterceptors` 创建期回调：每个 forge 实例触发**一次**（首次创建 + options 变更重建时），
