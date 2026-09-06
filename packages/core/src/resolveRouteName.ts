@@ -21,6 +21,9 @@ export interface RouteResolver {
   load(level: string | string[]): Promise<void>;
 
   hasRoute(level: string, name: string): boolean;
+
+  /** 可选：该层级当前已加载的路由名列表（UnknownRouteError 附候选值用） */
+  getRouteNames?(level: string): string[];
 }
 
 /**
@@ -64,8 +67,8 @@ export async function resolveRouteName(
   // 回退到后缀本身（视为已含前缀）
   if (forge.hasRoute(level, suffix)) return suffix;
 
-  // 均不存在 → 报错
-  throw new UnknownRouteError(joined, level);
+  // 均不存在 → 报错（附可用路由名候选）
+  throw new UnknownRouteError(joined, level, forge.getRouteNames?.(level));
 }
 
 /**
@@ -89,5 +92,5 @@ export function resolveRouteNameSync(
   if (forge.hasRoute(level, joined)) return joined;
   if (forge.hasRoute(level, suffix)) return suffix;
 
-  throw new UnknownRouteError(joined, level);
+  throw new UnknownRouteError(joined, level, forge.getRouteNames?.(level));
 }

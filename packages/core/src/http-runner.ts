@@ -35,6 +35,8 @@ export interface HttpRunnerDeps {
   responseInterceptors: InterceptorManager<ResponseData, unknown>;
   load: (level: string | string[]) => Promise<void>;
   findRouteMeta: (level: string, name: string) => RouteMeta | undefined;
+  /** 该层级当前已加载的路由名列表（UnknownRouteError 附候选值用） */
+  getRouteNames: (level: string) => string[];
   baseURL: string;
   /** 实时读取自动发现回填的 URL 前缀（按引用，勿快照） */
   state: DiscoveryState;
@@ -55,6 +57,7 @@ export function createHttpRunner(deps: HttpRunnerDeps): (
     responseInterceptors,
     load,
     findRouteMeta,
+    getRouteNames,
     baseURL,
     state,
     timeout,
@@ -178,7 +181,7 @@ export function createHttpRunner(deps: HttpRunnerDeps): (
       await load(level);
       const meta = findRouteMeta(level, name);
       if (!meta) {
-        throw new UnknownRouteError(name, level);
+        throw new UnknownRouteError(name, level, getRouteNames(level));
       }
       return doApiCall(meta, params, ctrl.signal);
     })();

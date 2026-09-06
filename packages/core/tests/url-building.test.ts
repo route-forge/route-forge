@@ -456,6 +456,24 @@ describe('getRoutes snapshot isolation', () => {
   it('getRoutes(undeclared level) throws UnknownLevelError (no silent {})', async () => {
     const { forge } = await createLoadedForge({});
     expect(() => forge.getRoutes('adimn')).toThrowError(UnknownLevelError);
+    // 错误信息列出已声明层级候选
+    try {
+      forge.getRoutes('adimn');
+    } catch (e) {
+      expect((e as Error).message).toContain('Available: public');
+    }
+  });
+
+  it('route() with unknown name lists available route names in the error', async () => {
+    const { forge } = await createLoadedForge({
+      'user.show': { name: 'user.show', uri: 'users/{user}', methods: ['GET'], parameters: ['user'] },
+    });
+    try {
+      forge.route('public', 'user.shwo');
+    } catch (e) {
+      expect(e).toBeInstanceOf(UnknownRouteError);
+      expect((e as Error).message).toContain('Available: user.show');
+    }
   });
 
   it('getRoutes(declared but not loaded) returns empty object', async () => {

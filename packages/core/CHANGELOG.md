@@ -31,6 +31,10 @@
 
 ### Changed
 
+- **错误信息附可用候选值**：`UnknownRouteError` / `UnknownLevelError` 的 message 追加
+  `Available: ...`（列出该层级可用路由名 / 已声明层级，超过 5 个截断为 `+N more`），
+  同时写入 `context.candidates`——拼错路由名/层级名（最高频使用错误）现在一眼可见正确取值。
+  新参数均为可选，直接构造错误类的旧代码不受影响。
 - **摘要拉取失败的错误语义真实化**：`options.endpoint` 网络引导失败且无显式 `levels` 可降级时，
   改抛 `NetworkError`（RF_FE_007，message 含实际请求 URL 与原始原因，`cause` 携带原始错误）——
   此前伪装成 `UnknownLevelError('(auto-discovery)')`，让用户误以为层级未声明而排查错方向。

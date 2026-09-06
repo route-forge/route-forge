@@ -60,6 +60,22 @@ describe('error codes and payloads', () => {
     expect(e.message).toContain('admin');
   });
 
+  it('candidates are listed in message and context (truncated beyond 5)', () => {
+    const e = new UnknownRouteError('nope', 'admin', ['a.b', 'c.d', 'e.f']);
+    expect(e.message).toContain('Available: a.b, c.d, e.f');
+    expect(e.context?.candidates).toEqual(['a.b', 'c.d', 'e.f']);
+
+    const many = new UnknownLevelError('typo', ['l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7']);
+    expect(many.message).toContain('Available: l1, l2, l3, l4, l5 (+2 more)');
+    expect(many.message).not.toContain('l6');
+  });
+
+  it('no candidates → message unchanged and no candidates context', () => {
+    const e = new UnknownLevelError('ghost');
+    expect(e.message).not.toContain('Available');
+    expect(e.context?.candidates).toBeUndefined();
+  });
+
   it('UnknownLevelError carries RF_FE_002 with level only', () => {
     const e = new UnknownLevelError('ghost');
     expect(e.code).toBe('RF_FE_002');

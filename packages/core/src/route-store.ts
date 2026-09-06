@@ -52,7 +52,7 @@ export class RouteStore {
 
   assertLevelDeclared(level: string): void {
     if (!this.state.levels.includes(level)) {
-      throw new UnknownLevelError(level);
+      throw new UnknownLevelError(level, this.state.levels);
     }
   }
 

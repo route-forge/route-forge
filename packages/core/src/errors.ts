@@ -51,24 +51,41 @@ export class ForgeError extends Error {
   }
 }
 
+/** 候选值格式化：列出可用取值帮助排查拼写错误（超过 5 个截断显示 +N more） */
+function formatCandidates(candidates?: string[]): string {
+  if (!candidates || candidates.length === 0) return '';
+  const MAX = 5;
+  const shown = candidates.slice(0, MAX).join(', ');
+  const more = candidates.length > MAX ? ` (+${candidates.length - MAX} more)` : '';
+  return ` Available: ${shown}${more}`;
+}
+
 /** RF_FE_001：路由名不存在于已加载层级中 */
 export class UnknownRouteError extends ForgeError {
-  constructor(route: string, level?: string) {
-    super(`Route "${route}" not found${level ? ` in level "${level}"` : ''}`, {
-      code: 'RF_FE_001',
-      route,
-      level,
-    });
+  constructor(route: string, level?: string, candidates?: string[]) {
+    super(
+      `Route "${route}" not found${level ? ` in level "${level}"` : ''}.${formatCandidates(candidates)}`,
+      {
+        code: 'RF_FE_001',
+        route,
+        level,
+        context: candidates && candidates.length > 0 ? { candidates } : undefined,
+      },
+    );
   }
 }
 
 /** RF_FE_002：路由所在层级未在 levels 声明 */
 export class UnknownLevelError extends ForgeError {
-  constructor(level: string) {
-    super(`Level "${level}" not declared in options.levels`, {
-      code: 'RF_FE_002',
-      level,
-    });
+  constructor(level: string, candidates?: string[]) {
+    super(
+      `Level "${level}" not declared in options.levels.${formatCandidates(candidates)}`,
+      {
+        code: 'RF_FE_002',
+        level,
+        context: candidates && candidates.length > 0 ? { candidates } : undefined,
+      },
+    );
   }
 }
 

@@ -30,7 +30,7 @@ export function createBoundForgeFactory(deps: BoundForgeDeps): (
   const { load, api, route, hasRoute, getRoutes, invalidate, isLoaded, loadingTracker } = deps;
 
   // RouteResolver 接口实现（供 resolveRouteName/resolveRouteNameSync 使用）
-  const resolver: RouteResolver = { load, hasRoute };
+  const resolver: RouteResolver = { load, hasRoute, getRouteNames: (lvl) => Object.keys(getRoutes(lvl)) };
 
   function createBoundForge(level: string, prefix?: string): BoundForge {
     // 自动触发 level 加载；失败时 levelLoaded 保持 reject 语义
