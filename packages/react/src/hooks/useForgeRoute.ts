@@ -39,6 +39,25 @@ export function useForgeRoute(
   params?: Record<string, unknown>,
   hooks?: ForgeRouteDegradeHooks,
 ): string {
+  return useForgeRouteState(level, name, params, hooks).href;
+}
+
+/** useForgeRoute 的三态内部形态：组件层（ForgeRoute/ForgeLink）用它区分「未加载 / 解析失败」 */
+export interface ForgeRouteState {
+  /** 生成的 URL；未加载或解析出错时为 '' */
+  href: string;
+  /** 解析错误（仅 level 已加载且 route() 抛错时非 null；未加载恒为 null） */
+  error: unknown;
+  /** level 是否已加载（区别「未加载」与「已加载但解析失败」两种空串来源） */
+  isLevelLoaded: boolean;
+}
+
+export function useForgeRouteState(
+  level: string,
+  name: string,
+  params?: Record<string, unknown>,
+  hooks?: ForgeRouteDegradeHooks,
+): ForgeRouteState {
   // 运行时守卫：level 必须是静态字符串（防 JS 用户误用静默降级为空链接）
   if (typeof level !== 'string') {
     throw new TypeError(
@@ -57,13 +76,16 @@ export function useForgeRoute(
 
   // 渲染期同步求值：level 已加载时直接读缓存构建 URL（只读，无副作用）。
   // name / params 变化随下一次渲染即时生效，无需经过 effect 中转。
-  let url = '';
-  if (forge.isLoaded(level)) {
+  const isLevelLoaded = forge.isLoaded(level);
+  let href = '';
+  let error: unknown = null;
+  if (isLevelLoaded) {
     try {
-      url = forge.route(level, name, params);
-    } catch {
+      href = forge.route(level, name, params);
+    } catch (e) {
       // 渲染期静默降级为 ''；错误在下方 effect（渲染提交后）报告
-      url = '';
+      href = '';
+      error = e;
     }
   }
 
@@ -106,5 +128,5 @@ export function useForgeRoute(
     // hooks 不进依赖：报告钩子是稳定行为（console 输出），首渲染闭包即可
   }, [forge, level, name, paramsKey, version]);
 
-  return url;
+  return { href, error, isLevelLoaded };
 }

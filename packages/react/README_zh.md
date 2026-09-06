@@ -150,7 +150,7 @@ function UserLinks({ userId, userName }) {
 
 ## 组件 — ForgeRoute / ForgeLink
 
-两个组件封装了 `useForgeRoute`，省去 JSX 里重复的"先空串、后更新"处理。`level` 未加载（或路由解析失败）时渲染 `loading`（默认什么都不渲染），加载完成后渲染链接。
+两个组件封装了 `useForgeRoute`，省去 JSX 里重复的"先空串、后更新"处理。三态三个出口：**未加载** → 渲染 `loading`（默认什么都不渲染）；**已加载但解析失败**（路由名不存在、参数缺失等）→ 渲染 `error`（未传回落 `loading`）；**成功** → 渲染链接/内容。`ForgeRoute` 的函数 children 还会在 state 中额外收到 `error`。
 
 **`ForgeLink`** —— 便捷形态：加载完成后直接渲染链接，`children` 即链接内容：
 

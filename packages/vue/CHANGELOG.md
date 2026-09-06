@@ -4,6 +4,13 @@
 
 ## Unreleased
 
+### Added
+
+- `ForgeRoute` / `ForgeLink` 三态显式化：**未加载** → `loading` 插槽；**已加载但解析失败**（路由名
+  不存在、参数缺失等）→ 新增 `error` 插槽（props 携带 `{ error }`，未传回落 `loading`）；**成功** →
+  default/链接。此前「加载中」与「解析失败」共用 `href === ''` 哨兵，路由名拼错时页面静默空白、
+  只有控制台可见。
+
 ### Changed
 
 - `useForgeRoute` / `ForgeRoute` / `ForgeLink` 增加注入守卫：未安装 `createRouteForgePlugin()` 时

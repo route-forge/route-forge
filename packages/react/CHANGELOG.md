@@ -4,6 +4,13 @@
 
 ## Unreleased
 
+### Added
+
+- `ForgeRoute` / `ForgeLink` 三态显式化：**未加载** → `loading`；**已加载但解析失败**（路由名不存在、
+  参数缺失等）→ 新增 `error`（ForgeLink 为 ReactNode prop，ForgeRoute render-prop state 新增 `error`
+  字段，未传回落 `loading`）；**成功** → 链接/内容。此前「加载中」与「解析失败」共用 `href === ''`
+  哨兵，路由名拼错时页面静默空白、只有控制台可见。
+
 ### Changed
 
 - `useForgeRoute` 消除首帧空窗：level **已加载**时改为渲染期同步求值（`forge.route()` 纯缓存读，

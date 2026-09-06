@@ -273,23 +273,47 @@ describe('ForgeRoute', () => {
     expect(container.querySelector('a')).toBeNull();
   });
 
-  it('degrades to console.error when route resolution fails', async () => {
+  it('degrades to console.error and passes error to render-prop when route resolution fails', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { container } = render(
       <RouteForgeProvider options={makeOptions()}>
         <ForgeRoute level="public" name="nope.missing">
-          {({ href, loaded }) => (
-            <span data-testid="state">{`${href}|${loaded}`}</span>
+          {({ href, loaded, error }) => (
+            <span data-testid="state">{`${href}|${loaded}|${error != null}`}</span>
           )}
         </ForgeRoute>
       </RouteForgeProvider>,
     );
 
-    // 解析失败降级为 ''（loaded=false）→ 未传 loading → 不渲染
+    // 解析失败：函数 children 以 error 态调用（href=''、loaded=false、error 携带错误对象）
     await waitFor(() => {
-      expect(container.querySelector('[data-testid="state"]')).toBeNull();
+      const el = container.querySelector('[data-testid="state"]');
+      expect(el).not.toBeNull();
+      expect(el!.textContent).toBe('|false|true');
       expect(errorSpy).toHaveBeenCalledTimes(1);
       expect(String(errorSpy.mock.calls[0]?.join(' '))).toContain('ForgeRoute 路由解析失败');
     });
+  });
+
+  it('renders error node for non-function children when route resolution fails (falls back to loading)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { getByText } = render(
+      <RouteForgeProvider options={makeOptions()}>
+        <ForgeRoute
+          level="public"
+          name="nope.missing"
+          loading={<span>loading…</span>}
+          error={<span>broken route</span>}
+        >
+          <span>content</span>
+        </ForgeRoute>
+      </RouteForgeProvider>,
+    );
+
+    // 未加载阶段 → loading；加载后解析失败 → error 占位
+    await waitFor(() => {
+      expect(getByText('broken route')).toBeTruthy();
+    });
+    expect(errorSpy).toHaveBeenCalledTimes(1);
   });
 });

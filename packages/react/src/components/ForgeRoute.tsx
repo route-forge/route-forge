@@ -12,7 +12,7 @@
 
 import { type ReactNode, useContext, useEffect, useRef } from 'react';
 import { ForgeContext } from '../provider.js';
-import { useForgeRoute } from '../hooks/useForgeRoute.js';
+import { useForgeRouteState } from '../hooks/useForgeRoute.js';
 import { reportDegrade, warnUnloadedOnce } from './shared.js';
 import type { RouteForge } from '@route-forge/core';
 
@@ -22,6 +22,9 @@ export interface ForgeRouteRenderState {
   href: string;
   /** href !== ''（level 已加载且路由解析成功） */
   loaded: boolean;
+  /** 解析错误：未加载时为 null；level 已加载但路由名不存在 / 参数缺失等时为抛出的错误对象。
+   *  函数 children 三个态都会调用，可据此自行分流（未加载 / 失败 / 成功）。 */
+  error: unknown;
 }
 
 export interface ForgeRouteProps {
@@ -32,19 +35,23 @@ export interface ForgeRouteProps {
   /** 路由参数（内容变化触发 URL 重算；按 JSON 序列化比较，与 useForgeRoute 一致） */
   params?: Record<string, unknown>;
   /**
-   * 函数 → render-prop：children({ href, loaded })；
-   * 节点 → 已加载时直接渲染，未加载时渲染 loading（默认不渲染）
+   * 函数 → render-prop：children({ href, loaded, error })——level 已加载后（成功/失败）都会调用，
+   * error 区分成功与解析失败；未加载时不调用（渲染 loading）。
+   * 节点 → 已加载成功时直接渲染，未加载时渲染 loading、解析失败时渲染 error（默认不渲染）
    */
   children?: ReactNode | ((state: ForgeRouteRenderState) => ReactNode);
   /** 未加载占位（仅非函数 children 时生效） */
   loading?: ReactNode;
+  /** 解析失败占位（仅非函数 children 时生效；未传回落 loading） */
+  error?: ReactNode;
 }
 
-export function ForgeRoute({ level, name, params, children, loading }: ForgeRouteProps) {
+export function ForgeRoute({ level, name, params, children, loading, error: errorNode }: ForgeRouteProps) {
   const forge = useContext(ForgeContext) as RouteForge | null;
-  const href = useForgeRoute(level, name, params, {
+  const state = useForgeRouteState(level, name, params, {
     onDegrade: (e) => reportDegrade('ForgeRoute', e),
   });
+  const { href, error, isLevelLoaded } = state;
   const loaded = href !== '';
 
   // 未加载提示：每实例一次，在 effect 内判断与打印（渲染提交后，符合渲染期无副作用约定）
@@ -56,10 +63,13 @@ export function ForgeRoute({ level, name, params, children, loading }: ForgeRout
     }
   }, [loaded, forge, level]);
 
-  // 未加载/解析出错：loading 优先（默认不渲染），与 ForgeLink 行为一致
-  if (!loaded) return <>{loading ?? null}</>;
+  // 未加载：loading（函数 children 不调用，维持既有契约）
+  if (!isLevelLoaded) return <>{loading ?? null}</>;
   if (typeof children === 'function') {
-    return <>{children({ href, loaded })}</>;
+    // 已加载：成功（error=null）与解析失败（error 携带错误、href=''）都调用
+    return <>{children({ href, loaded, error })}</>;
   }
+  // 非函数 children：解析失败 → error（未传回落 loading）
+  if (error != null) return <>{errorNode ?? loading ?? null}</>;
   return <>{children}</>;
 }

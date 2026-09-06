@@ -21,7 +21,7 @@ import {
   useRef,
 } from 'react';
 import { ForgeContext } from '../provider.js';
-import { useForgeRoute } from '../hooks/useForgeRoute.js';
+import { useForgeRouteState } from '../hooks/useForgeRoute.js';
 import { reportDegrade, warnUnloadedOnce } from './shared.js';
 import type { RouteForge } from '@route-forge/core';
 
@@ -43,13 +43,16 @@ export interface ForgeLinkProps extends Omit<AnchorHTMLAttributes<HTMLAnchorElem
   children?: ReactNode;
   /** 未加载占位（默认不渲染任何内容） */
   loading?: ReactNode;
+  /** 解析失败占位（路由名不存在等；未传回落 loading） */
+  error?: ReactNode;
 }
 
-export function ForgeLink({ level, name, params, as, loading, children, ...rest }: ForgeLinkProps) {
+export function ForgeLink({ level, name, params, as, loading, error: errorNode, children, ...rest }: ForgeLinkProps) {
   const forge = useContext(ForgeContext) as RouteForge | null;
-  const href = useForgeRoute(level, name, params, {
+  const state = useForgeRouteState(level, name, params, {
     onDegrade: (e) => reportDegrade('ForgeLink', e),
   });
+  const { href, error, isLevelLoaded } = state;
   const loaded = href !== '';
 
   // 未加载提示：每实例一次，在 effect 内判断与打印（渲染提交后，符合渲染期无副作用约定）
@@ -61,7 +64,8 @@ export function ForgeLink({ level, name, params, as, loading, children, ...rest 
     }
   }, [loaded, forge, level]);
 
-  if (!loaded) return <>{loading ?? null}</>;
+  if (!isLevelLoaded) return <>{loading ?? null}</>;
+  if (error != null) return <>{errorNode ?? loading ?? null}</>;
   if (as) {
     const Comp = as as ElementType;
     // 同时传 href / to：react-router 的 Link 用 to，next/link 等用 href，

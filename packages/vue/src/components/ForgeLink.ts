@@ -5,8 +5,9 @@
  * - loaded（href !== ''）时直接渲染链接：`as` prop 显式注入的组件优先（同时收到 href+to）；
  *   否则探测到 vue-router 全局注册的 RouterLink 则渲染 <RouterLink :to="href">（SPA 内部跳转），
  *   再否则渲染原生 <a :href="href">
- * - 未加载（或路由解析出错）时渲染 loading 插槽，未传则默认不渲染；
- *   每实例以 console.warn 提醒一次（防刷屏）
+ * - 三态分流：未加载 → loading 插槽；已加载但解析失败 → error 插槽（props { error }，
+ *   未传回落 loading）；成功 → 链接
+ * - 未加载且未传 loading 插槽时默认不渲染；每实例以 console.warn 提醒一次（防刷屏）
  * - 路由解析出错以 console.error 报告，渲染不中断
  * - attrs 透传到根元素（class / target / rel 等），生成的 href / to 优先于同名 attr
  * - level 为静态快照，name / params 保持响应式（值或 getter 函数双形态均可）
@@ -14,7 +15,7 @@
 
 import { defineComponent, h, type SlotsType, type VNode } from 'vue';
 import { useInjectedForge } from '../useInjectedForge.js';
-import { useForgeRoute } from '../composables/useForgeRoute.js';
+import { useForgeRouteState } from '../composables/useForgeRoute.js';
 import {
   forgeLinkProps,
   reportDegrade,
@@ -32,6 +33,8 @@ export const ForgeLink = defineComponent({
     default?: () => VNode[];
     /** 未加载占位 */
     loading?: () => VNode[];
+    /** 解析失败（路由名不存在等）：props 携带错误对象；未传回落 loading 插槽 */
+    error?: (props: { error: unknown }) => VNode[];
   }>,
   setup(props, { slots, attrs }) {
     const forge = useInjectedForge('ForgeLink');
@@ -39,7 +42,7 @@ export const ForgeLink = defineComponent({
     const nameGetter = () => (typeof props.name === 'function' ? props.name() : props.name);
     const paramsGetter = () =>
       typeof props.params === 'function' ? props.params() : props.params;
-    const href = useForgeRoute(props.level, nameGetter, paramsGetter, {
+    const state = useForgeRouteState(props.level, nameGetter, paramsGetter, {
       onDegrade: (e) => reportDegrade('ForgeLink', e),
     });
     const unloadWarned = { value: false };
@@ -48,12 +51,16 @@ export const ForgeLink = defineComponent({
     const routerLink = resolveRouterLink();
 
     return () => {
-      const url = href.value;
+      const url = state.href.value;
       const loaded = url !== '';
       if (!loaded && !forge.isLoaded(props.level)) {
         warnUnloadedOnce('ForgeLink', props.level, unloadWarned);
       }
-      if (!loaded) return slots.loading ? slots.loading() : null;
+      // 三态分流：未加载 → loading；解析失败 → error（未传回落 loading）
+      if (!state.isLevelLoaded.value) return slots.loading ? slots.loading() : null;
+      if (state.error.value != null) {
+        return slots.error ? slots.error({ error: state.error.value }) : (slots.loading ? slots.loading() : null);
+      }
 
       const children = slots.default ? slots.default() : undefined;
       if (props.as) {

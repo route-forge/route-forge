@@ -12,7 +12,7 @@
  * - 用户无需关心 levelLoaded 状态，直接用即可
  */
 
-import { computed, type ComputedRef, onMounted, ref } from 'vue';
+import { computed, type ComputedRef, onMounted, ref, watch } from 'vue';
 import { useInjectedForge } from '../useInjectedForge.js';
 
 /** 渲染期错误降级输出：橙色加粗标签 + 完整错误对象，控制台一眼可见 */
@@ -36,6 +36,25 @@ export function useForgeRoute(
   params?: () => Record<string, unknown> | undefined,
   hooks?: ForgeRouteDegradeHooks,
 ): ComputedRef<string> {
+  return useForgeRouteState(level, name, params, hooks).href;
+}
+
+/** useForgeRoute 的三态内部形态：组件层（ForgeRoute/ForgeLink）用它区分「未加载 / 解析失败」 */
+export interface ForgeRouteState {
+  /** 生成的 URL；未加载或解析出错时为 '' */
+  href: ComputedRef<string>;
+  /** 解析错误（仅 level 已加载且 route() 抛错时非 null；未加载恒为 null），响应式 */
+  error: ComputedRef<unknown>;
+  /** level 是否已加载（区别「未加载」与「已加载但解析失败」两种空串来源），响应式 */
+  isLevelLoaded: ComputedRef<boolean>;
+}
+
+export function useForgeRouteState(
+  level: string,
+  name: string | (() => string),
+  params?: () => Record<string, unknown> | undefined,
+  hooks?: ForgeRouteDegradeHooks,
+): ForgeRouteState {
   // 运行时守卫：level 必须是静态字符串（类型收窄后防 JS 用户误用静默降级为空链接）
   if (typeof level !== 'string') {
     throw new TypeError(
@@ -59,22 +78,36 @@ export function useForgeRoute(
     onMounted(() => {
       forge.load(lvl).then(() => {
         levelLoaded.value = true;
-      }).catch(() => { /* 加载失败时 computed 返回 '' */
+      }).catch(() => { /* 加载失败时 href 保持 '' */
       });
     });
   }
 
-  return computed(() => {
-    // level 未加载 → 返回空字符串，不抛错
-    if (!levelLoaded.value) return '';
-    // lvl 为 setup 快照（静态）；name / params 每次重算读取，保持响应式
+  // 三态同步求值（computed 纯读缓存，无副作用）：
+  // 未加载 → { href: '', error: null }；解析失败 → { href: '', error }；成功 → { href }
+  const state = computed(() => {
+    if (!levelLoaded.value) return { href: '', error: null as unknown };
     const n = typeof name === 'function' ? name() : name;
     const p = params ? params() : undefined;
     try {
-      return forge.route(lvl, n, p);
+      return { href: forge.route(lvl, n, p), error: null as unknown };
     } catch (e) {
-      (hooks?.onDegrade ?? warnRenderError)(e);
-      return '';
+      return { href: '', error: e as unknown };
     }
   });
+
+  // 降级报告：渲染求值纯净化后，错误经 watch（组件更新前触发）输出，与 react 侧口径一致
+  watch(
+    () => state.value.error,
+    (err) => {
+      if (err != null) (hooks?.onDegrade ?? warnRenderError)(err);
+    },
+    { immediate: true },
+  );
+
+  return {
+    href: computed(() => state.value.href),
+    error: computed(() => state.value.error),
+    isLevelLoaded: computed(() => levelLoaded.value),
+  };
 }

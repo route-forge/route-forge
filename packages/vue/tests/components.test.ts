@@ -239,6 +239,43 @@ describe('ForgeRoute', () => {
     expect(wrapper.text()).toBe('ready');
   });
 
+  it('renders error slot (not loading) when route resolution fails after load', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const wrapper = mount(ForgeRoute, {
+      props: { level: 'public', name: 'nope.missing' },
+      slots: {
+        loading: () => h('span', 'loading…'),
+        error: ({ error }: { error: unknown }) =>
+          h('span', `broken: ${(error as { code?: string }).code}`),
+      },
+      global: { plugins: [makePlugin()] },
+    });
+
+    // 未加载阶段 → loading
+    expect(wrapper.text()).toBe('loading…');
+    await flushPromises();
+    // 加载后解析失败 → error 插槽（携带错误对象），loading 不再承担失败语义
+    expect(wrapper.text()).toBe('broken: RF_FE_001');
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it('falls back to loading slot when resolution fails and no error slot given', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const wrapper = mount(ForgeRoute, {
+      props: { level: 'public', name: 'nope.missing' },
+      slots: { loading: () => h('span', 'loading…') },
+      global: { plugins: [makePlugin()] },
+    });
+    await flushPromises();
+    expect(wrapper.text()).toBe('loading…');
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
   it('renders nothing without slots (both before and after load)', async () => {
     const wrapper = mount(ForgeRoute, {
       props: { level: 'public', name: 'users.index' },

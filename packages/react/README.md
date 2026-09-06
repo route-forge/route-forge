@@ -153,7 +153,7 @@ Contract details:
 
 ## Components — ForgeRoute / ForgeLink
 
-Both components wrap `useForgeRoute`, so JSX doesn't repeat the "empty string first, update later" handling. While the level is not loaded (or route resolution fails), `loading` renders (nothing by default); once loaded, the link renders.
+Both components wrap `useForgeRoute`, so JSX doesn't repeat the "empty string first, update later" handling. Three states, three outlets: **not loaded** → `loading` renders (nothing by default); **loaded but route resolution fails** (unknown route name, missing param…) → `error` renders (falls back to `loading` when not given); **success** → the link/content renders. `ForgeRoute` render-prop children additionally receive `error` in their state.
 
 **`ForgeLink`** — the convenient one: renders the link directly with `children` as its content:
 
