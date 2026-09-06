@@ -13,6 +13,16 @@
 
 ### Added
 
+- `createRouteForgePlugin()` 支持直接传入 forge 实例（复用模式）：`createRouteForgePlugin(instance)`
+  复用该实例、忽略 options，不在插件内重建——与 React 的 `<RouteForgeProvider forge?>` 对称，
+  供在非组件代码 / SSR 入口持有实例的场景消除双实例。
+- 随 core 3.0.0 流入的变更（经 `options` 透传影响 vue 用户，升级时请一并阅读 core CHANGELOG）：
+  - **声明式拦截器契约收敛**（breaking）：`options.interceptors.request/response` 每键只描述一个拦截器
+    （函数 / `[resolve?, reject?]` 元组 / `{ resolve, reject }` 对象），移除「顶层数组=列表」旧语义；
+  - `HTTPError` 新增 `response` 字段携带完整响应体；
+  - `RouteForge.getLevels()` 发现 API、`options.endpoint` 可省略（回退默认 `/_forge/routes`）；
+  - 错误信息增强：`UnknownRouteError` / `UnknownLevelError` 附可用候选值、`MissingRouteParamError`
+    附 URI 模板、摘要失败改抛 `NetworkError`、新增 `InvalidPathParamError` / `DiscoveryNotReadyError`。
 - 渲染期降级报告会话级去重：同一错误（component + message）只报告一次，`name`/`params` 联动输入
   等高频场景不再刷屏；并遵循 core `createRouteForge({ warnings: false })` 全局静音。
 

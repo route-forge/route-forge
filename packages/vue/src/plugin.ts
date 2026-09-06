@@ -35,12 +35,16 @@ export interface RouteForgePluginOptions extends RouteForgeOptions {}
 /** Vue 特化类型：levelLoaded 为 Ref<boolean> */
 export type VueBoundForge = BoundForge<Ref<boolean>>;
 
-export function createRouteForgePlugin(options: RouteForgePluginOptions = {}): Plugin<[]> & {
+export function createRouteForgePlugin(
+  forgeOrOptions: RouteForge | RouteForgePluginOptions = {},
+): Plugin<[]> & {
   ready: RouteForge['ready']
   /** 转发实例上的拦截器管理器：创建后即可同步注册，无需等待 ready()（请求/响应拦截链仅影响后续 api() 调用，eager 元信息预加载走 requestRaw 不受影响） */
   interceptors: RouteForge['interceptors']
 } {
-  const forge = createRouteForge(options);
+  // 复用模式：直接传入 forge 实例（在非组件代码 / SSR 入口持有实例的场景），
+  // 忽略 options、不再创建；与 react <RouteForgeProvider forge?> 对称
+  const forge = isRouteForge(forgeOrOptions) ? forgeOrOptions : createRouteForge(forgeOrOptions);
 
   return {
     ready: forge.ready.bind(forge),
@@ -50,6 +54,15 @@ export function createRouteForgePlugin(options: RouteForgePluginOptions = {}): P
       // v3.0.0 起不再注入 $forge 全局属性（残缺 facade 已移除，见 CHANGELOG）
     },
   };
+}
+
+/** 判定入参是否为 forge 实例（而非 options）：api + ready 双函数特征 */
+function isRouteForge(x: unknown): x is RouteForge {
+  return (
+    typeof x === 'object' && x !== null &&
+    typeof (x as RouteForge).api === 'function' &&
+    typeof (x as RouteForge).ready === 'function'
+  );
 }
 
 /**

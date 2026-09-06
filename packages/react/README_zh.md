@@ -57,9 +57,11 @@ forge.ready()
   })
 ```
 
-> 注意：`RouteForgeProvider` 只接收 `options`（不接收实例），门控写法里 Provider 内部会创建第二个实例，摘要端点会被请求两次。若不想重复请求，优先使用上面的直接渲染写法，把同步方法的调用放在 `ready()` 之后。
+> 注意：门控写法里 Provider 内部会创建第二个实例，摘要端点会被请求两次。若不想重复请求，可通过 `<RouteForgeProvider forge={instance}>` 传入实例（复用模式），或使用上面的直接渲染写法、把同步方法的调用放在 `ready()` 之后。
 
 > Provider 选项与 `createRouteForge(options)` 完全一致（`endpoint` / `summary` / `levels` / `eager` / `adapter` / `cache` / `interceptors` / `timeout` / `baseURL`），完整选项表见 [core README](../core/README_zh.md#配置选项createruteforgeoptions)。`options` 做浅比较：内联字面量在值不变时不会重建实例。`options` 属性本身可省略——摘要由页面内嵌 `@forgeSummary`（`window.__ROUTE_FORGE__`）提供时，可直接 `<RouteForgeProvider>` 不带 `options`。
+>
+> **复用模式**：已在 React 之外（SSR 入口、单例模块）持有 forge 实例？直接 `<RouteForgeProvider forge={instance}>` 传入——Provider 将忽略 `options`、不再创建/重建实例，消除 ready-gate 双实例的重复摘要请求。（传入 `forge` 时 `onInterceptors` 不会触发——在你持有的实例上直接注册即可。）
 
 ## useForge — 核心 hook
 

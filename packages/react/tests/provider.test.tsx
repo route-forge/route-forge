@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
 import { StrictMode, createElement, useContext } from 'react';
+import { createRouteForge } from '@route-forge/core';
 import type { LevelRoutesResponse, SummaryResponse } from '@route-forge/core';
 import { ForgeContext, RouteForgeProvider, useForge } from '../src/index.js';
 
@@ -213,5 +214,28 @@ describe('RouteForgeProvider onInterceptors（创建期注册拦截器）', () =
     } finally {
       restore();
     }
+  });
+});
+
+
+describe('RouteForgeProvider 外部传入实例（复用模式）', () => {
+  it('forge prop: reuses the external instance, never creates its own', async () => {
+    const external = createRouteForge({ endpoint: '/_forge/routes', levels: ['public'], adapter: 'builtin' });
+    const seen: any[] = [];
+    function Capture() {
+      seen.push(useForge());
+      return null;
+    }
+    // 传入实例 + 一个会触发重建的 options：都不应导致实例更换或重建
+    render(
+      createElement(
+        RouteForgeProvider,
+        { forge: external, options: { endpoint: '/_forge/routes' } },
+        createElement(Capture),
+      ),
+    );
+    expect(seen[0]).toBe(external);
+    await act(async () => { await external.ready(); });
+    expect(seen.every((f) => f === external)).toBe(true);
   });
 });

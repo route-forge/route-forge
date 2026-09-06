@@ -44,6 +44,8 @@ plugin.ready()
 ```
 
 > 插件选项与 `createRouteForge(options)` 完全一致（`endpoint` / `summary` / `levels` / `eager` / `adapter` / `cache` / `interceptors` / `timeout` / `baseURL`），完整选项表见 [core README](../core/README_zh.md#配置选项createruteforgeoptions)。`options` 本身可选——摘要由页面内嵌 `@forgeSummary`（`window.__ROUTE_FORGE__`）提供时，可直接 `createRouteForgePlugin()` 无参安装。
+>
+> **复用模式**：已在 Vue 之外（SSR 入口、单例模块）持有 forge 实例？直接 `createRouteForgePlugin(instance)` 传入即可复用、忽略 options——与 React 的 `<RouteForgeProvider forge?>` 对称。
 
 ## useForge — 核心 composable
 

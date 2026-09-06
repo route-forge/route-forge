@@ -65,6 +65,8 @@ composer require route-forge/laravel
 
 Mark routes with levels in `routes/web.php` or `routes/api.php`:
 
+> The backend-side concept is `tier` — it maps 1:1 to the frontend `level` used in `forge.route(level, name)` below.
+
 ```php
 // Option 1: explicit marking
 Route::post('/auth/login', [AuthController::class, 'login'])
@@ -155,6 +157,28 @@ req.abort()  // cancels the request; the Promise rejects with RequestAbortedErro
 // Unassigned level — routes without a backend tier live under the always-present 'unassigned' level (lazy-loaded over HTTP)
 await forge.load('unassigned')
 const data = await forge.api('unassigned', 'some.route')
+```
+
+#### Blade-rendered pages (zero-config bootstrap)
+
+If the page is served by Laravel Blade, the backend `@forgeSummary` directive embeds the summary
+into `window.__ROUTE_FORGE__` — no endpoint config, no summary request, discovery completes
+synchronously right after construction:
+
+```blade
+<!DOCTYPE html>
+<html>
+<head>
+    ...
+    @forgeSummary   {{-- one-shot embedded summary; read once and self-deleted --}}
+</head>
+```
+
+```ts
+import { createRouteForge } from '@route-forge/core'
+
+const forge = createRouteForge()  // no options needed at all
+forge.route('public', 'login.show')  // usable immediately — discovery already finished
 ```
 
 Parameters support smart resolution: flattened path parameters, with `query`/`body`/`headers` as fixed keys. When a path parameter name collides with a fixed key, `string|number` values are detected as path parameters; the explicit `params` key also works:
@@ -409,12 +433,15 @@ const req = forge.api('admin', 'users.show', { user: 123 })
 req.abort()  // the Promise rejects with RequestAbortedError (RF_FE_009); the request is aborted
 
 // Error quick reference: all errors extend ForgeError and carry a stable `code` — branch on it
-//   RF_FE_001 UnknownRouteError        route name does not exist
-//   RF_FE_002 UnknownLevelError        level not declared
-//   RF_FE_003 MissingRouteParamError   required path parameter missing
-//   RF_FE_007 NetworkError             network-layer failure (DNS/connection)
-//   RF_FE_008 HTTPError                non-2xx HTTP response (context.status holds the code)
-//   RF_FE_009 RequestAbortedError      request cancelled
+//   RF_FE_001 UnknownRouteError         route name does not exist (message lists available route names)
+//   RF_FE_002 UnknownLevelError         level not declared (message lists available levels)
+//   RF_FE_003 MissingRouteParamError    required path parameter missing (message shows the URI template)
+//   RF_FE_003 InvalidPathParamError     path parameter received a non-primitive value (object/array)
+//   RF_FE_007 NetworkError              network-layer failure (DNS/connection); cause keeps the original error
+//   RF_FE_008 HTTPError                 non-2xx HTTP response (context.status holds the code)
+//   RF_FE_009 RequestAbortedError       request cancelled
+//   RF_FE_010 DiscoveryNotReadyError    route()/hasRoute() called before auto-discovery completed
+// Full table: packages/core/README.md
 ```
 
 ## Adapters

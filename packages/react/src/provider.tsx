@@ -30,6 +30,12 @@ export interface RouteForgeProviderProps {
   /** 可省略：页面内嵌 window.__ROUTE_FORGE__ 提供摘要时，<RouteForgeProvider> 可不传 options */
   options?: RouteForgeOptions;
   /**
+   * 外部传入的 forge 实例（复用模式）：传入时忽略 `options`、不在本组件内创建/重建实例，
+   * 供在非组件代码（SSR 入口、单例模块）中持有实例的场景，避免 ready-gate 双实例重复请求摘要。
+   * 传入时 `onInterceptors` 不会触发（外部持有引用，可直接注册）。
+   */
+  forge?: RouteForge;
+  /**
    * 创建期拦截器钩子：每个 forge 实例触发**一次**（首次创建 + options 变更重建时），
    * 用于在挂载前同步注册请求/响应拦截器，无需钻到子组件 useForge() 里挂。
    * 属"初始化"语义而非响应式 effect——仅回调 identity 变化而 options 不变时不会重跑。
@@ -70,7 +76,7 @@ export interface RouteForgeProviderProps {
  * </RouteForgeProvider>
  * ```
  */
-export function RouteForgeProvider({ options, onInterceptors, children }: RouteForgeProviderProps) {
+export function RouteForgeProvider({ options, forge: externalForge, onInterceptors, children }: RouteForgeProviderProps) {
   const ref = useRef<{ options: RouteForgeOptions; forge: RouteForge } | null>(null);
   // 实例版本：options 实际变化重建 forge 后递增，驱动 context value 更新
   const [version, setVersion] = useState(0);
@@ -79,16 +85,29 @@ export function RouteForgeProvider({ options, onInterceptors, children }: RouteF
   // 渲染期只做 null 检查 + 赋值，重复执行幂等（StrictMode 双渲染也只有一个实例）；
   // createRouteForge 内部立即发起摘要 fetch，但 core 层有缓存/inflight 去重兜底。
   // options 省略时归一为 {}：完全靠页面内嵌 window.__ROUTE_FORGE__ 提供摘要。
+  // 外部传入 forge 实例时直接复用（忽略 options），不在本组件内创建。
   if (ref.current === null) {
-    const init = options ?? {};
-    ref.current = { options: init, forge: createRouteForge(init) };
-    // 创建期钩子：null 守卫使其在 StrictMode 双渲染下也只触发一次（第二次 ref.current 已非空跳过）
-    onInterceptors?.(ref.current.forge.interceptors);
+    if (externalForge) {
+      ref.current = { options: {}, forge: externalForge };
+    } else {
+      const init = options ?? {};
+      ref.current = { options: init, forge: createRouteForge(init) };
+      // 创建期钩子：null 守卫使其在 StrictMode 双渲染下也只触发一次（第二次 ref.current 已非空跳过）
+      onInterceptors?.(ref.current.forge.interceptors);
+    }
   }
 
   // options 变化检测移到 effect（渲染期不换实例）：
   // 换实例延后一帧（渲染完成后），换取 concurrent/StrictMode 下渲染热路径无副作用。
   useEffect(() => {
+    // 外部实例：仅跟随引用变化更新 context value，永不重建
+    if (externalForge) {
+      if (ref.current!.forge !== externalForge) {
+        ref.current = { options: {}, forge: externalForge };
+        setVersion((v) => v + 1);
+      }
+      return;
+    }
     const next = options ?? {};
     if (!optionsEqual(ref.current!.options, next)) {
       ref.current = { options: next, forge: createRouteForge(next) };
@@ -96,8 +115,8 @@ export function RouteForgeProvider({ options, onInterceptors, children }: RouteF
       // 实例重建 → 拦截器随新实例重新注册一次（与 effect 同步的当前闭包回调）
       onInterceptors?.(ref.current.forge.interceptors);
     }
-    // 依赖刻意仅含 options：这是"每实例一次"的初始化钩子，回调 identity 单独变化不应重跑
-  }, [options]);
+    // 依赖刻意仅含 options / 外部实例：这是"每实例一次"的初始化钩子，回调 identity 单独变化不应重跑
+  }, [options, externalForge]);
 
   // version 仅用于触发重渲染（读取 ref.current.forge 保证最新实例）；
   // context value 引用稳定性：同一实例期间 value 不变，避免全树无谓重渲染

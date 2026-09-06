@@ -54,7 +54,8 @@ pnpm --filter @route-forge/react test
    - Vue / React 的 `level` 均为实例级静态绑定契约，不支持中途切换。
 6. **渲染期错误降级**：`useForgeRoute` 遇路由错误降级为 `''` + 样式化 `console.warn`，不中断渲染——不要在渲染路径抛错。
 7. **adapter 'auto' 探测用动态 `import('axios')`**（变量引用模块名防静态打包），失败降级 `builtin`；`builtin` 的 `runsInterceptors=true`（拦截链在 adapter 内执行），`http-runner` 依此跳过重复执行——改拦截编排时两侧一起看。
-8. **包自身路由排除是后端职责**：后端 `forge.routes.*` / `forge.manager.*` 路由不参与元信息扫描（否则 `strict_mode` 必 500）——在 SPEC/后端文档语境讨论时记住这一点。
+8. **声明式拦截器=单拦截器三写法**（`createRouteForge({ interceptors })`）：`interceptors.request` / `interceptors.response` 每个键只描述**一个**拦截器，接受函数（→ resolve）/ `[resolve?, reject?]` 元组 / `{ resolve?, reject? }` 对象三种形式，归一在 `normalizeInterceptorDeclaration`（非法形状显式抛 `TypeError`）。不要改回「顶层数组=拦截器列表」旧语义；多拦截器走运行时 `forge.interceptors.request/response.use()`。
+9. **包自身路由排除是后端职责**：后端 `forge.routes.*` / `forge.manager.*` 路由不参与元信息扫描（否则 `strict_mode` 必 500）——在 SPEC/后端文档语境讨论时记住这一点。
 
 ## 测试注意事项
 

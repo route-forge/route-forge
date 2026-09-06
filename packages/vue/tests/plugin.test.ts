@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp, defineComponent } from 'vue';
 import { mount } from '@vue/test-utils';
+import { createRouteForge } from '@route-forge/core';
 import type { LevelRoutesResponse, SummaryResponse } from '@route-forge/core';
 import { createRouteForgePlugin, FORGE_INJECTION_KEY, useForge } from '../src/index.js';
 
@@ -133,5 +134,23 @@ describe('createRouteForgePlugin() 暴露 interceptors（创建期同步注册�
     await forge.api('public', 'users.index');
     // 请求拦截器 LIFO：后注册先执行
     expect(order).toEqual(['b', 'a']);
+  });
+});
+
+describe('createRouteForgePlugin 传入实例（复用模式）', () => {
+  it('reuses the provided forge instance instead of creating a new one', () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(summary)));
+    const external = createRouteForge({ endpoint: '/_forge/routes', levels: ['public'], adapter: 'builtin' });
+    let provided: any;
+    const C = defineComponent({
+      setup() {
+        provided = useForge();
+        return () => null;
+      },
+    });
+    mount(C, { global: { plugins: [createRouteForgePlugin(external)] } });
+    expect(provided).toBe(external);
+    expect(provided.interceptors).toBe(external.interceptors);
+    vi.unstubAllGlobals();
   });
 });

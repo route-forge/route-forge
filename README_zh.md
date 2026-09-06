@@ -66,6 +66,8 @@ composer require route-forge/laravel
 
 在 `routes/web.php` 或 `routes/api.php` 中为路由标记层级：
 
+> 后端侧的概念叫 `tier`——与前端 API 中的 `level` 一一对应（下方 `forge.route(level, name)` 的第一个参数）。
+
 ```php
 // 方式一：显式标记
 Route::post('/auth/login', [AuthController::class, 'login'])
@@ -156,6 +158,27 @@ req.abort()  // 取消请求，Promise reject 为 RequestAbortedError
 // 未分配层级 — 后端未标记 tier 的路由归入恒存在的 'unassigned' 真实层级（按 HTTP 懒加载）
 await forge.load('unassigned')
 const data = await forge.api('unassigned', 'some.route')
+```
+
+#### Blade 直出页面（零配置引导）
+
+页面由 Laravel Blade 渲染时，后端 `@forgeSummary` 指令会把摘要内嵌进 `window.__ROUTE_FORGE__`——
+无需配置 endpoint、不发摘要请求，构造完成后 discovery 即已同步完成：
+
+```blade
+<!DOCTYPE html>
+<html>
+<head>
+    ...
+    @forgeSummary   {{-- 一次性内嵌摘要；读取后自删 --}}
+</head>
+```
+
+```ts
+import { createRouteForge } from '@route-forge/core'
+
+const forge = createRouteForge()  // 完全无需传参
+forge.route('public', 'login.show')  // 立即可用——discovery 已完成
 ```
 
 参数支持智能消解：路径参数平铺传入，`query`/`body`/`headers` 为固定 key。路径参数名与固定 key 冲突时，
@@ -406,12 +429,15 @@ const req = forge.api('admin', 'users.show', { user: 123 })
 req.abort()  // Promise reject 为 RequestAbortedError（RF_FE_009），请求被中止
 
 // 错误速查：所有错误均为 ForgeError 子类，带稳定 code 字段，可按 code 分支处理
-//   RF_FE_001 UnknownRouteError        路由名不存在
-//   RF_FE_002 UnknownLevelError        层级未声明
-//   RF_FE_003 MissingRouteParamError   必填路径参数缺失
-//   RF_FE_007 NetworkError             网络层失败（DNS/连接）
-//   RF_FE_008 HTTPError                HTTP 非 2xx（context.status 为状态码）
-//   RF_FE_009 RequestAbortedError      请求被取消
+//   RF_FE_001 UnknownRouteError         路由名不存在（message 列出可用路由名）
+//   RF_FE_002 UnknownLevelError         层级未声明（message 列出可用层级）
+//   RF_FE_003 MissingRouteParamError    必填路径参数缺失（message 附 URI 模板）
+//   RF_FE_003 InvalidPathParamError     路径参数收到非原始值（对象/数组）
+//   RF_FE_007 NetworkError              网络层失败（DNS/连接），cause 保留原始错误
+//   RF_FE_008 HTTPError                 HTTP 非 2xx（context.status 为状态码）
+//   RF_FE_009 RequestAbortedError       请求被取消
+//   RF_FE_010 DiscoveryNotReadyError    auto-discovery 未完成时调用了 route()/hasRoute()
+// 完整错误表见 packages/core/README_zh.md
 ```
 
 ## Adapter 适配

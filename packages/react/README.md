@@ -59,9 +59,11 @@ forge.ready()
   })
 ```
 
-> Note: `RouteForgeProvider` only accepts `options` (not an instance), so in the gated pattern the Provider creates a second instance and the summary endpoint is requested twice. To avoid the duplicate request, prefer the direct-render pattern above and call sync methods only after `ready()`.
+> Note: in the gated pattern the Provider creates a second instance and the summary endpoint is requested twice. To avoid the duplicate request, either pass the instance via `<RouteForgeProvider forge={instance}>` (reuse mode), or prefer the direct-render pattern above and call sync methods only after `ready()`.
 
 > Provider options are exactly `createRouteForge(options)` (`endpoint` / `summary` / `levels` / `eager` / `adapter` / `cache` / `interceptors` / `timeout` / `baseURL`); full options table in the [core README](../core/README.md#options-createrouteforgeoptions). `options` is shallow-compared: inline literals do not rebuild the instance while the values stay the same. The `options` prop itself is optional — when the summary is embedded via `@forgeSummary` (`window.__ROUTE_FORGE__`), render `<RouteForgeProvider>` without any `options`.
+>
+> **Reuse mode**: already hold a forge instance outside React (SSR entry, singleton module)? Pass it via `<RouteForgeProvider forge={instance}>` — the Provider then ignores `options` and never creates or rebuilds an instance, avoiding the double-summary-request of ready-gate setups. (When `forge` is given, `onInterceptors` is not called — register interceptors on the instance you hold.)
 
 ## useForge — the core hook
 
