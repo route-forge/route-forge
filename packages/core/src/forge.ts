@@ -126,7 +126,13 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
       adapterObj = await adapterPromise.catch((e) => {
         if (e instanceof AdapterNotFoundError) throw e;
         // 其他错误降级到 builtin（避免初始化失败）；
-        // 传入 forge 拦截器管理器，确保降级后拦截链语义不变
+        // 传入 forge 拦截器管理器，确保降级后拦截链语义不变。
+        // 降级必须响亮：用户显式指定了 adapter/Fetcher，实际却运行 builtin，静默会掩盖行为差异
+        if (warnings) {
+          console.warn(
+            `[route-forge] adapter initialization failed (${(e as Error)?.message ?? String(e)}); falling back to builtin`,
+          );
+        }
         return resolveAdapter({
           adapter: 'builtin',
           forgeInterceptors: { request: requestInterceptors, response: responseInterceptors },

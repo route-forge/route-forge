@@ -59,6 +59,8 @@ function jsonResponse(data: unknown, status = 200) {
 
 describe('adapter unexpected failure degrades to builtin', () => {
   it('non-AdapterNotFoundError during resolution degrades to builtin (requests still work)', async () => {
+    // 降级必须响亮：warn 一次（显式指定 axios 却跑 builtin，静默会掩盖行为差异）
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const forge = createRouteForge({
       endpoint: '/_forge/routes',
       levels: ['public'],
@@ -69,6 +71,8 @@ describe('adapter unexpected failure degrades to builtin', () => {
     const result = (await forge.api('public', 'users.index')) as any;
     expect(result.status).toBe(200);
     expect(result.data).toEqual({ ok: true });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('falling back to builtin'));
+    warn.mockRestore();
   });
 
   it('degraded builtin preserves forge interceptor chain (regression)', async () => {
