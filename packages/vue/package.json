@@ -59,6 +59,7 @@
     "vue": "^3.3.0"
   },
   "devDependencies": {
+    "@route-forge/core": "workspace:^",
     "@vue/test-utils": "^2.4.0",
     "jsdom": "^24.0.0",
     "tsup": "^8.0.0",

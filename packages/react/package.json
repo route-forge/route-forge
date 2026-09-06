@@ -60,6 +60,7 @@
     "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
+    "@route-forge/core": "workspace:^",
     "@testing-library/jest-dom": "^6.4.0",
     "@testing-library/react": "^16.0.0",
     "@types/react": "^18.2.0",
