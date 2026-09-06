@@ -262,6 +262,9 @@ export interface RouteForge {
   /** 查询加载中标识状态 */
   isLoading(): boolean;
 
+  /** 非致命警告是否启用（来自 createRouteForge({ warnings })，默认 true）；vue/react 适配层共用此开关 */
+  readonly warnings: boolean;
+
   /** 订阅加载状态变更，返回取消订阅函数 */
   onLoadingChange(cb: LoadingChangeCallback): () => void;
 
@@ -378,6 +381,13 @@ export interface RouteForgeOptions {
   strict?: boolean;
   timeout?: number;
   baseURL?: string;
+  /**
+   * 非致命警告开关（默认 true）：控制 core 内部的 `console.warn`（如显式 levels 降级、
+   * endpoint_prefix 覆盖、schemeVersion 兼容提示等）。`false` 时静音这些 warn——
+   * `console.error` 级输出（如 eager 层级加载失败）不受影响，错误永远响亮。
+   * 该值以只读字段 `RouteForge.warnings` 暴露，vue/react 适配层的渲染期降级警告同样遵循它。
+   */
+  warnings?: boolean;
 }
 
 /**

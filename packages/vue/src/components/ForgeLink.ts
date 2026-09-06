@@ -43,7 +43,7 @@ export const ForgeLink = defineComponent({
     const paramsGetter = () =>
       typeof props.params === 'function' ? props.params() : props.params;
     const state = useForgeRouteState(props.level, nameGetter, paramsGetter, {
-      onDegrade: (e) => reportDegrade('ForgeLink', e),
+      onDegrade: (e) => reportDegrade('ForgeLink', e, forge.warnings),
     });
     const unloadWarned = { value: false };
     // 链接组件解析：显式 as prop 优先（同时收 href+to，对齐 react 包契约）；

@@ -356,6 +356,30 @@ describe('ready() semantics (H6 / M8)', () => {
     await expect(forge.ready()).rejects.toThrow();
   });
 
+  it('warnings: false silences non-fatal console.warn (explicit levels degrade path)', async () => {
+    // 摘要不可达 + 显式 levels → 降级（warn 提示）；warnings:false 时 warn 静音，仍正常降级
+    (globalThis as any).fetch = vi.fn(async () => {
+      throw new Error('network down');
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const summary = makeSummary({
+      levels: { public: { description: 'p', load: 'lazy', cache: 300, route_count: 1 } },
+    });
+    // 摘要不可达不影响显式 levels 语义，这里用 options.summary 检验 applySummaryToState 的 warn 分支不触发
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      summary,
+      warnings: false,
+      adapter: 'builtin',
+    });
+    await forge.ready();
+    // 警告开关关闭：core 未输出任何 console.warn
+    expect(warn).not.toHaveBeenCalled();
+    expect(forge.warnings).toBe(false);
+    warn.mockRestore();
+  });
+
   it('eager load failure does not block ready, and direct calls retry then throw', async () => {
     // eager 层级加载失败：ready 仍 resolve，异常以 console.error 抛出；
     // 失败不缓存——直接调用 load()/api() 时重试，再失败向调用方抛出

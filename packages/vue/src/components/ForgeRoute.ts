@@ -34,7 +34,7 @@ export const ForgeRoute = defineComponent({
     const paramsGetter = () =>
       typeof props.params === 'function' ? props.params() : props.params;
     const state = useForgeRouteState(props.level, nameGetter, paramsGetter, {
-      onDegrade: (e) => reportDegrade('ForgeRoute', e),
+      onDegrade: (e) => reportDegrade('ForgeRoute', e, forge.warnings),
     });
     const unloadWarned = { value: false };
 

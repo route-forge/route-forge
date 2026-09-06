@@ -17,16 +17,7 @@
 
 import { useContext, useEffect, useState } from 'react';
 import { ForgeContext } from '../provider.js';
-
-/** 渲染期错误降级输出：橙色加粗标签 + 完整错误对象，控制台一眼可见 */
-function warnRenderError(error: unknown): void {
-  console.warn(
-    '%c[route-forge]%c useForgeRoute 渲染期错误（已降级为空字符串，渲染未中断）',
-    'color:#e67e22;font-weight:bold',
-    'color:inherit',
-    error,
-  );
-}
+import { reportRenderWarn } from '../degrade.js';
 
 /** 降级报告钩子：组件层（ForgeRoute/ForgeLink）用它把默认 warn 升级为 error，避免双重打印 */
 export interface ForgeRouteDegradeHooks {
@@ -118,7 +109,8 @@ export function useForgeRouteState(
     try {
       forge.route(level, name, p);
     } catch (e) {
-      (hooks?.onDegrade ?? warnRenderError)(e);
+      if (hooks?.onDegrade) hooks.onDegrade(e);
+      else reportRenderWarn(e, forge.warnings);
     }
     return () => {
       cancelled = true;

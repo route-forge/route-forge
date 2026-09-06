@@ -57,6 +57,8 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     interceptors: declarativeInterceptors,
     cache: cacheOpts = {},
   } = options;
+  // 非致命警告开关（默认 true）：控制 core 的 console.warn；错误级（console.error）不受影响
+  const warnings = options.warnings ?? true;
 
   // --- 加载中标识跟踪器（始终跟踪，用户不监听即可）---
   const loadingTracker = new LoadingTracker();
@@ -76,7 +78,7 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     cacheTtl: undefined,
     levelRoutes: {},
   };
-  const discoveryInputs: DiscoveryInputs = { explicitLevels, explicitEager, explicitEndpoint };
+  const discoveryInputs: DiscoveryInputs = { explicitLevels, explicitEager, explicitEndpoint, warnings };
 
   // --- Auto-discovery 完成状态 + ready Promise ---
   let autoDiscoveryCompleted = false;
@@ -329,6 +331,7 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     hasRoute,
     getRoutes,
     getLevels,
+    warnings,
     isLoading: () => loadingTracker.isLoading(),
     onLoadingChange: (cb: LoadingChangeCallback) => loadingTracker.subscribe(cb),
     interceptors: {

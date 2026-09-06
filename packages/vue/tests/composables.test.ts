@@ -10,6 +10,7 @@ import {
   useForgeRoute,
 } from '../src/index.js';
 import type { LevelRoutesResponse, SummaryResponse } from '@route-forge/core';
+import { __resetDegradeReportsForTests } from '../src/degrade.js';
 
 // ─── mock backend ───────────────────────────────────────────
 
@@ -44,6 +45,7 @@ const backend = { levelOk: true, apiOk: true };
 let originalFetch: typeof globalThis.fetch;
 
 beforeEach(() => {
+  __resetDegradeReportsForTests();
   backend.levelOk = true;
   backend.apiOk = true;
   originalFetch = globalThis.fetch;

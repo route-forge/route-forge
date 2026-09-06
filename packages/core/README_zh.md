@@ -110,6 +110,7 @@ await forge.ready()
 | `interceptors.response` | `Fn \| [resolve?, reject?] \| { resolve?, reject? }` | 无 | 声明式响应拦截器，形式同上（首段 `resolve` 接收 `ResponseData`） |
 | `timeout` | `number`（毫秒） | `30000` | 全局超时；单次请求可用 `params.timeout` 覆盖 |
 | `baseURL` | `string` | `''` | 拼接在所有生成 URL 之前的基础地址 |
+| `warnings` | `boolean` | `true` | 设为 `false` 时静音非致命 `console.warn`（`console.error` 永不静音）；vue/react 渲染期降级警告经 `forge.warnings` 遵循同一开关 |
 | `strict` | `boolean` | — | **已废弃，传入无效**。前端校验始终开启（层级未声明抛 `UnknownLevelError`、路由名不存在抛 `UnknownRouteError`、必填参数缺失抛 `MissingRouteParamError`），静默忽略会掩盖拼写错误。后端的 `strict_mode` 是 manifest 生成侧语义，与前端无关 |
 
 ## 内嵌引导（可选 hydration）

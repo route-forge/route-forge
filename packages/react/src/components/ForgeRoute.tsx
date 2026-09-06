@@ -49,7 +49,7 @@ export interface ForgeRouteProps {
 export function ForgeRoute({ level, name, params, children, loading, error: errorNode }: ForgeRouteProps) {
   const forge = useContext(ForgeContext) as RouteForge | null;
   const state = useForgeRouteState(level, name, params, {
-    onDegrade: (e) => reportDegrade('ForgeRoute', e),
+    onDegrade: (e) => reportDegrade('ForgeRoute', e, forge?.warnings ?? true),
   });
   const { href, error, isLevelLoaded } = state;
   const loaded = href !== '';

@@ -6,6 +6,7 @@ import {
   RouteForgeProvider,
 } from '../src/index.js';
 import type { LevelRoutesResponse, SummaryResponse } from '@route-forge/core';
+import { __resetDegradeReportsForTests } from '../src/degrade.js';
 
 // ─── mock backend ───────────────────────────────────────────
 
@@ -38,6 +39,7 @@ const levelRoutes: LevelRoutesResponse = {
 let originalFetch: typeof globalThis.fetch;
 
 beforeEach(() => {
+  __resetDegradeReportsForTests();
   originalFetch = globalThis.fetch;
   (globalThis as any).fetch = vi.fn(async (url: string) => {
     const ep = summary.config.endpoint_prefix;

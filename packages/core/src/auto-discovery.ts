@@ -54,6 +54,8 @@ export interface DiscoveryInputs {
   explicitEager?: string[];
   /** 网络拉取来源时用户显式配置的摘要端点；内嵌/配置摘要下可为 undefined */
   explicitEndpoint: string | undefined;
+  /** 非致命警告开关（默认 true）；false 时降级提示静音 */
+  warnings: boolean;
 }
 
 /** 元信息拉取通道（由工厂注入 fetchMeta：走 adapter 原始通道，获得 timeout/降级/自定义 Fetcher 兼容） */
@@ -70,7 +72,7 @@ export async function fetchSummary(
   baseURL: string,
   fetchMeta: MetaFetcher,
 ): Promise<SummaryResponse | null> {
-  const { explicitLevels, explicitEndpoint } = inputs;
+  const { explicitLevels, explicitEndpoint, warnings } = inputs;
   // endpoint 缺省时回退到与后端约定的默认摘要端点（用户显式指定则优先其值）
   const endpoint = explicitEndpoint ?? DEFAULT_ENDPOINT;
   const base = baseURL.endsWith('/') ? baseURL.slice(0, -1) : baseURL;
@@ -81,9 +83,11 @@ export async function fetchSummary(
     return data as SummaryResponse;
   } catch (e) {
     if (explicitLevels && explicitLevels.length > 0) {
-      console.warn(
-        `[route-forge] summary endpoint unreachable: ${(e as Error).message}; using explicit levels`,
-      );
+      if (warnings) {
+        console.warn(
+          `[route-forge] summary endpoint unreachable: ${(e as Error).message}; using explicit levels`,
+        );
+      }
       return null;
     }
     throw new NetworkError(
@@ -112,11 +116,11 @@ export function applySummaryToState(
   state: DiscoveryState,
   inputs: DiscoveryInputs,
 ): void {
-  const { explicitLevels, explicitEager, explicitEndpoint } = inputs;
+  const { explicitLevels, explicitEager, explicitEndpoint, warnings } = inputs;
 
   // 0. schemeVersion 向前兼容（DESIGN.md §6.3；拼写为 scheme 非 schema）
   const schemeVersion = summary.schemeVersion ?? 1;
-  if (schemeVersion > 1) {
+  if (schemeVersion > 1 && warnings) {
     console.warn(
       `[route-forge] backend schemeVersion=${schemeVersion} > client supported 1; some features may be unavailable`,
     );
@@ -124,7 +128,7 @@ export function applySummaryToState(
 
   // 1. endpoint 后端权威（层级懒加载优先用 route.uri，此值仅作兜底前缀）
   if (summary.config.endpoint_prefix && summary.config.endpoint_prefix !== explicitEndpoint) {
-    if (explicitEndpoint) {
+    if (explicitEndpoint && warnings) {
       console.warn(
         `[route-forge] backend endpoint_prefix "${summary.config.endpoint_prefix}" overrides frontend endpoint "${explicitEndpoint}"`,
       );
@@ -156,7 +160,7 @@ export function applySummaryToState(
   if (explicitLevels && explicitLevels.length > 0) {
     const intersection = explicitLevels.filter((l) => backendLevels.includes(l));
     const removed = explicitLevels.filter((l) => !backendLevels.includes(l));
-    if (removed.length > 0) {
+    if (removed.length > 0 && warnings) {
       console.warn(
         `[route-forge] levels not in backend summary and dropped: ${removed.join(', ')}`,
       );

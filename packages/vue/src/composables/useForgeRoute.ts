@@ -14,16 +14,7 @@
 
 import { computed, type ComputedRef, onMounted, ref, watch } from 'vue';
 import { useInjectedForge } from '../useInjectedForge.js';
-
-/** 渲染期错误降级输出：橙色加粗标签 + 完整错误对象，控制台一眼可见 */
-function warnRenderError(error: unknown): void {
-  console.warn(
-    '%c[route-forge]%c useForgeRoute 渲染期错误（已降级为空字符串，渲染未中断）',
-    'color:#e67e22;font-weight:bold',
-    'color:inherit',
-    error,
-  );
-}
+import { reportRenderWarn } from '../degrade.js';
 
 /** 降级报告钩子：组件层（ForgeRoute/ForgeLink）用它把默认 warn 升级为 error，避免双重打印 */
 export interface ForgeRouteDegradeHooks {
@@ -96,11 +87,14 @@ export function useForgeRouteState(
     }
   });
 
-  // 降级报告：渲染求值纯净化后，错误经 watch（组件更新前触发）输出，与 react 侧口径一致
+  // 降级报告：渲染求值纯净化后，错误经 watch（组件更新前触发）输出，与 react 侧口径一致。
+  // 同错会话级去重；createRouteForge({ warnings: false }) 时静音。
   watch(
     () => state.value.error,
     (err) => {
-      if (err != null) (hooks?.onDegrade ?? warnRenderError)(err);
+      if (err == null) return;
+      if (hooks?.onDegrade) hooks.onDegrade(err);
+      else reportRenderWarn(err, forge.warnings);
     },
     { immediate: true },
   );

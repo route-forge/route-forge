@@ -1,10 +1,11 @@
 /**
- * ForgeRoute / ForgeLink 共享内部实现：props 定义、降级报告、RouterLink 探测
+ * ForgeRoute / ForgeLink 共享内部实现：props 定义、降级报告（转发 degrade.ts）、RouterLink 探测
  * （非公共 API，不进包入口导出）
  */
 
 import { getCurrentInstance, type PropType } from 'vue';
-import type { RouteForge } from '@route-forge/core';
+
+export { reportDegrade, reportRenderWarn, __resetDegradeReportsForTests } from '../degrade.js';
 
 /** ForgeRoute / ForgeLink 共享 props：level 静态快照，name / params 双形态响应式 */
 // as const：防止 required: true 被宽化为 boolean，导致 defineComponent 推断出 string | undefined
@@ -34,16 +35,6 @@ export const forgeLinkProps = {
   },
 } as const;
 
-/** 解析出错降级报告：红色加粗标签 + 完整错误对象，控制台一眼可见（error 级，每次出错都报） */
-export function reportDegrade(component: string, error: unknown): void {
-  console.error(
-    `%c[route-forge]%c ${component} 路由解析失败（已降级为空字符串，渲染未中断）`,
-    'color:#c0392b;font-weight:bold',
-    'color:inherit',
-    error,
-  );
-}
-
 /** level 未加载提示：每实例仅一次（warned 为组件实例内的可变标记），避免正常加载瞬态刷屏 */
 export function warnUnloadedOnce(component: string, level: string, warned: { value: boolean }): void {
   if (warned.value) return;
@@ -63,5 +54,3 @@ export function resolveRouterLink(): object | null {
   const comps = inst?.appContext.components as Record<string, object> | undefined;
   return comps?.RouterLink ?? comps?.['router-link'] ?? null;
 }
-
-export type { RouteForge };

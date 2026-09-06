@@ -109,6 +109,7 @@ The three loading phases and how to track them:
 | `interceptors.response` | `Fn \| [resolve?, reject?] \| { resolve?, reject? }` | none | declarative response interceptor, same shapes (first `resolve` receives `ResponseData`) |
 | `timeout` | `number` (ms) | `30000` | global timeout; a single call can override it via `params.timeout` |
 | `baseURL` | `string` | `''` | base prepended to every generated URL |
+| `warnings` | `boolean` | `true` | silences non-fatal `console.warn` output when `false` (`console.error` is never silenced); vue/react render-degrade warnings follow the same switch via `forge.warnings` |
 | `strict` | `boolean` | — | **Deprecated, ignored.** Frontend validation is always on (unknown level → `UnknownLevelError`, unknown route → `UnknownRouteError`, missing required param → `MissingRouteParamError`); silently ignoring typos hides bugs. The backend's `strict_mode` is a manifest-generation concern and unrelated to the frontend |
 
 ## Embedded bootstrap (optional hydration)

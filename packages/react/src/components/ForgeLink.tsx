@@ -50,7 +50,7 @@ export interface ForgeLinkProps extends Omit<AnchorHTMLAttributes<HTMLAnchorElem
 export function ForgeLink({ level, name, params, as, loading, error: errorNode, children, ...rest }: ForgeLinkProps) {
   const forge = useContext(ForgeContext) as RouteForge | null;
   const state = useForgeRouteState(level, name, params, {
-    onDegrade: (e) => reportDegrade('ForgeLink', e),
+    onDegrade: (e) => reportDegrade('ForgeLink', e, forge?.warnings ?? true),
   });
   const { href, error, isLevelLoaded } = state;
   const loaded = href !== '';

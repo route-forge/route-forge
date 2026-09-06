@@ -6,6 +6,11 @@
 
 ### Added
 
+- 渲染期降级报告会话级去重：同一错误（component + message）只报告一次，`name`/`params` 联动输入
+  等高频场景不再刷屏；并遵循 core `createRouteForge({ warnings: false })` 全局静音。
+
+### Changed
+
 - `ForgeRoute` / `ForgeLink` 三态显式化：**未加载** → `loading`；**已加载但解析失败**（路由名不存在、
   参数缺失等）→ 新增 `error`（ForgeLink 为 ReactNode prop，ForgeRoute render-prop state 新增 `error`
   字段，未传回落 `loading`）；**成功** → 链接/内容。此前「加载中」与「解析失败」共用 `href === ''`
