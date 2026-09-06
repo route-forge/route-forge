@@ -239,3 +239,76 @@ describe('RouteForgeProvider 外部传入实例（复用模式）', () => {
     expect(seen.every((f) => f === external)).toBe(true);
   });
 });
+
+describe('RouteForgeProvider gate（ready 门闩）', () => {
+  it('gate: renders gateFallback until ready() resolves, then children (direct mount stays deterministic)', async () => {
+    const restore = mockFetch();
+    try {
+      const { getByText, queryByText } = render(
+        createElement(
+          RouteForgeProvider,
+          {
+            options: { endpoint: '/_forge/routes', levels: ['public'], adapter: 'builtin' },
+            gate: true,
+            gateFallback: createElement('span', null, 'gated'),
+          },
+          createElement('div', null, 'content'),
+        ),
+      );
+      // ready 前闭门
+      expect(getByText('gated')).toBeTruthy();
+      expect(queryByText('content')).toBeNull();
+      // ready 后放行
+      await waitFor(() => expect(queryByText('content')).not.toBeNull());
+      expect(queryByText('gated')).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+
+  it('gate with an already-ready external instance opens immediately (no fallback frame)', async () => {
+    const restore = mockFetch();
+    try {
+      const external = createRouteForge({ endpoint: '/_forge/routes', levels: ['public'], adapter: 'builtin' });
+      await act(async () => { await external.ready(); });
+      expect(external.isReady()).toBe(true);
+      const { queryByText, getByText } = render(
+        createElement(
+          RouteForgeProvider,
+          { forge: external, gate: true, gateFallback: createElement('span', null, 'gated') },
+          createElement('div', null, 'content'),
+        ),
+      );
+      expect(getByText('content')).toBeTruthy();
+      expect(queryByText('gated')).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+
+  it('gate: ready() rejection keeps children gated and reports loudly', async () => {
+    const restore = mockFetch();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      // 让摘要端点 500 → 无显式 levels → ready reject
+      (globalThis as any).fetch = vi.fn(async () => jsonResponse({ message: 'boom' }, 500));
+      const { queryByText } = render(
+        createElement(
+          RouteForgeProvider,
+          {
+            options: { endpoint: '/_forge/routes', adapter: 'builtin' },
+            gate: true,
+            gateFallback: createElement('span', null, 'gated'),
+          },
+          createElement('div', null, 'content'),
+        ),
+      );
+      await waitFor(() => expect(errorSpy).toHaveBeenCalled());
+      expect(queryByText('content')).toBeNull();
+      expect(queryByText('gated')).toBeTruthy();
+    } finally {
+      errorSpy.mockRestore();
+      restore();
+    }
+  });
+});

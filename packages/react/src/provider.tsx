@@ -36,6 +36,15 @@ export interface RouteForgeProviderProps {
    */
   forge?: RouteForge;
   /**
+   * ready 门闩：true 时在 `ready()` resolve 前渲染 `gateFallback`（缺省 null）、resolve 后放行
+   * children——直接 mount 也能拿到 `ready().then(mount)` 同级的确定性（首帧路由数据必然就绪）。
+   * options 变更重建实例时重新闭门；ready() reject 时响亮 console.error 且保持闭门（与
+   * `then(mount)` 的 catch 语义对齐，不静默）。
+   */
+  gate?: boolean;
+  /** 门闩期间的占位 UI（仅 `gate` 为 true 时生效，缺省不渲染任何内容） */
+  gateFallback?: ReactNode;
+  /**
    * 创建期拦截器钩子：每个 forge 实例触发**一次**（首次创建 + options 变更重建时），
    * 用于在挂载前同步注册请求/响应拦截器，无需钻到子组件 useForge() 里挂。
    * 属"初始化"语义而非响应式 effect——仅回调 identity 变化而 options 不变时不会重跑。
@@ -76,7 +85,7 @@ export interface RouteForgeProviderProps {
  * </RouteForgeProvider>
  * ```
  */
-export function RouteForgeProvider({ options, forge: externalForge, onInterceptors, children }: RouteForgeProviderProps) {
+export function RouteForgeProvider({ options, forge: externalForge, gate, gateFallback, onInterceptors, children }: RouteForgeProviderProps) {
   const ref = useRef<{ options: RouteForgeOptions; forge: RouteForge } | null>(null);
   // 实例版本：options 实际变化重建 forge 后递增，驱动 context value 更新
   const [version, setVersion] = useState(0);
@@ -97,6 +106,9 @@ export function RouteForgeProvider({ options, forge: externalForge, onIntercepto
     }
   }
 
+  // ready 门闩状态：已就绪（含构造前即就绪的复用实例）直接开门，避免多余的 fallback 首帧
+  const [gateOpen, setGateOpen] = useState(() => !gate || ref.current!.forge.isReady());
+
   // options 变化检测移到 effect（渲染期不换实例）：
   // 换实例延后一帧（渲染完成后），换取 concurrent/StrictMode 下渲染热路径无副作用。
   useEffect(() => {
@@ -106,22 +118,48 @@ export function RouteForgeProvider({ options, forge: externalForge, onIntercepto
         ref.current = { options: {}, forge: externalForge };
         setVersion((v) => v + 1);
       }
-      return;
+    } else {
+      const next = options ?? {};
+      if (!optionsEqual(ref.current!.options, next)) {
+        ref.current = { options: next, forge: createRouteForge(next) };
+        setVersion((v) => v + 1);
+        // 实例重建 → 拦截器随新实例重新注册一次（与 effect 同步的当前闭包回调）
+        onInterceptors?.(ref.current.forge.interceptors);
+      }
     }
-    const next = options ?? {};
-    if (!optionsEqual(ref.current!.options, next)) {
-      ref.current = { options: next, forge: createRouteForge(next) };
-      setVersion((v) => v + 1);
-      // 实例重建 → 拦截器随新实例重新注册一次（与 effect 同步的当前闭包回调）
-      onInterceptors?.(ref.current.forge.interceptors);
+    // ready 门闩：跟随当前实例。实例重建 → 重新闭门等待新实例 ready；
+    // ready() reject 响亮报告且保持闭门（错误级 console.error 永不静音，与 then(mount) 的 catch 对齐）
+    if (gate) {
+      const f = ref.current!.forge;
+      let cancelled = false;
+      if (f.isReady()) {
+        setGateOpen(true);
+      } else {
+        setGateOpen(false);
+        f.ready().then(
+          () => {
+            if (!cancelled) setGateOpen(true);
+          },
+          (err) => {
+            console.error(
+              '[route-forge] gate: ready() rejected — children stay gated (same as an unhandled ready().catch)',
+              err,
+            );
+          },
+        );
+      }
+      return () => {
+        cancelled = true;
+      };
     }
-    // 依赖刻意仅含 options / 外部实例：这是"每实例一次"的初始化钩子，回调 identity 单独变化不应重跑
-  }, [options, externalForge]);
+    // 依赖刻意仅含 options / 外部实例 / gate：这是"每实例一次"的初始化钩子，回调 identity 单独变化不应重跑
+  }, [options, externalForge, gate]);
 
   // version 仅用于触发重渲染（读取 ref.current.forge 保证最新实例）；
   // context value 引用稳定性：同一实例期间 value 不变，避免全树无谓重渲染
   void version;
-  return <ForgeContext.Provider value={ref.current.forge}>{children}</ForgeContext.Provider>;
+  const content = gate && !gateOpen ? (gateFallback ?? null) : children;
+  return <ForgeContext.Provider value={ref.current.forge}>{content}</ForgeContext.Provider>;
 }
 
 /** 比较两个 options 是否等价：原始值按 ===，数组逐元素 ===，嵌套纯对象（如 cache）浅比较 */
