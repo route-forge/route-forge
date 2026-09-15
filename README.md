@@ -142,9 +142,12 @@ const forge = createRouteForge({
 // Call an API — auto-loads the level + fills params + sends the request
 const user = await forge.api('admin', 'users.show', { user: 123 })
 
-// Build a URL — no request is sent
+// Build a URL — fills path params, optionally appends a query string; no request is sent
 const url = forge.route('public', 'login.show')
 // → '/login'
+// route()/url() share api()'s parameter resolution: params.query (an object) becomes a trailing query string
+const users = forge.route('admin', 'users.index', { query: { page: 2, sort: 'name' } })
+// → '/admin/users?page=2&sort=name'
 
 // Manual level management
 await forge.load('admin')
@@ -181,7 +184,7 @@ const forge = createRouteForge()  // no options needed at all
 forge.route('public', 'login.show')  // usable immediately — discovery already finished
 ```
 
-Parameters support smart resolution: flattened path parameters, with `query`/`body`/`headers` as fixed keys. When a path parameter name collides with a fixed key, `string|number` values are detected as path parameters; the explicit `params` key also works:
+Parameters support smart resolution: flattened path parameters, with `query`/`body`/`headers` as fixed keys. This resolution is shared by `api()`, `route()`, and `url()` — so `params.query` also appends a query string in `route()`/`url()` (`body`/`headers` are meaningless for a plain URL and are ignored). When a path parameter name collides with a fixed key, `string|number` values are detected as path parameters; the explicit `params` key also works:
 
 ```ts
 // route: /search/{query}

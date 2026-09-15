@@ -561,3 +561,57 @@ describe('getRoutes snapshot isolation', () => {
     expect(fresh['user.show']!.parameter_defaults).toEqual({ user: 1 });
   });
 });
+
+describe('route()/url() query 支持（复用 api 的入参解析）', () => {
+  it('params.query 序列化为 query string', async () => {
+    const { forge } = await createLoadedForge({
+      'user.show': { name: 'user.show', uri: 'users/{user}', methods: ['GET'], parameters: ['user'] },
+    });
+    expect(forge.route('public', 'user.show', { user: 5, query: { page: 2, tab: 'a' } }))
+      .toBe('/users/5?page=2&tab=a');
+  });
+
+  it('无 query 时行为不变（仅路径参数）', async () => {
+    const { forge } = await createLoadedForge({
+      'user.show': { name: 'user.show', uri: 'users/{user}', methods: ['GET'], parameters: ['user'] },
+    });
+    expect(forge.route('public', 'user.show', { user: 5 })).toBe('/users/5');
+  });
+
+  it('url() 别名同样带 query', async () => {
+    const { forge } = await createLoadedForge({
+      'user.show': { name: 'user.show', uri: 'users/{user}', methods: ['GET'], parameters: ['user'] },
+    });
+    expect(forge.url('public', 'user.show', { user: 5, query: { ref: 'nav' } }))
+      .toBe('/users/5?ref=nav');
+  });
+
+  it('非路径参数、非 query 的平铺 key 被忽略（不误拼进 URL）', async () => {
+    const { forge } = await createLoadedForge({
+      'user.show': { name: 'user.show', uri: 'users/{user}', methods: ['GET'], parameters: ['user'] },
+    });
+    // sort 既不是 {user} 路径参数也不是保留 query key → 丢弃
+    expect(forge.route('public', 'user.show', { user: 5, sort: 'name' })).toBe('/users/5');
+  });
+
+  it('{query} 作路径占位符：标量填路径、对象才当查询串', async () => {
+    const { forge } = await createLoadedForge({
+      'search': { name: 'search', uri: 'search/{query}', methods: ['GET'], parameters: ['query'] },
+    });
+    // 标量 → 填 {query} 路径参数（与 api 一致），不产生 ?query=
+    expect(forge.route('public', 'search', { query: 'term' })).toBe('/search/term');
+    // 对象 → 走保留 query key，{query} 占位符缺失但非必填场景：这里 parameters 含 query 会 MissingRouteParam，
+    // 故显式用 params 指定路径参数 + query 作查询串的边界
+    expect(forge.route('public', 'search', { params: { query: 'term' }, query: { page: 2 } }))
+      .toBe('/search/term?page=2');
+  });
+
+  it('query 值做 URL 编码、多值 & 拼接、null/undefined 跳过', async () => {
+    const { forge } = await createLoadedForge({
+      'user.index': { name: 'user.index', uri: 'users', methods: ['GET'], parameters: [] },
+    });
+    expect(
+      forge.route('public', 'user.index', { query: { q: 'a b&c', empty: undefined, n: null, k: 1 } }),
+    ).toBe('/users?q=a+b%26c&k=1');
+  });
+});

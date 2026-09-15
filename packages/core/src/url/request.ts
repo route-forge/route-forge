@@ -7,8 +7,9 @@
  */
 
 import { InvalidPathParamError, MissingRouteParamError } from '../errors.js';
-import type { RouteMeta } from '../types.js';
+import type { ApiCallParams, RouteMeta } from '../types.js';
 import { joinBaseAndPath, trimTrailingSlash, withLeadingSlash } from './utils.js';
+import { resolveApiParams } from './params.js';
 
 /** 业务请求 URL 上下文（buildRequestUrl 用）；urlPrefix 为后端下发的实时值 */
 export interface RequestUrlContext {
@@ -93,4 +94,20 @@ export function appendQuery(url: string, query?: Record<string, unknown>): strin
   const qs = usp.toString();
   if (!qs) return url;
   return url.includes('?') ? `${url}&${qs}` : `${url}?${qs}`;
+}
+
+/**
+ * 由路由元信息 + 传参生成最终 URL（含路径参数替换与 query 追加），供 `route()` / `url()` 使用。
+ *
+ * 复用 `api()` 同一套入参解析（`resolveApiParams`）：`params` 里 `query` 为固定 key → 序列化为
+ * query string，其余按路径参数处理——因此 `route()` 与 `api()` 共享同一"保留 key"语义。
+ * `body` / `headers` / `timeout` 对纯 URL 生成无意义，解析出后直接忽略。
+ */
+export function buildRouteUrl(
+  meta: RouteMeta,
+  params: ApiCallParams | Record<string, unknown> | undefined,
+  ctx: RequestUrlContext,
+): string {
+  const { pathParams, query } = resolveApiParams(params ?? {});
+  return appendQuery(buildRequestUrl(meta, pathParams, ctx), query);
 }

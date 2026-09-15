@@ -100,6 +100,18 @@ describe('ForgeLink', () => {
     expect(a.attributes('data-testid')).toBe('link');
   });
 
+  it('renders href with query string from params.query (端到端透传)', async () => {
+    const wrapper = mount(ForgeLink, {
+      props: { level: 'public', name: 'users.show', params: { user: 7, query: { tab: 'a', page: 2 } } },
+      slots: { default: () => '查看用户' },
+      global: { plugins: [makePlugin()] },
+    });
+    await flushPromises();
+    const a = wrapper.find('a');
+    expect(a.exists()).toBe(true);
+    expect(a.attributes('href')).toBe('/users/7?tab=a&page=2');
+  });
+
   it('renders loading slot while not loaded', async () => {
     const wrapper = mount(ForgeLink, {
       props: { level: 'public', name: 'users.index' },

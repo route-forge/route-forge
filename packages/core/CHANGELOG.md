@@ -2,6 +2,16 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [Unreleased]
+
+### Added
+
+- `route()` / `url()` 支持查询串：复用 `api()` 同一套入参解析（`resolveApiParams`），
+  `params.query`（对象）经 URL 编码后追加为 URL 末尾的查询串（`body` / `headers` / `timeout`
+  对纯 URL 生成无意义，解析出后忽略）。例：`forge.route('admin', 'users.index', { query: { page: 2 } })` → `/admin/users?page=2`。
+  该能力经 `route()` 透传至 vue/react 的 `useForgeRoute` 与 `ForgeRoute` / `ForgeLink`（`params.query` 直接生效）。
+  不传 `query` 时行为与旧版逐字节一致，向后兼容。
+
 ## 3.0.0 — 2026-09-06
 
 ### Removed

@@ -143,9 +143,12 @@ const forge = createRouteForge({
 // 调用 API — 自动加载层级 + 填充参数 + 发送请求
 const user = await forge.api('admin', 'users.show', { user: 123 })
 
-// 生成 URL — 仅拼路径，不发请求
+// 生成 URL — 填充路径参数、可选拼 query，不发请求
 const url = forge.route('public', 'login.show')
 // → '/login'
+// route()/url() 与 api() 共用入参解析：params.query（对象）序列化为查询串追加到末尾
+const users = forge.route('admin', 'users.index', { query: { page: 2, sort: 'name' } })
+// → '/admin/users?page=2&sort=name'
 
 // 手动管理层级加载
 await forge.load('admin')
@@ -181,7 +184,7 @@ const forge = createRouteForge()  // 完全无需传参
 forge.route('public', 'login.show')  // 立即可用——discovery 已完成
 ```
 
-参数支持智能消解：路径参数平铺传入，`query`/`body`/`headers` 为固定 key。路径参数名与固定 key 冲突时，
+参数支持智能消解：路径参数平铺传入，`query`/`body`/`headers` 为固定 key。此解析由 `api()`、`route()`、`url()` 共用——`route()`/`url()` 的 `params.query` 同样会拼成查询串追加到 URL 末尾（`body`/`headers` 对纯 URL 无意义，被忽略）。路径参数名与固定 key 冲突时，
 `string|number` 值自动识别为路径参数，也可通过 `params` 显式指定：
 
 ```ts

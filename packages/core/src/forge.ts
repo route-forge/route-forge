@@ -21,7 +21,7 @@ import {
   HTTPError,
   UnknownRouteError,
 } from './errors.js';
-import { buildRequestUrl } from './url-builder.js';
+import { buildRouteUrl } from './url-builder.js';
 import {
   applySummaryToState,
   DEFAULT_ENDPOINT,
@@ -213,7 +213,7 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     if (!meta) {
       throw new UnknownRouteError(name, level, Object.keys(store.getRoutes(level)));
     }
-    return buildRequestUrl(meta, params ?? {}, { baseURL, urlPrefix: discoveryState.urlPrefix });
+    return buildRouteUrl(meta, params ?? {}, { baseURL, urlPrefix: discoveryState.urlPrefix });
   }
 
   // --- 业务请求执行（http-runner 封装：参数解析 / 拦截链 / 错误转换 / 加载跟踪 / 可 abort）---

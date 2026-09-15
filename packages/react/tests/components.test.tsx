@@ -101,6 +101,21 @@ describe('ForgeLink', () => {
     });
   });
 
+  it('renders href with query string from params.query (端到端透传)', async () => {
+    const { container } = render(
+      <RouteForgeProvider options={makeOptions()}>
+        <ForgeLink level="public" name="users.show" params={{ user: 7, query: { tab: 'a', page: 2 } }}>
+          查看用户
+        </ForgeLink>
+      </RouteForgeProvider>,
+    );
+    await waitFor(() => {
+      const a = container.querySelector('a');
+      expect(a).not.toBeNull();
+      expect(a!.getAttribute('href')).toBe('/users/7?tab=a&page=2');
+    });
+  });
+
   it('renders loading prop while not loaded', async () => {
     const { container, getByText } = render(
       <RouteForgeProvider options={makeOptions()}>
