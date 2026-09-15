@@ -1,11 +1,10 @@
 export {
   createRouteForgePlugin,
-  useForge,
   FORGE_INJECTION_KEY,
 } from './plugin.js';
-export type {
-  RouteForgePluginOptions, VueBoundForge,
-} from './plugin.js';
+export type { RouteForgePluginOptions } from './plugin.js';
+export { useForge } from './composables/useForge.js';
+export type { VueBoundForge } from './composables/useForge.js';
 export { useForgeApi } from './composables/useForgeApi.js';
 export type {
   UseForgeApiReturnVue, UseForgeApiBoundReturnVue, UseForgeApiCall, UseForgeApiBoundCall,

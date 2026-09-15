@@ -17,7 +17,7 @@
 
 import type { Ref } from 'vue';
 import { ref } from 'vue';
-import { useForge } from '../plugin.js';
+import { useForge } from './useForge.js';
 import type {
   BoundForge,
   RouteForge,
