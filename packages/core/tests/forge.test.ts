@@ -1387,6 +1387,64 @@ describe('ForgeRequest abort', () => {
   });
 });
 
+describe('api() external AbortSignal (params.signal)', () => {
+  let originalFetch: typeof globalThis.fetch;
+  const routes = {
+    public: {
+      level: 'public' as const,
+      routes: {
+        'user.show': { name: 'user.show', uri: 'users/{user}', methods: ['GET'], parameters: ['user'] },
+      },
+    },
+  };
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  function makeForge() {
+    const calls = mockFull(makeSummary({ config: { strict_mode: false, endpoint_prefix: '/_forge/routes' } }), routes);
+    const forge = createRouteForge({
+      endpoint: '/_forge/routes',
+      levels: ['public'],
+      adapter: 'builtin',
+    });
+    return { forge, calls };
+  }
+
+  it('已 abort 的外部 signal → 短路、不发业务请求、reject RequestAbortedError', async () => {
+    const { forge, calls } = makeForge();
+    await forge.load('public');
+    const ctrl = new AbortController();
+    ctrl.abort(); // 传入前已取消
+    await expect(forge.api('public', 'user.show', { user: 1, signal: ctrl.signal }))
+      .rejects.toBeInstanceOf(RequestAbortedError);
+    // 业务请求从未发出
+    expect(calls.some((c) => c.url.includes('/users/1'))).toBe(false);
+  });
+
+  it('api 返回后立刻 abort 外部 controller → 经监听取消、reject RequestAbortedError', async () => {
+    const { forge } = makeForge();
+    await forge.load('public');
+    const ctrl = new AbortController();
+    const request = forge.api('public', 'user.show', { user: 1, signal: ctrl.signal });
+    ctrl.abort(); // 同步触发（work 尚未恢复）
+    await expect(request).rejects.toThrow(RequestAbortedError);
+  });
+
+  it('外部 signal 与返回值 abort() 共存：任一取消即中止', async () => {
+    const { forge } = makeForge();
+    await forge.load('public');
+    const ctrl = new AbortController();
+    const request = forge.api('public', 'user.show', { user: 1, signal: ctrl.signal });
+    request.abort(); // 走内部取消路径，外部 signal 未触发
+    await expect(request).rejects.toThrow(RequestAbortedError);
+  });
+});
+
 describe('unassigned is a real backend level (HTTP lazy load)', () => {
   let originalFetch: typeof globalThis.fetch;
   beforeEach(() => {

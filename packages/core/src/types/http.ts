@@ -86,6 +86,12 @@ export interface ApiCallParams {
    * 单次请求超时覆盖（毫秒）；不传时使用 createRouteForge({ timeout }) 全局值
    */
   timeout?: number;
+  /**
+   * 外部取消信号（固定 key，恒不参与路径参数）。信号触发时请求被取消
+   * （reject 为 RequestAbortedError），与返回值自带的 `abort()` 联合生效——任一取消即中止。
+   * 若传入时 signal 已 abort，则直接短路、不发请求。适用于组件卸载 / React Query / AbortController 等外部生命周期。
+   */
+  signal?: AbortSignal;
 }
 
 /**

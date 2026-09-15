@@ -445,6 +445,12 @@ async function loadOrders() {
 const req = forge.api('admin', 'users.show', { user: 123 })
 req.abort()  // Promise reject 为 RequestAbortedError（RF_FE_009），请求被中止
 
+// 也可传外部 AbortSignal：与返回值 abort() 联合生效（任一触发即取消）
+const ctrl = new AbortController()
+await forge.api('admin', 'users.show', { user: 123, signal: ctrl.signal })
+ctrl.abort()  // 取消该请求；若传入时 signal 已 abort，则直接短路、不发请求
+//   适合组件卸载 / React Query / SWR 等外部生命周期驱动的取消
+
 // 错误速查：所有错误均为 ForgeError 子类，带稳定 code 字段，可按 code 分支处理
 //   RF_FE_001 UnknownRouteError         路由名不存在（message 列出可用路由名）
 //   RF_FE_002 UnknownLevelError         层级未声明（message 列出可用层级）

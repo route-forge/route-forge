@@ -452,6 +452,12 @@ async function loadOrders() {
 const req = forge.api('admin', 'users.show', { user: 123 })
 req.abort()  // the Promise rejects with RequestAbortedError (RF_FE_009); the request is aborted
 
+// You can also pass an external AbortSignal — it composes with the returned abort() (either cancels)
+const ctrl = new AbortController()
+await forge.api('admin', 'users.show', { user: 123, signal: ctrl.signal })
+ctrl.abort()  // cancels the request; a signal already aborted at call time short-circuits (no request sent)
+//   ideal for component unmount / React Query / SWR — cancellation driven by an outer lifecycle
+
 // Error quick reference: all errors extend ForgeError and carry a stable `code` — branch on it
 //   RF_FE_001 UnknownRouteError         route name does not exist (message lists available route names)
 //   RF_FE_002 UnknownLevelError         level not declared (message lists available levels)

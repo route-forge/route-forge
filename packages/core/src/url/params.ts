@@ -9,12 +9,13 @@
 import type { ApiCallParams } from '../types.js';
 
 /**
- * 智能解析 ApiCallParams，分离路径参数 / query / body / headers。
+ * 智能解析 ApiCallParams，分离路径参数 / query / body / headers / signal。
  *
  * 规则：
  *   1. `params` 显式指定路径参数 → 优先级最高
  *   2. 平铺的 string | number 值（含与 query/body/headers 同名的 key）→ 路径参数
- *   3. `query` (对象) → 查询参数；`body` (非 string/number) → 请求体；`headers` (对象) → 请求头
+ *   3. `query` (对象) → 查询参数；`body` (非 string/number) → 请求体；`headers` (对象) → 请求头；
+ *      `signal` (AbortSignal) → 外部取消信号（保留 key，恒不参与路径参数）
  */
 export function resolveApiParams(input: ApiCallParams): {
   pathParams: Record<string, unknown>;
@@ -22,6 +23,7 @@ export function resolveApiParams(input: ApiCallParams): {
   body?: unknown;
   headers?: Record<string, string>;
   timeout?: number;
+  signal?: AbortSignal;
 } {
   const {
     params: explicitParams,
@@ -29,6 +31,7 @@ export function resolveApiParams(input: ApiCallParams): {
     body: rawBody,
     headers: rawHeaders,
     timeout: perCallTimeout,
+    signal: rawSignal,
     ...flatRest
   } = input;
 
@@ -76,5 +79,5 @@ export function resolveApiParams(input: ApiCallParams): {
     }
   }
 
-  return { pathParams, query, body, headers, timeout: perCallTimeout };
+  return { pathParams, query, body, headers, timeout: perCallTimeout, signal: rawSignal };
 }

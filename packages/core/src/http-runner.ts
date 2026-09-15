@@ -167,23 +167,46 @@ export function createHttpRunner(deps: HttpRunnerDeps): (
   }
 
   return function api(level: string, name: string, params: ApiCallParams = {}): ForgeRequest {
-    // 内部创建 AbortController，用户通过返回值的 abort() 方法取消请求
+    // 内部创建 AbortController，用户通过返回值的 abort() 方法取消请求；
+    // 若入参带外部 signal（params.signal），则与内部 controller 联合——任一触发即取消。
     let ctrl: AbortController | undefined;
     let abortedBeforeInit = false;
     let abortReason: unknown;
+    const externalSignal = params.signal;
+
+    const onExternalAbort = (): void => {
+      if (ctrl) {
+        ctrl.abort(externalSignal?.reason);
+      } else {
+        abortedBeforeInit = true;
+        abortReason = externalSignal?.reason;
+      }
+    };
+    // 外部 signal 已 abort → 直接置预中止态（work 起始即短路，不发请求）；否则挂一次性监听
+    if (externalSignal?.aborted) {
+      abortedBeforeInit = true;
+      abortReason = externalSignal.reason;
+    } else {
+      externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
+    }
 
     const work = (async (): Promise<unknown> => {
-      ctrl = new AbortController();
-      if (abortedBeforeInit) {
-        ctrl.abort(abortReason);
+      try {
+        ctrl = new AbortController();
+        if (abortedBeforeInit) {
+          ctrl.abort(abortReason);
+        }
+        await autoDiscoveryPromise;
+        await load(level);
+        const meta = findRouteMeta(level, name);
+        if (!meta) {
+          throw new UnknownRouteError(name, level, getRouteNames(level));
+        }
+        return await doApiCall(meta, params, ctrl.signal);
+      } finally {
+        // 请求落定后回收外部监听：长期存活的 signal 被多次复用也不泄漏
+        externalSignal?.removeEventListener('abort', onExternalAbort);
       }
-      await autoDiscoveryPromise;
-      await load(level);
-      const meta = findRouteMeta(level, name);
-      if (!meta) {
-        throw new UnknownRouteError(name, level, getRouteNames(level));
-      }
-      return doApiCall(meta, params, ctrl.signal);
     })();
 
     const request = work as ForgeRequest;

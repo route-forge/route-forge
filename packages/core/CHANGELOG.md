@@ -11,6 +11,10 @@
   对纯 URL 生成无意义，解析出后忽略）。例：`forge.route('admin', 'users.index', { query: { page: 2 } })` → `/admin/users?page=2`。
   该能力经 `route()` 透传至 vue/react 的 `useForgeRoute` 与 `ForgeRoute` / `ForgeLink`（`params.query` 直接生效）。
   不传 `query` 时行为与旧版逐字节一致，向后兼容。
+- `api()` 支持通过 `params.signal` 传入外部 `AbortSignal`：与返回值自带的 `abort()` 联合取消（任一触发即
+  reject `RequestAbortedError`）；传入时若 signal 已 abort 则直接短路、不发请求。`signal` 为保留固定 key，
+  恒不参与路径参数解析，请求结束时自动移除监听以防长期复用的 signal 泄漏。面向组件卸载 / React Query /
+  SWR 等由外部生命周期驱动取消的场景。
 
 ## 3.0.0 — 2026-09-06
 
