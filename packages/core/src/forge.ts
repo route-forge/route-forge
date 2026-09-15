@@ -12,13 +12,12 @@
 
 import { RouteCache } from './cache.js';
 import { InterceptorManagerImpl, normalizeInterceptorDeclaration } from './interceptors.js';
-import { resolveAdapter } from './adapters/index.js';
+import { createAdapterBootstrap } from './adapter-bootstrap.js';
+import { createReadyLatch } from './ready-latch.js';
 import type { LoadingChangeCallback } from './loading.js';
 import { LoadingTracker } from './loading.js';
 import {
-  AdapterNotFoundError,
   DiscoveryNotReadyError,
-  ForgeError,
   HTTPError,
   UnknownRouteError,
 } from './errors.js';
@@ -81,27 +80,9 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
   };
   const discoveryInputs: DiscoveryInputs = { explicitLevels, explicitEager, explicitEndpoint, warnings };
 
-  // --- Auto-discovery 完成状态 + ready Promise ---
+  // --- Auto-discovery 完成状态 + ready() 门闩（Promise/isReady/unhandled-rejection 细节见 ready-latch.ts）---
   let autoDiscoveryCompleted = false;
-  let resolveReady!: (value: RouteForge) => void;
-  let rejectReady!: (reason?: unknown) => void;
-  const readyPromise = new Promise<RouteForge>((resolve, reject) => {
-    resolveReady = resolve;
-    rejectReady = reject;
-  });
-  // 无人调用 ready() 时防 unhandled rejection；不改变 reject 语义，订阅者仍能收到错误
-  readyPromise.catch(() => {});
-  // 就绪标记（isReady 同步查询用）：仅 ready() 成功 resolve 后置 true；reject 不算就绪。
-  // onRejected 必须就地消化——否则衍生 promise 在 reject 时成为 unhandled rejection
-  let readySettledOk = false;
-  readyPromise.then(
-    () => {
-      readySettledOk = true;
-    },
-    () => {
-      /* reject 不算就绪；原始错误由 readyPromise.catch 兜底，订阅者仍能收到 */
-    },
-  );
+  const latch = createReadyLatch<RouteForge>();
 
   const cacheTtl = cacheOpts.ttl ?? DEFAULT_CACHE_TTL;
   const cacheStorage = cacheOpts.storage ?? 'memory';
@@ -125,34 +106,13 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     responseInterceptors.use(resDecl.onFulfilled, resDecl.onRejected);
   }
 
-  const adapterPromise = resolveAdapter({
+  // --- Adapter 引导（auto 探测 / 显式指定 / 初始化失败响亮降级 builtin，见 adapter-bootstrap.ts）---
+  const ensureAdapter = createAdapterBootstrap({
     adapter,
-    forgeInterceptors: { request: requestInterceptors, response: responseInterceptors },
+    requestInterceptors,
+    responseInterceptors,
+    warnings,
   });
-  let adapterResolved = false;
-  let adapterObj: Awaited<ReturnType<typeof resolveAdapter>> | null = null;
-
-  async function ensureAdapter() {
-    if (!adapterResolved) {
-      adapterObj = await adapterPromise.catch((e) => {
-        if (e instanceof AdapterNotFoundError) throw e;
-        // 其他错误降级到 builtin（避免初始化失败）；
-        // 传入 forge 拦截器管理器，确保降级后拦截链语义不变。
-        // 降级必须响亮：用户显式指定了 adapter/Fetcher，实际却运行 builtin，静默会掩盖行为差异
-        if (warnings) {
-          console.warn(
-            `[route-forge] adapter initialization failed (${(e as Error)?.message ?? String(e)}); falling back to builtin`,
-          );
-        }
-        return resolveAdapter({
-          adapter: 'builtin',
-          forgeInterceptors: { request: requestInterceptors, response: responseInterceptors },
-        });
-      });
-      adapterResolved = true;
-    }
-    return adapterObj!;
-  }
 
   function assertDiscoveryReady(): void {
     if (!autoDiscoveryCompleted && !explicitLevels?.length) {
@@ -303,27 +263,12 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
       }
     })
     .then(() => {
-      resolveReady(forgeInstance);
+      latch.resolve(forgeInstance);
     })
     .catch((e) => {
       // 自动发现失败（无可用降级）→ ready() reject 携带原始错误，不再永久挂起
-      rejectReady(e);
+      latch.reject(e);
     });
-
-  // --- ready() 方法：始终返回 Promise<this> ---
-  function ready(): Promise<RouteForge>;
-  function ready(onFulfilled: (forge: RouteForge) => void, onRejected?: (error: unknown) => void): Promise<RouteForge>;
-  function ready(
-    onFulfilled?: (forge: RouteForge) => void,
-    onRejected?: (error: unknown) => void,
-  ): Promise<RouteForge> {
-    if (onFulfilled) {
-      const p = readyPromise.then(onFulfilled, onRejected);
-      // 回调模式下也返回 Promise，resolve 值为 forge 自身
-      return p.then(() => forgeInstance);
-    }
-    return readyPromise;
-  }
 
   // --- 绑定层级 BoundForge 构造（bound-forge 封装 api/route/url/onLevelLoaded/useRoutePrefix）---
   const createBoundForgeWithMethods = createBoundForgeFactory({
@@ -349,13 +294,13 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     getLevels,
     warnings,
     isLoading: () => loadingTracker.isLoading(),
-    isReady: () => readySettledOk,
+    isReady: () => latch.isReady(),
     onLoadingChange: (cb: LoadingChangeCallback) => loadingTracker.subscribe(cb),
     interceptors: {
       request: requestInterceptors,
       response: responseInterceptors,
     },
-    ready,
+    ready: latch.ready,
     use(level?: string, prefix?: string) {
       if (level === undefined) return forgeInstance as RouteForge;
       return createBoundForgeWithMethods(level, prefix);
