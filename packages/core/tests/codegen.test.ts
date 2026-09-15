@@ -214,3 +214,63 @@ describe('codegen main with unassigned real level', () => {
     expect(fsWrittenContent).toContain('"user.show"');
   });
 });
+
+describe('codegen main fetches levels via summary route.uri (与运行时懒加载对齐)', () => {
+  let originalFetch: typeof globalThis.fetch;
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    fsWrittenContent = '';
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it('prefers levels[].route.uri over endpoint/{level} when composing level URL', async () => {
+    const summary = makeSummary({
+      // 后端把 admin 层级明细端点改到自定义前缀（非 endpoint_prefix 拼接），route.uri 才是权威
+      levels: {
+        admin: {
+          description: 'admin',
+          load: 'lazy',
+          route_count: 1,
+          route: { uri: '/forge-api/v2/admin', methods: ['GET', 'HEAD'] },
+        },
+      },
+    });
+    const okJson = (data: unknown) => ({
+      ok: true,
+      status: 200,
+      json: async () => data,
+      headers: new Headers({ 'content-type': 'application/json' }),
+    });
+    const requested: string[] = [];
+    globalThis.fetch = vi.fn(async (url: string) => {
+      requested.push(url);
+      if (url === '/_forge/routes') return okJson(summary) as never;
+      if (url === '/forge-api/v2/admin') {
+        return okJson({
+          level: 'admin',
+          routes: { 'users.index': { name: 'users.index', uri: 'admin/users', methods: ['GET'], parameters: [] } },
+        }) as never;
+      }
+      return { ok: false, status: 404, json: async () => ({}), headers: new Headers() } as never;
+    }) as never;
+
+    await codegenMain(['--endpoint', '/_forge/routes', '--out', 'test.d.ts']);
+
+    // admin 走 route.uri（/forge-api/v2/admin），而非 endpoint 兜底拼接（/_forge/routes/admin）
+    expect(requested).toContain('/forge-api/v2/admin');
+    expect(requested).not.toContain('/_forge/routes/admin');
+    expect(fsWrittenContent).toContain('"admin"');
+    expect(fsWrittenContent).toContain('"users.index"');
+  });
+});

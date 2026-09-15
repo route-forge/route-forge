@@ -1,225 +1,28 @@
 #!/usr/bin/env node
 /**
- * @route-forge/core codegen CLI
- * @see .docs/SPEC.md §4.2
+ * @route-forge/core codegen 入口（tsup bin 入口 `src/codegen/index.ts`）。
  *
- * 用法：
- *   npx @route-forge/core codegen \
- *     --endpoint http://localhost/_forge/routes \
- *     --levels public,client,manage,admin \
- *     --out src/types/forge-routes.d.ts
+ * 实现按功能拆分：
+ *   - codegen/summary-client.ts  摘要 / 层级明细拉取（route.uri 优先，endpoint 兜底）
+ *   - codegen/emit.ts            d.ts 内容生成（纯字符串）
+ *   - codegen/cli.ts             参数解析 / 帮助 / 主流程编排
+ * 本文件仅做 re-export（保持 `parseArgs` / `main` / `generateRouteTypes` /
+ * `fetchSummary` / `fetchLevel` / `runCodegen` / `CodegenOptions` 等导入路径稳定）
+ * 并承载「作为 CLI 直接执行时」的自调用守卫。
+ *
+ * @see .docs/SPEC.md §4.2
  */
 
-import type { RouteMeta } from '../types.js';
+export {
+  parseArgs,
+  main,
+  type CodegenOptions,
+} from './cli.js';
+export { generateRouteTypes } from './emit.js';
+export { fetchSummary, fetchLevel } from './summary-client.js';
+export { main as runCodegen } from './cli.js';
 
-export interface CodegenOptions {
-  endpoint: string;
-  levels: string[];
-  out: string;
-}
-
-const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH']);
-
-/**
- * 解析 argv（最小手写实现，不引入 commander/yargs）
- * 支持：--endpoint VALUE / --endpoint=VALUE / --levels a,b,c / --out PATH
- */
-export function parseArgs(argv: string[]): CodegenOptions {
-  const opts: Partial<CodegenOptions> = {};
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    const next = (): string => {
-      const v = argv[++i];
-      if (v === undefined) {
-        throw new Error(`[route-forge/codegen] missing value for ${arg}`);
-      }
-      return v;
-    };
-
-    if (arg === '--endpoint') {
-      opts.endpoint = next();
-    } else if (arg?.startsWith('--endpoint=')) {
-      opts.endpoint = arg.slice('--endpoint='.length);
-    } else if (arg === '--levels') {
-      opts.levels = next().split(',').map((s) => s.trim()).filter(Boolean);
-    } else if (arg?.startsWith('--levels=')) {
-      opts.levels = arg.slice('--levels='.length).split(',').map((s) => s.trim()).filter(Boolean);
-    } else if (arg === '--out') {
-      opts.out = next();
-    } else if (arg?.startsWith('--out=')) {
-      opts.out = arg.slice('--out='.length);
-    } else if (arg === '--responseTypes' || arg?.startsWith('--responseTypes=')) {
-      // 该参数从未实现（解析后被静默忽略）；现显式报错并给出迁移方式，不再无声吞掉
-      console.error(
-        '[route-forge/codegen] --responseTypes has been removed (it was never implemented). ' +
-          'Edit the "response" field in the generated d.ts directly, or use module augmentation on ForgeRouteMap.',
-      );
-      process.exit(1);
-    } else if (arg === '--help' || arg === '-h') {
-      printHelp();
-      process.exit(0);
-    }
-  }
-
-  if (!opts.endpoint) {
-    console.error('[route-forge/codegen] --endpoint is required');
-    printHelp();
-    process.exit(1);
-  }
-  if (!opts.out) {
-    console.error('[route-forge/codegen] --out is required');
-    printHelp();
-    process.exit(1);
-  }
-
-  return {
-    endpoint: opts.endpoint,
-    levels: opts.levels ?? [],
-    out: opts.out,
-  };
-}
-
-function printHelp(): void {
-  console.log(`
-route-forge codegen - generate TS route types from backend summary endpoint
-
-Usage:
-  npx @route-forge/core codegen --endpoint URL --out PATH [--levels a,b,c]
-
-Options:
-  --endpoint URL         Backend summary endpoint (e.g. http://localhost/_forge/routes)
-  --levels a,b,c         Optional: explicit level list (skip auto-discovery)
-  --out PATH              Output .d.ts file path
-  -h, --help              Show this help
-`);
-}
-
-/**
- * 拉取摘要端点（仅用于自动发现层级名；unassigned 现是 levels 中的真实层级，与其余层级一样按 HTTP 懒加载拉取）
- */
-export async function fetchSummary(endpoint: string): Promise<{
-  levels: Record<string, unknown>;
-}> {
-  const resp = await fetch(endpoint, { method: 'GET' });
-  if (!resp.ok) {
-    throw new Error(`summary endpoint ${endpoint} returned ${resp.status}`);
-  }
-  return (await resp.json()) as { levels: Record<string, unknown> };
-}
-
-/**
- * 拉取单个层级的路由元信息
- */
-export async function fetchLevel(endpoint: string, level: string): Promise<{ routes: Record<string, RouteMeta> }> {
-  const base = endpoint.replace(/\/$/, '');
-  const url = `${base}/${encodeURIComponent(level)}`;
-  const resp = await fetch(url, { method: 'GET' });
-  if (!resp.ok) {
-    throw new Error(`level endpoint ${url} returned ${resp.status}`);
-  }
-  const data = (await resp.json()) as { routes?: Record<string, RouteMeta> };
-  return { routes: data.routes ?? {} };
-}
-
-/**
- * 生成 d.ts 内容
- * @param routesByLevel 按层级分组的路由元信息：{ level: { routeName: meta } }
- */
-export function generateRouteTypes(routesByLevel: Record<string, Record<string, RouteMeta>>): string {
-  const levelEntries = Object.entries(routesByLevel).map(([level, routes]) => {
-    const routeEntries = Object.entries(routes).map(([name, meta]) => {
-      const defaults = meta.parameter_defaults ?? {};
-      const params = (meta.parameters ?? []).map((p) => {
-        // URI 中的 {p?} 或有后端默认值的参数 → 生成可选字段，避免调用方被迫传参
-        const optional = meta.uri?.includes(`{${p}?}`) || p in defaults;
-        return `${p}${optional ? '?' : ''}: string | number;`;
-      }).join(' ');
-      const method = meta.methods?.find((m) => m.toUpperCase() !== 'HEAD') ?? 'GET';
-      const methodUpper = method.toUpperCase();
-      const bodyField = BODY_METHODS.has(methodUpper) ? '\n      body: unknown;' : '';
-      return `    ${JSON.stringify(name)}: {\n      method: ${JSON.stringify(methodUpper)};\n      params: { ${params} };${bodyField}\n      response: unknown;\n    };`;
-    });
-    return `  ${JSON.stringify(level)}: {\n${routeEntries.join('\n')}\n  };`;
-  });
-  return `// AUTO-GENERATED by @route-forge/core codegen. Do not edit.
-
-/**
- * 二级路由类型映射：level → routeName → routeMeta
- * 可通过 module augmentation 增强：
- *   declare module '@route-forge/core' {
- *     interface ForgeRouteMap { admin: { 'users.show': { method: 'GET'; params: { user: string | number }; response: User } } }
- *   }
- */
-export interface ForgeRouteMap {
-${levelEntries.join('\n')}
-}
-`;
-}
-
-/**
- * CLI 主入口
- */
-export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
-  const opts = parseArgs(argv);
-
-  // 未指定 --levels 时从摘要端点自动发现层级（unassigned 现是 levels 中的真实层级，一并纳入）
-  let levels = opts.levels;
-  // 摘要端点数据（用于自动发现层级）
-  let summaryData: Awaited<ReturnType<typeof fetchSummary>> | null = null;
-  if (levels.length === 0) {
-    try {
-      summaryData = await fetchSummary(opts.endpoint);
-      levels = Object.keys(summaryData.levels);
-    } catch (e) {
-      console.error(`[route-forge/codegen] failed to auto-discover levels from summary endpoint: ${(e as Error).message}`);
-      console.error('hint: pass --levels explicitly to skip auto-discovery');
-      process.exit(1);
-    }
-  }
-
-  if (levels.length === 0) {
-    console.error('[route-forge/codegen] no levels found; pass --levels explicitly');
-    process.exit(1);
-  }
-
-  // 所有层级（含 unassigned 真实层级）统一按 HTTP 懒加载拉取（SPEC §3.1.6）
-  const levelFetches = await Promise.allSettled(
-    levels.map((lvl) => fetchLevel(opts.endpoint, lvl)),
-  );
-
-  const routesByLevel: Record<string, Record<string, RouteMeta>> = {};
-  let failedLevels = 0;
-  levelFetches.forEach((res, idx) => {
-    const lvl = levels[idx]!;
-    if (res.status === 'fulfilled') {
-      routesByLevel[lvl] = res.value.routes;
-    } else {
-      failedLevels++;
-      console.warn(`[route-forge/codegen] failed to fetch level "${lvl}": ${(res.reason as Error).message}`);
-    }
-  });
-
-  const totalRoutes = Object.values(routesByLevel).reduce((sum, r) => sum + Object.keys(r).length, 0);
-  if (totalRoutes === 0) {
-    console.error('[route-forge/codegen] no routes collected from any level');
-    process.exit(1);
-  }
-
-  const dts = generateRouteTypes(routesByLevel);
-
-  const fs = await import('node:fs/promises');
-  const path = await import('node:path');
-  const outPath = path.resolve(opts.out);
-  const dir = path.dirname(outPath);
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(outPath, dts, 'utf8');
-
-  console.log(`[route-forge/codegen] written ${totalRoutes} routes across ${Object.keys(routesByLevel).length} level(s) to ${outPath}`);
-  if (failedLevels > 0) {
-    console.warn(`[route-forge/codegen] ${failedLevels} level(s) failed; output may be incomplete`);
-  }
-}
+import { main as runCodegenMain } from './cli.js';
 
 const invokedFromCli = (() => {
   try {
@@ -232,10 +35,8 @@ const invokedFromCli = (() => {
 })();
 
 if (invokedFromCli) {
-  main().catch((err) => {
+  runCodegenMain().catch((err) => {
     console.error(err);
     process.exit(1);
   });
 }
-
-export { main as runCodegen };
