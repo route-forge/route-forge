@@ -198,13 +198,9 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     store.findRouteMeta(level, name);
   const invalidate = (level?: string | string[]): void => store.invalidate(level);
   const isLoaded = (level?: string): boolean => store.isLoaded(level);
-  function getRoutes(level: string): Record<string, RouteMeta>;
-  function getRoutes(): Record<string, Record<string, RouteMeta>>;
-  function getRoutes(
-    level?: string,
-  ): Record<string, RouteMeta> | Record<string, Record<string, RouteMeta>> {
-    return level === undefined ? store.getRoutes() : store.getRoutes(level);
-  }
+  // store.getRoutes 本身即按 level===undefined 分支，与工厂旧转发完全同形；bind 保留 this，
+  // 再断言回 RouteForge['getRoutes'] 恢复重载调用签名（bind/箭头会把重载塌成单一签名）。
+  const getRoutes = store.getRoutes.bind(store) as RouteForge['getRoutes'];
 
   function getLevels(): string[] {
     return [...discoveryState.levels];
