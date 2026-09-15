@@ -8,6 +8,7 @@
  */
 
 import { InvalidPathParamError, MissingRouteParamError } from './errors.js';
+import { joinBaseAndPath, trimTrailingSlash, withLeadingSlash } from './url-utils.js';
 import type { ApiCallParams, RouteMeta } from './types.js';
 
 /** 层级元信息端点上下文（buildUrl 用） */
@@ -24,9 +25,7 @@ export interface RequestUrlContext {
 
 /** 层级路由元信息拉取端点 URL：baseURL + endpoint + /level */
 export function buildUrl(level: string, ctx: EndpointContext): string {
-  const base = ctx.baseURL.endsWith('/') ? ctx.baseURL.slice(0, -1) : ctx.baseURL;
-  const ep = ctx.endpoint.startsWith('/') ? ctx.endpoint : `/${ctx.endpoint}`;
-  return `${base}${ep}/${encodeURIComponent(level)}`;
+  return `${joinBaseAndPath(ctx.baseURL, withLeadingSlash(ctx.endpoint))}/${encodeURIComponent(level)}`;
 }
 
 /**
@@ -81,10 +80,10 @@ export function buildRequestUrl(
   uri = uri.replace(/\/+/g, '/').replace(/\/$/, '');
   // url_prefix 含协议（如 https://api.example.com）时直接作为完整基础 URL，跳过 baseURL
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(ctx.urlPrefix)) {
-    const prefix = ctx.urlPrefix.endsWith('/') ? ctx.urlPrefix.slice(0, -1) : ctx.urlPrefix;
+    const prefix = trimTrailingSlash(ctx.urlPrefix);
     return uri.startsWith('/') ? `${prefix}${uri}` : `${prefix}/${uri}`;
   }
-  const base = ctx.baseURL.endsWith('/') ? ctx.baseURL.slice(0, -1) : ctx.baseURL;
+  const base = trimTrailingSlash(ctx.baseURL);
   const prefix = ctx.urlPrefix;
   return uri.startsWith('/') ? `${base}${prefix}${uri}` : `${base}${prefix}/${uri}`;
 }

@@ -8,6 +8,7 @@
  */
 
 import { NetworkError } from './errors.js';
+import { joinBaseAndPath } from './url-utils.js';
 import type { SummaryResponse } from './types.js';
 
 /**
@@ -75,9 +76,7 @@ export async function fetchSummary(
   const { explicitLevels, explicitEndpoint, warnings } = inputs;
   // endpoint 缺省时回退到与后端约定的默认摘要端点（用户显式指定则优先其值）
   const endpoint = explicitEndpoint ?? DEFAULT_ENDPOINT;
-  const base = baseURL.endsWith('/') ? baseURL.slice(0, -1) : baseURL;
-  const ep = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  const url = `${base}${ep}`;
+  const url = joinBaseAndPath(baseURL, endpoint);
   try {
     const data = await fetchMeta('__forge__.summary', url);
     return data as SummaryResponse;

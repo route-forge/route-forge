@@ -15,6 +15,7 @@
 import { RouteCache } from './cache.js';
 import { UnknownLevelError } from './errors.js';
 import { buildUrl } from './url-builder.js';
+import { joinBaseAndPath } from './url-utils.js';
 import { type DiscoveryState, type MetaFetcher } from './auto-discovery.js';
 import type { LevelRoutesResponse, RouteMeta } from './types.js';
 
@@ -60,16 +61,9 @@ export class RouteStore {
     // 层级明细端点优先用摘要自描述的 route.uri（baseURL + uri）；缺省时兜底 endpoint_prefix 拼接
     const uri = this.state.levelRoutes[level]?.uri;
     const url = uri
-      ? this.joinBaseAndPath(this.baseURL, uri)
+      ? joinBaseAndPath(this.baseURL, uri)
       : buildUrl(level, { baseURL: this.baseURL, endpoint: this.state.endpoint });
     return (await this.fetchMeta(`route-forge.${level}`, url, level)) as LevelRoutesResponse;
-  }
-
-  /** baseURL 与后端下发的绝对 path 拼接（规范化斜杠），与 buildUrl 的 base 处理一致 */
-  private joinBaseAndPath(baseURL: string, path: string): string {
-    const base = baseURL.endsWith('/') ? baseURL.slice(0, -1) : baseURL;
-    const p = path.startsWith('/') ? path : `/${path}`;
-    return `${base}${p}`;
   }
 
   async loadOne(level: string): Promise<void> {
