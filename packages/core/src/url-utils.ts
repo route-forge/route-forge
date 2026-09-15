@@ -1,24 +1,7 @@
 /**
- * URL 基础拼接工具：统一「base + path」的斜杠规范化，消除
- * url-builder / route-store / auto-discovery 三处各自实现的重复逻辑。
+ * URL 基础拼接工具（公共内部入口/桶）
  *
- * 语义（四处原本一致，收敛为单一实现）：
- *   - base 去掉一个结尾 `/`（若有）
- *   - path 补一个开头 `/`（若缺）
- *   - 结果 = 规范化 base + 规范化 path
+ * 实现见 url/utils.ts，本文件仅 re-export，保持 `./url-utils.js` 导入路径稳定。
  */
 
-/** 去掉结尾的一个 `/`（若有）。 */
-export function trimTrailingSlash(s: string): string {
-  return s.endsWith('/') ? s.slice(0, -1) : s;
-}
-
-/** 保证开头有一个 `/`（若缺则补）。 */
-export function withLeadingSlash(s: string): string {
-  return s.startsWith('/') ? s : `/${s}`;
-}
-
-/** 规范化 base（去尾斜杠）与 path（补头斜杠）后拼接。 */
-export function joinBaseAndPath(base: string, path: string): string {
-  return `${trimTrailingSlash(base)}${withLeadingSlash(path)}`;
-}
+export { trimTrailingSlash, withLeadingSlash, joinBaseAndPath } from './url/utils.js';
