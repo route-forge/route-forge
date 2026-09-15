@@ -6,11 +6,11 @@
 export {
   RouteForgeProvider,
   ForgeContext,
-  useForge,
 } from './provider.js';
-export type {
-  RouteForgeProviderProps, ReactBoundForge,
-} from './provider.js';
+export type { RouteForgeProviderProps } from './provider.js';
+
+export { useForge } from './hooks/useForge.js';
+export type { ReactBoundForge } from './hooks/useForge.js';
 
 export { useForgeApi } from './hooks/useForgeApi.js';
 export type {

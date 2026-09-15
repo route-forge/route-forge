@@ -16,7 +16,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
-import { useForge } from '../provider.js';
+import { useForge } from './useForge.js';
 import type {
   BoundForge,
   RouteForge,

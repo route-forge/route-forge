@@ -1,26 +1,21 @@
 /**
- * React Provider + useForge hook
+ * React Provider — 注入 RouteForge 实例的 Context + Provider
  * @see .docs/SPEC.md §4.1.7
  *
  * 提供：
  *   - RouteForgeProvider：React Context Provider，注入 RouteForge 实例
- *   - useForge() / useForge(level) / useForge(level, prefix) 返回统一方法的 forge 实例
- *     • 不传 level：forge.api(level, name, params?) 直接调用
- *     • 传 level：forge(name, params?) 可直接调用（= api 快捷方式），自动绑定层级
- *     • 传 level + prefix：forge(suffix, params?) 自动拼接 prefix
+ *   - ForgeContext：供高级用户直接 useContext 的 Context 本体
  *
- * 类型推断：
- *   当 ForgeRouteMap 通过 codegen 或 module augmentation 定义时，
- *   level / name / params 均自动推断，IDE 提供补全提示。
+ * useForge / useForgeApi / useForgeRoute 等消费 hook 见 hooks/ 下各文件。
  */
 
-import { createContext, type ReactNode, useCallback, useContext, useMemo, useRef, useState, useEffect } from 'react';
+import { createContext, type ReactNode, useRef, useState, useEffect } from 'react';
 import {
-  type BoundForge,
   createRouteForge,
   type RouteForge,
   type RouteForgeOptions,
 } from '@route-forge/core';
+import { optionsEqual } from './internal/options-equal.js';
 
 // ─── Context ────────────────────────────────────────────────
 
@@ -162,123 +157,5 @@ export function RouteForgeProvider({ options, forge: externalForge, gate, gateFa
   return <ForgeContext.Provider value={ref.current.forge}>{content}</ForgeContext.Provider>;
 }
 
-/** 比较两个 options 是否等价：原始值按 ===，数组逐元素 ===，嵌套纯对象（如 cache）浅比较 */
-function optionsEqual(a: RouteForgeOptions, b: RouteForgeOptions): boolean {
-  if (a === b) return true;
-  const ka = Object.keys(a);
-  const kb = Object.keys(b);
-  if (ka.length !== kb.length) return false;
-  for (const k of ka) {
-    const va = (a as unknown as Record<string, unknown>)[k];
-    const vb = (b as unknown as Record<string, unknown>)[k];
-    if (va === vb) continue;
-    if (Array.isArray(va) && Array.isArray(vb)) {
-      if (va.length !== vb.length || !va.every((v, i) => v === vb[i])) return false;
-      continue;
-    }
-    if (
-      va !== null && vb !== null &&
-      typeof va === 'object' && typeof vb === 'object' &&
-      !Array.isArray(va) && !Array.isArray(vb)
-    ) {
-      const vaObj = va as Record<string, unknown>;
-      const vbObj = vb as Record<string, unknown>;
-      const vak = Object.keys(vaObj);
-      if (vak.length !== Object.keys(vbObj).length) return false;
-      if (!vak.every((kk) => vaObj[kk] === vbObj[kk])) return false;
-      continue;
-    }
-    return false;
-  }
-  return true;
-}
-
 /** React Context — 供高级用户直接 useContext(ForgeContext) 使用 */
 export { ForgeContext };
-
-// ─── React 特化类型别名 ──────────────────────────────────────
-
-/** React 特化：levelLoaded 为 boolean（通过 useState 驱动重渲染） */
-export type ReactBoundForge = BoundForge<boolean>;
-
-// ─── useForge hook ───────────────────────────────────────────
-
-/**
- * 获取 forge 实例。内部委托 core 的 forge.use()，将 levelLoaded 替换为 React boolean 状态。
- *
- * @example
- * ```ts
- * // 不绑定层级
- * const forge = useForge()
- * forge.api('admin', 'users.show', { user: 1 })
- *
- * // 绑定层级 — 可直接调用，也可通过 api/route/url
- * const forge = useForge('admin')
- * forge.level                    // → 'admin'
- * forge.levelLoaded              // boolean
- * forge('users.show', { user: 1 })
- * forge.route('users.show', { user: 1 })
- *
- * // 绑定层级 + 前缀 — 路由名自动拼接
- * const forge = useForge('admin', 'users')
- * forge('show', { user: 1 })
- * forge.route('show', { user: 1 })
- * ```
- */
-export function useForge<L extends string>(level: L, prefix: string): ReactBoundForge;
-export function useForge<L extends string>(level: L): ReactBoundForge;
-export function useForge(): RouteForge;
-export function useForge(level?: string, prefix?: string): RouteForge | ReactBoundForge {
-  const forge = useContext(ForgeContext);
-  if (!forge) {
-    throw new Error(
-      '[route-forge/react] useForge() must be used within a <RouteForgeProvider>',
-    );
-  }
-
-  // 契约：level 为实例级静态绑定——在 hook 首次调用时求值并固定，不支持动态切换。
-  // 因为层级与其前缀（prefix）/ 路由名解析语义绑定，中途换 level 会让 prefix 失去意义；
-  // 需要指向另一层级时，请新建组件 / 新建一次 useForge 调用（新建实例的开销可接受）。
-
-  // React 特化：levelLoaded → boolean，由 bound 上的 getter 读取 loadedRef 提供。
-  // loadedRef 是唯一真值源，仅在渲染提交之后（effect / 异步回调）写入，渲染阶段绝不改；
-  // state 只用于在值变化时驱动组件重渲染（getter 本身不触发渲染）。
-  const loadedRef = useRef<boolean>(level !== undefined ? forge.isLoaded(level) : false);
-  const [, setLoadedVersion] = useState(0);
-  const markLoaded = useCallback((next: boolean) => {
-    if (loadedRef.current === next) return;
-    loadedRef.current = next;
-    setLoadedVersion((v) => v + 1);
-  }, []);
-
-  const bound = useMemo(() => {
-    if (level === undefined) return null;
-    // 委托 core 的 use()（内部已触发 load；load 经 core inflight 去重，幂等）
-    const b = forge.use(level, prefix);
-    Object.defineProperty(b, 'levelLoaded', {
-      get() { return loadedRef.current; },
-      enumerable: true,
-      configurable: true,
-    });
-    return b;
-  }, [forge, level, prefix]);
-
-  useEffect(() => {
-    if (level === undefined || !bound) return;
-    // level / forge 切换时先同步当前缓存状态（在 effect 内写 ref，渲染期无副作用）
-    const current = forge.isLoaded(level);
-    markLoaded(current);
-    if (current) return;
-    let cancelled = false;
-    // forge.load 内部有 inflight 去重，与 createBoundForge 内部触发的 load 不会重复请求
-    forge.load(level).then(
-      () => { if (!cancelled) markLoaded(true); },
-      () => { /* 加载失败时 levelLoaded 保持 false */ },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [bound, forge, level, markLoaded]);
-
-  return level === undefined ? forge : (bound as unknown as ReactBoundForge);
-}
