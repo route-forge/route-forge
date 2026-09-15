@@ -424,6 +424,28 @@ describe('getRoutes snapshot isolation', () => {
     expect(forge.route('public', 'user.show', { user: 1 })).toBe('/users/1');
   });
 
+  it('getRoutes(level) 深拷贝嵌套 parameter_defaults（structuredClone 隔离契约）', async () => {
+    const { forge } = await createLoadedForge({
+      'report.show': {
+        name: 'report.show',
+        uri: 'reports/{region}',
+        methods: ['GET'],
+        parameters: ['region'],
+        parameter_defaults: { region: 'global', meta: { page: 1 } },
+      },
+    });
+    const snapshot = forge.getRoutes('public');
+    const def = snapshot['report.show']!.parameter_defaults as {
+      region: string;
+      meta: { page: number };
+    };
+    // 顶层与嵌套对象都应与内部缓存隔离：改快照不影响 route() 使用的默认值
+    def.region = 'hacked';
+    def.meta.page = 999;
+    // region 走默认值 → 仍为缓存里的 'global'，未受快照篡改影响
+    expect(forge.route('public', 'report.show')).toBe('/reports/global');
+  });
+
   it('getRoutes() without level groups all loaded levels', async () => {
     const summary = makeSummary({
       levels: {

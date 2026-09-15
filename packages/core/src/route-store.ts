@@ -148,8 +148,8 @@ export class RouteStore {
       const routes = entry?.routes ?? {};
       const result: Record<string, RouteMeta> = {};
       for (const [k, v] of Object.entries(routes)) {
-        // 深拷贝：避免嵌套对象（如 parameter_defaults）与内部缓存共享引用
-        result[k] = JSON.parse(JSON.stringify(v));
+        // 深拷贝（structuredClone：快且保 undefined）：避免嵌套对象（如 parameter_defaults）与内部缓存共享引用
+        result[k] = structuredClone(v);
       }
       return result;
     }
@@ -159,8 +159,8 @@ export class RouteStore {
       if (entry) {
         const levelRoutes: Record<string, RouteMeta> = {};
         for (const [k, v] of Object.entries(entry.routes)) {
-          // 深拷贝：避免嵌套对象（如 parameter_defaults）与内部缓存共享引用
-          levelRoutes[k] = JSON.parse(JSON.stringify(v));
+          // 深拷贝（structuredClone：快且保 undefined）：避免嵌套对象（如 parameter_defaults）与内部缓存共享引用
+          levelRoutes[k] = structuredClone(v);
         }
         result[lvl] = levelRoutes;
       }
