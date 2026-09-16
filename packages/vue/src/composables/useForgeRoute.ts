@@ -12,7 +12,7 @@
  * - 用户无需关心 levelLoaded 状态，直接用即可
  */
 
-import { computed, type ComputedRef, onMounted, ref, watch } from 'vue';
+import { computed, type ComputedRef, getCurrentScope, onMounted, onScopeDispose, ref, watch } from 'vue';
 import { useInjectedForge } from '../useInjectedForge.js';
 import { reportRenderWarn } from '../degrade.js';
 
@@ -74,10 +74,19 @@ export function useForgeRouteState(
     });
   }
 
+  // 路由数据版本：本层级被 revalidate 刷新 / invalidate 后 bump，驱动下面的 computed 重算（无刷新页面即热更新）
+  const dataVersion = ref(0);
+  const unsubscribe = forge.onRoutesChange((changed) => {
+    if (changed === lvl) dataVersion.value++;
+  });
+  // 在 effect scope 内则随 scope 销毁自动退订；scope 外（如单例模块）不注册、由调用方持有 unsubscribe 自行管理
+  if (getCurrentScope()) onScopeDispose(unsubscribe);
+
   // 三态同步求值（computed 纯读缓存，无副作用）：
   // 未加载 → { href: '', error: null }；解析失败 → { href: '', error }；成功 → { href }
   const state = computed(() => {
     if (!levelLoaded.value) return { href: '', error: null as unknown };
+    void dataVersion.value; // 依赖数据版本：revalidate/invalidate 后强制重算
     const n = typeof name === 'function' ? name() : name;
     const p = params ? params() : undefined;
     try {

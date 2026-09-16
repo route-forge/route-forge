@@ -7,6 +7,7 @@ export { createRouteForge } from './forge.js';
 export { createInterceptorManager, InterceptorManagerImpl } from './interceptors.js';
 export { RouteCache } from './cache.js';
 export { LoadingTracker } from './loading.js';
+export { RouteChangeTracker } from './route-change.js';
 export { resolveRouteName, resolveRouteNameSync } from './resolveRouteName.js';
 
 export {
@@ -56,3 +57,5 @@ export type {
   LoadingChangeCallback,
   LoadingChangeEvent,
 } from './loading.js';
+
+export type { RouteChangeCallback } from './route-change.js';

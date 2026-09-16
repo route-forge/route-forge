@@ -4,6 +4,7 @@
  */
 
 import type { LoadingChangeCallback } from '../loading.js';
+import type { RouteChangeCallback } from '../route-change.js';
 import type { CacheStorage, SummaryResponse, RouteMeta } from './manifest.js';
 import type {
   ApiCallParams,
@@ -36,6 +37,13 @@ export interface RouteForge {
 
   /** 拉取一个或多个层级（自动并发去重） */
   load(level: string | string[]): Promise<void>;
+
+  /**
+   * 强制刷新一个或多个层级：跳过缓存命中短路重新拉取，成功覆盖缓存、失败保留旧值。
+   * 与 `invalidate` + `load` 不同——全程不清空缓存，读取旧数据不受影响、无空窗。
+   * 刷新成功会经 `onRoutesChange` 广播该层级变更；失败时 Promise reject 携带拉取错误。
+   */
+  revalidate(level: string | string[]): Promise<void>;
 
   /**
    * 仅生成 URL，不发请求；level 用于定位路由所在的层级缓存。
@@ -83,6 +91,13 @@ export interface RouteForge {
 
   /** 订阅加载状态变更，返回取消订阅函数 */
   onLoadingChange(cb: LoadingChangeCallback): () => void;
+
+  /**
+   * 订阅路由表数据变更：层级数据成功写入（load / revalidate）或失效（invalidate）后，
+   * 回调携带发生变化的层级。框架层据此重算受影响的响应式 URL（后台刷新无需刷新页面即热更新）。
+   * @returns 取消订阅函数
+   */
+  onRoutesChange(cb: RouteChangeCallback): () => void;
 
   /**
    * 获取路由元信息快照（深拷贝，修改返回值不影响内部缓存）。

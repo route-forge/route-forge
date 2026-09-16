@@ -16,6 +16,7 @@ import { createAdapterBootstrap } from './adapter-bootstrap.js';
 import { createReadyLatch } from './ready-latch.js';
 import type { LoadingChangeCallback } from './loading.js';
 import { LoadingTracker } from './loading.js';
+import { RouteChangeTracker, type RouteChangeCallback } from './route-change.js';
 import {
   DiscoveryNotReadyError,
   HTTPError,
@@ -62,6 +63,9 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
 
   // --- 加载中标识跟踪器（始终跟踪，用户不监听即可）---
   const loadingTracker = new LoadingTracker();
+
+  // --- 路由数据变更跟踪器（load/revalidate 提交、invalidate 后广播层级变更，供框架层重算）---
+  const routesTracker = new RouteChangeTracker();
 
   // --- 自动发现（SPEC §4.1.1 + §5.3）---
   const explicitLevels = options.levels;
@@ -192,8 +196,10 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     fetchMeta,
     autoDiscoveryPromise,
     getAutoDiscoveryError: () => autoDiscoveryError,
+    onChange: (level) => routesTracker.notify(level),
   });
   const load = (level: string | string[]): Promise<void> => store.load(level);
+  const revalidate = (level: string | string[]): Promise<void> => store.revalidate(level);
   const findRouteMeta = (level: string, name: string): RouteMeta | undefined =>
     store.findRouteMeta(level, name);
   const invalidate = (level?: string | string[]): void => store.invalidate(level);
@@ -281,6 +287,7 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
   const forgeInstance = {
     api,
     load,
+    revalidate,
     route,
     url: route,
     invalidate,
@@ -292,6 +299,7 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     isLoading: () => loadingTracker.isLoading(),
     isReady: () => latch.isReady(),
     onLoadingChange: (cb: LoadingChangeCallback) => loadingTracker.subscribe(cb),
+    onRoutesChange: (cb: RouteChangeCallback) => routesTracker.subscribe(cb),
     interceptors: {
       request: requestInterceptors,
       response: responseInterceptors,

@@ -120,5 +120,13 @@ export function useForgeRouteState(
     // hooks 不进依赖：报告钩子是稳定行为（console 输出），首渲染闭包即可
   }, [forge, level, name, paramsKey, version]);
 
+  // 订阅路由表数据变更：本层级被 revalidate 刷新或 invalidate 后 bump 版本 → 重渲染 → 上方同步求值算出新 URL。
+  // 独立 effect，仅 [forge, level] 依赖（订阅/退订各一次），不随 name/params/version 抖动重挂。
+  useEffect(() => {
+    return forge.onRoutesChange((changed) => {
+      if (changed === level) setVersion((v) => v + 1);
+    });
+  }, [forge, level]);
+
   return { href, error, isLevelLoaded };
 }

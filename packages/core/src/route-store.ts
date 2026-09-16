@@ -5,11 +5,12 @@
  *   - RouteCache（懒加载缓存）
  *   - inflight（并发去重）
  *   - invalidationGens（失效代数，防止 invalidate 后旧数据回写）
- * 并在此之上实现 fetchLevel / loadOne / load / invalidate / isLoaded
+ * 并在此之上实现 fetchLevel / loadOne / load / revalidate / invalidate / isLoaded
  * 以及缓存读取（findRouteMeta / getRoutes）与虚拟 unassigned 层级构建。
  *
  * 依赖通过构造参数注入：DiscoveryState 与自动发现错误均按引用 / getter
- * 实时读取，避免快照冻结自动发现回填结果；fetchMeta 为工厂提供的元信息传输通道。
+ * 实时读取，避免快照冻结自动发现回填结果；fetchMeta 为工厂提供的元信息传输通道；
+ * onChange 在路由数据提交（load/revalidate 写入）或失效（invalidate）后广播变更层级。
  */
 
 import { RouteCache } from './cache.js';
@@ -28,6 +29,8 @@ export interface RouteStoreDeps {
   autoDiscoveryPromise: Promise<void>;
   /** 自动发现错误读取器（loadOne 起始处重抛，保留原始错误） */
   getAutoDiscoveryError: () => unknown;
+  /** 路由数据提交（load/revalidate 写入）或失效（invalidate）后回调，携带变更层级 */
+  onChange?: (level: string) => void;
 }
 
 export class RouteStore {
@@ -37,6 +40,7 @@ export class RouteStore {
   private readonly fetchMeta: MetaFetcher;
   private readonly autoDiscoveryPromise: Promise<void>;
   private readonly getAutoDiscoveryError: () => unknown;
+  private readonly onChange: ((level: string) => void) | undefined;
 
   private readonly inflight = new Map<string, Promise<void>>();
   /** 每个层级的失效代数，用于检测 loadOne 期间是否发生了 invalidate */
@@ -49,6 +53,7 @@ export class RouteStore {
     this.fetchMeta = deps.fetchMeta;
     this.autoDiscoveryPromise = deps.autoDiscoveryPromise;
     this.getAutoDiscoveryError = deps.getAutoDiscoveryError;
+    this.onChange = deps.onChange;
   }
 
   assertLevelDeclared(level: string): void {
@@ -87,6 +92,7 @@ export class RouteStore {
         // 仅在缓存未被 invalidate 清除时写入，防止旧数据回写
         if ((this.invalidationGens.get(level) ?? 0) === gen) {
           this.cache.set(resp, this.state.cacheTtl);
+          this.onChange?.(level);
         }
       } finally {
         this.inflight.delete(level);
@@ -102,6 +108,43 @@ export class RouteStore {
     await Promise.all(list.map((l) => this.loadOne(l)));
   }
 
+  /**
+   * 强制刷新：跳过缓存命中短路重新拉取指定层级，成功后覆盖缓存、失败保留旧值。
+   * 与 invalidate→load 的区别——全程不清空缓存，故读取旧数据不受影响、无空窗。
+   */
+  async revalidate(level: string | string[]): Promise<void> {
+    await this.autoDiscoveryPromise;
+    const list = Array.isArray(level) ? level : [level];
+    await Promise.all(list.map((l) => this.revalidateOne(l)));
+  }
+
+  private async revalidateOne(level: string): Promise<void> {
+    const autoDiscoveryError = this.getAutoDiscoveryError();
+    if (autoDiscoveryError) throw autoDiscoveryError;
+    this.assertLevelDeclared(level);
+
+    // 已有在途 load/revalidate → 直接搭车（它拉的就是最新数据），避免重复请求
+    const existing = this.inflight.get(level);
+    if (existing) return existing;
+
+    const gen = this.invalidationGens.get(level) ?? 0;
+    const p = (async () => {
+      try {
+        // 强制拉取（revalidate 的语义即"不看缓存命中"）；失败时错误上抛、旧缓存原样保留
+        const resp = await this.fetchLevel(level);
+        // 仅在缓存未被并发 invalidate 清除时写入，防止旧数据回写
+        if ((this.invalidationGens.get(level) ?? 0) === gen) {
+          this.cache.set(resp, this.state.cacheTtl);
+          this.onChange?.(level);
+        }
+      } finally {
+        this.inflight.delete(level);
+      }
+    })();
+    this.inflight.set(level, p);
+    return p;
+  }
+
   invalidate(level?: string | string[]): void {
     if (level === undefined) {
       this.cache.clear();
@@ -110,16 +153,19 @@ export class RouteStore {
       for (const lvl of this.state.levels) {
         this.invalidationGens.set(lvl, (this.invalidationGens.get(lvl) ?? 0) + 1);
       }
+      for (const lvl of this.state.levels) this.onChange?.(lvl);
     } else if (Array.isArray(level)) {
       for (const lvl of level) {
         this.cache.del(lvl);
         this.inflight.delete(lvl);
         this.invalidationGens.set(lvl, (this.invalidationGens.get(lvl) ?? 0) + 1);
       }
+      for (const lvl of level) this.onChange?.(lvl);
     } else {
       this.cache.del(level);
       this.inflight.delete(level);
       this.invalidationGens.set(level, (this.invalidationGens.get(level) ?? 0) + 1);
+      this.onChange?.(level);
     }
   }
 

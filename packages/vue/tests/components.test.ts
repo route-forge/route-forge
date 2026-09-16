@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createRouteForgePlugin, ForgeLink, ForgeRoute } from '../src/index.js';
-import type { LevelRoutesResponse, SummaryResponse } from '@route-forge/core';
+import { createRouteForge, type LevelRoutesResponse, type RouteForge, type SummaryResponse } from '@route-forge/core';
 import { __resetDegradeReportsForTests } from '../src/degrade.js';
 
 // ─── mock backend ───────────────────────────────────────────
@@ -318,5 +318,46 @@ describe('ForgeRoute', () => {
     expect(wrapper.html()).toBe('');
     expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(String(errorSpy.mock.calls[0]?.join(' '))).toContain('ForgeRoute 路由解析失败');
+  });
+});
+
+describe('ForgeLink 响应 revalidate（后台刷新热更新）', () => {
+  it('revalidate 更新层级数据后，已挂载链接的 href 自动重算', async () => {
+    let uri = 'users/{user}';
+    const rtSummary: SummaryResponse = {
+      schemeVersion: 1,
+      levels: {
+        public: {
+          description: 'public',
+          load: 'lazy',
+          route_count: 1,
+          route: { uri: '/_forge/routes/public', methods: ['GET', 'HEAD'] },
+        },
+      },
+      config: { strict_mode: false, endpoint_prefix: '/_forge/routes', url_prefix: null, cache_ttl: 3600 },
+    };
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url === '/_forge/routes/public') {
+        return jsonResponse({
+          level: 'public',
+          routes: { 'users.show': { name: 'users.show', uri, methods: ['GET'], parameters: ['user'] } },
+        } as LevelRoutesResponse);
+      }
+      return jsonResponse({}, 404);
+    });
+
+    const forge: RouteForge = createRouteForge({ summary: rtSummary, levels: ['public'], adapter: 'builtin' });
+    const wrapper = mount(ForgeLink, {
+      props: { level: 'public', name: 'users.show', params: { user: 7 } },
+      slots: { default: () => 'u' },
+      global: { plugins: [createRouteForgePlugin(forge)] },
+    });
+    await flushPromises();
+    expect(wrapper.find('a').attributes('href')).toBe('/users/7');
+
+    uri = 'u/{user}';
+    await forge.revalidate('public');
+    await flushPromises();
+    expect(wrapper.find('a').attributes('href')).toBe('/u/7');
   });
 });

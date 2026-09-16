@@ -15,6 +15,14 @@
   reject `RequestAbortedError`）；传入时若 signal 已 abort 则直接短路、不发请求。`signal` 为保留固定 key，
   恒不参与路径参数解析，请求结束时自动移除监听以防长期复用的 signal 泄漏。面向组件卸载 / React Query /
   SWR 等由外部生命周期驱动取消的场景。
+- 新增 `forge.revalidate(level | level[])`：强制刷新——绕过缓存命中短路重新拉取，成功覆盖缓存、失败**保留旧值并
+  reject**；全程不清空缓存，故刷新期间 `route()` / `hasRoute()` / `getRoutes()` 读取旧数据不受影响、**无空窗**
+  （区别于 `invalidate` + `load`）。复用现有 `inflight` 并发去重与失效代数（并发合并为一次请求、被 invalidate
+  取消的旧回写不落库）。
+- 新增 `forge.onRoutesChange(cb)`：订阅「某层级路由数据已变更」（`load` / `revalidate` 成功提交、`invalidate`
+  失效后触发，回调携带变更层级），返回取消订阅函数。vue/react 的 `useForgeRoute`（及 `ForgeRoute` / `ForgeLink`）
+  已内置订阅，按自身绑定的层级过滤后重算响应式 URL——因此 `revalidate` 后台刷新后，已挂载的链接**无需重挂载即热更新**。
+  以上均为向后兼容的新增能力，不影响既有 `load` / `invalidate` 语义。
 
 ## 3.0.0 — 2026-09-06
 

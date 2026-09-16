@@ -154,6 +154,14 @@ const users = forge.route('admin', 'users.index', { query: { page: 2, sort: 'nam
 await forge.load('admin')
 forge.invalidate('admin')
 
+// 强制刷新：不清缓存、无空窗地重拉层级（成功覆盖、失败保留旧值并 reject）
+await forge.revalidate('admin')
+//   与 invalidate+load 的区别：刷新期间旧路由仍可用，读取不受影响
+
+// 订阅路由数据变更：某层级 load/revalidate 提交或 invalidate 后触发（携带层级）
+const off = forge.onRoutesChange((level) => { /* 后台刷新后重算该层级的响应式 URL */ })
+off()  // 取消订阅；vue/react 的 useForgeRoute 已内置订阅，revalidate 后链接自动热更新
+
 // 请求取消：ForgeRequest 自带 abort()，无需自行管理 AbortController
 const req = forge.api('admin', 'users.show', { user: 123 })
 req.abort()  // 取消请求，Promise reject 为 RequestAbortedError

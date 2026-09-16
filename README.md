@@ -153,6 +153,15 @@ const users = forge.route('admin', 'users.index', { query: { page: 2, sort: 'nam
 await forge.load('admin')
 forge.invalidate('admin')
 
+// Force refresh: re-fetch a level without clearing cache — no blank window (overwrites on success,
+// keeps stale value and rejects on failure)
+await forge.revalidate('admin')
+//   unlike invalidate+load: old routes stay readable throughout the refresh
+
+// Subscribe to route-data changes: fires with the level after its load/revalidate commit or invalidate
+const off = forge.onRoutesChange((level) => { /* recompute that level's reactive URLs after a refresh */ })
+off()  // unsubscribe; vue/react useForgeRoute already subscribes, so links hot-update after revalidate
+
 // Cancellation: ForgeRequest ships with abort(), no manual AbortController needed
 const req = forge.api('admin', 'users.show', { user: 123 })
 req.abort()  // cancels the request; the Promise rejects with RequestAbortedError
