@@ -135,7 +135,8 @@ describe('onRoutesChange（数据版本订阅）', () => {
     await h.forge.load('public'); // 首次写入 → public
     h.setServerRoutes('public', { 'a': meta('a', 'a2') });
     await h.forge.revalidate('public'); // 刷新写入 → public
-    h.forge.invalidate('admin'); // 失效 → admin
+    h.forge.invalidate('admin'); // 失效 → admin（合批：下一个微任务投递）
+    await Promise.resolve(); // 让 invalidate 的微任务 flush 先执行
 
     expect(seen).toEqual(['public', 'public', 'admin']);
     unsub();
@@ -162,5 +163,22 @@ describe('onRoutesChange（数据版本订阅）', () => {
     h.failNextFetch('public');
     await expect(h.forge.revalidate('public')).rejects.toBeInstanceOf(HTTPError);
     expect(n).toBe(0); // 失败未写入 → 不通知
+  });
+
+  it('同 tick 并发 revalidate 同一层级：合批后只投一次', async () => {
+    const h = makeHarness(['public']);
+    h.setServerRoutes('public', { 'a': meta('a', 'a1') });
+    await h.forge.load('public');
+    const seen: string[] = [];
+    h.forge.onRoutesChange((lvl) => seen.push(lvl));
+    // 同一 tick 并发多次 revalidate → 共享 inflight，仅一次提交、仅一次通知
+    await Promise.all([
+      h.forge.revalidate('public'),
+      h.forge.revalidate('public'),
+      h.forge.revalidate('public'),
+    ]);
+    await Promise.resolve(); // flush
+    expect(seen).toEqual(['public']);
+    expect(h.fetchCounts.public).toBe(2); // load 1 次 + revalidate 合并为 1 次
   });
 });

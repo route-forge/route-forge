@@ -96,18 +96,33 @@ export function appendQuery(url: string, query?: Record<string, unknown>): strin
   return url.includes('?') ? `${url}&${qs}` : `${url}?${qs}`;
 }
 
+/** resolveApiParams 视为固定/保留 key 的字段名；均不出现时 = 纯路径参数，可走快路径。 */
+const RESERVED_API_KEYS = ['params', 'query', 'body', 'headers', 'timeout', 'signal'] as const;
+
 /**
  * 由路由元信息 + 传参生成最终 URL（含路径参数替换与 query 追加），供 `route()` / `url()` 使用。
  *
  * 复用 `api()` 同一套入参解析（`resolveApiParams`）：`params` 里 `query` 为固定 key → 序列化为
  * query string，其余按路径参数处理——因此 `route()` 与 `api()` 共享同一"保留 key"语义。
  * `body` / `headers` / `timeout` 对纯 URL 生成无意义，解析出后直接忽略。
+ *
+ * 快路径：`route()`/`url()` 是渲染期热点，且多数链接只有路径参数、没有 query 等保留 key。
+ * 此时直接把 params 交给 buildRequestUrl，跳过 resolveApiParams 的对象拆分/副本，零额外开销；
+ * 仅当出现任一保留 key 才走完整解析路径（语义不变）。
  */
 export function buildRouteUrl(
   meta: RouteMeta,
   params: ApiCallParams | Record<string, unknown> | undefined,
   ctx: RequestUrlContext,
 ): string {
-  const { pathParams, query } = resolveApiParams(params ?? {});
+  if (params) {
+    const hasReservedKey = RESERVED_API_KEYS.some((k) => k in params);
+    if (!hasReservedKey) {
+      return buildRequestUrl(meta, params, ctx);
+    }
+  } else {
+    return buildRequestUrl(meta, {}, ctx);
+  }
+  const { pathParams, query } = resolveApiParams(params);
   return appendQuery(buildRequestUrl(meta, pathParams, ctx), query);
 }

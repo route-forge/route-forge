@@ -13,8 +13,16 @@
 /** 路由表数据变更回调签名；level 为发生变化的层级 */
 export type RouteChangeCallback = (level: string) => void;
 
+/**
+ * 路由数据变更广播器：微任务合批投递，避免同一 tick 内多次变更（invalidate-all、并发 load）
+ * 触发同步惊群，并把订阅者回调移出 cache.write 的关键路径。
+ */
 export class RouteChangeTracker {
   private readonly subscribers = new Set<RouteChangeCallback>();
+  /** 本微任务周期内累积的变更层级（去重） */
+  private readonly pending = new Set<string>();
+  /** 是否已排定一次微任务 flush */
+  private scheduled = false;
 
   /** 订阅路由表数据变更；返回取消订阅函数 */
   subscribe(cb: RouteChangeCallback): () => void {
@@ -24,13 +32,28 @@ export class RouteChangeTracker {
     };
   }
 
-  /** 通知某层级的路由数据已变更 */
+  /** 记录某层级数据已变更；同一 tick 多次调用合并为一次投递（每层级各投一次） */
   notify(level: string): void {
-    for (const cb of this.subscribers) {
-      try {
-        cb(level);
-      } catch {
-        // 订阅者回调异常不影响其他订阅者及缓存/请求流程
+    // 无订阅者时完全不排队，省掉微任务与集合开销
+    if (this.subscribers.size === 0) return;
+    this.pending.add(level);
+    if (this.scheduled) return;
+    this.scheduled = true;
+    queueMicrotask(() => this.flush());
+  }
+
+  /** 一次性投递本周期累积的所有变更层级；单订阅者抛错不影响其它 */
+  private flush(): void {
+    this.scheduled = false;
+    const levels = [...this.pending];
+    this.pending.clear();
+    for (const level of levels) {
+      for (const cb of this.subscribers) {
+        try {
+          cb(level);
+        } catch {
+          // 订阅者回调异常不影响其他订阅者及缓存/请求流程
+        }
       }
     }
   }

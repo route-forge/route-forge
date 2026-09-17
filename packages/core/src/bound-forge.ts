@@ -1,7 +1,7 @@
 /**
  * 绑定层级的 BoundForge 构造（SPEC §4.1.6 use(level, prefix)）。
  *
- * 由工厂注入层级维度的操作（load/api/route/hasRoute/getRoutes/invalidate/isLoaded）
+ * 由工厂注入层级维度的操作（load/api/route/hasRoute/getRoutes/getRouteNames/invalidate/isLoaded）
  * 与加载跟踪器，构造出一个「可作为函数调用（api 语法糖）+ 携带命名方法」的 BoundForge，
  * 并挂载 onLevelLoaded / useRoutePrefix 两个需要闭包引用的方法。
  */
@@ -17,6 +17,8 @@ export interface BoundForgeDeps {
   route: (level: string, name: string, params?: Record<string, unknown>) => string;
   hasRoute: (level: string, name: string) => boolean;
   getRoutes: (level: string) => Record<string, RouteMeta>;
+  /** 只读取某层级已加载路由名（不深拷贝），供 prefix 解析的候选匹配用 */
+  getRouteNames: (level: string) => string[];
   invalidate: (level: string | string[]) => void;
   isLoaded: (level: string) => boolean;
   loadingTracker: LoadingTracker;
@@ -27,10 +29,10 @@ export function createBoundForgeFactory(deps: BoundForgeDeps): (
   level: string,
   prefix?: string,
 ) => BoundForge {
-  const { load, api, route, hasRoute, getRoutes, invalidate, isLoaded, loadingTracker } = deps;
+  const { load, api, route, hasRoute, getRoutes, getRouteNames, invalidate, isLoaded, loadingTracker } = deps;
 
   // RouteResolver 接口实现（供 resolveRouteName/resolveRouteNameSync 使用）
-  const resolver: RouteResolver = { load, hasRoute, getRouteNames: (lvl) => Object.keys(getRoutes(lvl)) };
+  const resolver: RouteResolver = { load, hasRoute, getRouteNames };
 
   function createBoundForge(level: string, prefix?: string): BoundForge {
     // 自动触发 level 加载；失败时 levelLoaded 保持 reject 语义

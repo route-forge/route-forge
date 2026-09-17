@@ -217,7 +217,7 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     // 静态生成 URL：仅查已加载缓存，未加载时抛 UnknownRouteError（附该层级可用路由名候选）
     const meta = findRouteMeta(level, name);
     if (!meta) {
-      throw new UnknownRouteError(name, level, Object.keys(store.getRoutes(level)));
+      throw new UnknownRouteError(name, level, store.routeNames(level));
     }
     return buildRouteUrl(meta, params ?? {}, { baseURL, urlPrefix: discoveryState.urlPrefix });
   }
@@ -229,7 +229,7 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     responseInterceptors,
     load,
     findRouteMeta,
-    getRouteNames: (lvl) => Object.keys(store.getRoutes(lvl)),
+    getRouteNames: (lvl) => store.routeNames(lvl),
     baseURL,
     state: discoveryState,
     timeout,
@@ -279,6 +279,7 @@ export function createRouteForge(options: RouteForgeOptions = {}): RouteForge {
     route,
     hasRoute,
     getRoutes,
+    getRouteNames: (lvl) => store.routeNames(lvl),
     invalidate,
     isLoaded,
     loadingTracker,

@@ -184,6 +184,17 @@ export class RouteStore {
     return undefined;
   }
 
+  /**
+   * 该层级当前已加载的路由名列表（不深拷贝，仅读键名）。
+   * 供错误候选与 prefix 解析使用——避免为取名字而 getRoutes 深拷贝整表。
+   * 层级未声明抛 UnknownLevelError（与 getRoutes/route 一致）。
+   */
+  routeNames(level: string): string[] {
+    this.assertLevelDeclared(level);
+    const entry = this.cache.get(level);
+    return entry ? Object.keys(entry.routes) : [];
+  }
+
   getRoutes(level: string): Record<string, RouteMeta>;
   getRoutes(): Record<string, Record<string, RouteMeta>>;
   getRoutes(level?: string): Record<string, RouteMeta> | Record<string, Record<string, RouteMeta>> {
