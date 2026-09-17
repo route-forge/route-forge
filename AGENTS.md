@@ -37,7 +37,7 @@ pnpm --filter @route-forge/react test
 
 ## 提交与协作约定
 
-- 提交信息格式：`type(scope): 中文描述`；type ∈ feat/fix/test/docs/refactor/chore，scope 用包名（core/vue/react，跨包可省略）
+- 提交信息格式：`type(scope): 中文描述`；type ∈ feat/fix/perf/test/docs/refactor/chore（`perf` 用于行为不变的纯性能优化提交），scope 用包名（core/vue/react，跨包可省略）
 - **任何提交前必跑全量验证并全部通过**；新功能与缺陷修复必须同步补测试，测试组织遵循各包现有结构（`packages/*/tests/`，vitest）
 - 提交使用 GPG 签名；**不要自行 `git push`**，等用户指示
 - 发版由 tag 触发 GitHub Actions（OIDC Trusted Publishing）：`x.y.z` 全量、`core-x.y.z` / `vue-x.y.z` / `react-x.y.z` 单包；tag 为**无 v 前缀**纯版本号

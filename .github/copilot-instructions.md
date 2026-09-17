@@ -23,7 +23,7 @@ Test baseline: 333 cases (core 250 / vue 39 / react 44) — all must pass before
 
 ## Conventions
 
-- Commit messages: `type(scope): 中文描述` (type ∈ feat/fix/test/docs/refactor/chore; scope = core|vue|react)
+- Commit messages: `type(scope): 中文描述` (type ∈ feat/fix/perf/test/docs/refactor/chore; `perf` = behavior-preserving performance-only commits; scope = core|vue|react)
 - Every commit requires the full validation to pass; new features and fixes must include tests
 - Commits are GPG-signed; never `git push` without explicit instruction
 - Docs are bilingual: `README.md` (English, default) + `README_zh.md` (Chinese); keep both in sync

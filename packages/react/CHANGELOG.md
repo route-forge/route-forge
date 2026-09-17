@@ -2,6 +2,15 @@
 
 本项目遵循语义化版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## 3.1.0 — 2026-09-17
+
+### Added
+
+- `useForgeRoute` / `ForgeRoute` / `ForgeLink` 接入 core 新增的 `onRoutesChange` 订阅，按自身绑定的层级过滤：
+  当调用 `forge.revalidate(level)` 后台刷新该层级、或 `invalidate` 失效后，**已挂载的链接无需重挂载即自动重算 href**（热更新）。
+- 随 `@route-forge/core` 升级至 `3.1.0`，`params.query`（链接生成查询串）与 `api()` / `useForgeApi` 的外部 `params.signal`
+  取消均可经由本包直接使用。均为向后兼容的新增，无破坏性变更。
+
 ## 3.0.0 — 2026-09-06
 
 ### Added
